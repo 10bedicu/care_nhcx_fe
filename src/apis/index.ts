@@ -1,0 +1,191 @@
+import {
+  Claim,
+  ClaimPriority,
+  ClaimStatus,
+  ClaimType,
+  ClaimUse,
+} from "@/types/claim";
+import {
+  CreateFileRequest,
+  CreateFileResponse,
+  FileUploadModel,
+} from "@/types/file_upload";
+import { queryString, request } from "./request";
+
+import { AbhaNumber } from "@/types/abha_number";
+import { Coding } from "@/types/base";
+import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
+import { PaginatedResponse } from "./types";
+import { Policy } from "@/types/policy";
+import { User } from "@/types/user";
+
+export const apis = {
+  coverageEligibilityRequest: {
+    list: async (query?: {
+      patient?: string;
+      ordering?:
+        | "created_date"
+        | "-created_date"
+        | "modified_date"
+        | "-modified_date";
+    }) => {
+      return await request<PaginatedResponse<CoverageEligibilityRequest>>(
+        "/api/nhcx/coverage-eligibility-request/" + queryString(query)
+      );
+    },
+
+    get: async (id: string) => {
+      return await request<CoverageEligibilityRequest>(
+        `/api/nhcx/coverage-eligibility-request/${id}/`
+      );
+    },
+  },
+
+  claim: {
+    list: async (query?: {
+      encounter?: string;
+      ordering?:
+        | "created_date"
+        | "-created_date"
+        | "modified_date"
+        | "-modified_date";
+    }) => {
+      return await request<PaginatedResponse<Claim>>(
+        "/api/nhcx/claim/" + queryString(query)
+      );
+    },
+
+    latest: async (query?: { encounter?: string }) => {
+      return await request<Claim>(
+        "/api/nhcx/claim/latest" + queryString(query)
+      );
+    },
+
+    get: async (id: string) => {
+      return await request<Claim>(`/api/nhcx/claim/${id}/`);
+    },
+
+    create: async (body: {
+      type: ClaimType;
+      status: ClaimStatus;
+      use: ClaimUse;
+      priority: ClaimPriority;
+      encounter: string;
+      insurance: [
+        {
+          sequence: 1;
+          focal: true;
+          coverage: string;
+        }
+      ];
+      item: {
+        sequence: number;
+        category: {
+          code: string;
+          system: string;
+          display?: string;
+        };
+        product_or_service: {
+          system: string;
+          code: string;
+          display?: string;
+        };
+        quantity: number;
+        unit_price: number;
+      }[];
+      supporting_info: {
+        sequence: number;
+        category?: {
+          code: string;
+          system: string;
+          display?: string;
+        };
+        value?: string;
+        attachment?: string;
+      }[];
+    }) => {
+      return await request<Claim>("/api/nhcx/claim/", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    },
+
+    submit: async (id: string) => {
+      return await request<Claim>(`/api/nhcx/claim/${id}/submit/`, {
+        method: "POST",
+      });
+    },
+  },
+
+  file: {
+    createUpload: async (body: CreateFileRequest) => {
+      return await request<CreateFileResponse>("/api/v1/files/", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    },
+
+    markUploadCompleted: async (id: string) => {
+      return await request<FileUploadModel>(
+        `/api/v1/files/${id}/mark_upload_completed/`,
+        {
+          method: "POST",
+        }
+      );
+    },
+  },
+
+  gateway: {
+    policies: async (body: {
+      identifiertype: "MobileNo" | "AbhaNumber" | "MemberId";
+      identifiervalue: string;
+    }) => {
+      return await request<Policy[]>(`/api/nhcx/gateway/get_policies/`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    },
+  },
+
+  abhaNumber: {
+    get: async (patientId: string) => {
+      return await request<AbhaNumber>(`/api/abdm/abha_number/${patientId}/`);
+    },
+  },
+
+  valueset: {
+    expand: async (
+      system: string,
+      body?: {
+        search?: string;
+        count?: number;
+      }
+    ) => {
+      return await request<{ results: Coding[] }>(
+        `/api/v1/valueset/${system}/expand/`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        }
+      );
+    },
+  },
+
+  users: {
+    facilityUsers: async (
+      facilityId: string,
+      query?: {
+        limit?: string;
+        offset?: string;
+        search_text?: string;
+      }
+    ) => {
+      return await request<PaginatedResponse<User>>(
+        `/api/v1/facility/${facilityId}/users/` + queryString(query),
+        {
+          method: "GET",
+        }
+      );
+    },
+  },
+};
