@@ -112,7 +112,7 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
                     <FormLabel>Category</FormLabel>
                     <FormControl>
                       <ValuesetSelect
-                        system="system-claim-item-category"
+                        system="system-claim-type"
                         value={field.value}
                         onSelect={(value) => {
                           form.setValue(`item.${index}.category`, value);
@@ -266,7 +266,7 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
                       <FormLabel>Quantity Unit</FormLabel>
                       <FormControl>
                         <ValuesetSelect
-                          system="system-unit-of-measure"
+                          system="system-claim-type"
                           value={field.value}
                           onSelect={(value) => {
                             form.setValue(`item.${index}.quantity.unit`, value);
@@ -405,7 +405,7 @@ function AddDiagnosisSection({
       1;
     const newDiagnosis = {
       sequence: newSequence,
-      type: undefined,
+      type: [],
       diagnosis_reference: undefined,
       diagnosis_code: undefined,
       on_admission: undefined,
@@ -479,6 +479,33 @@ function AddDiagnosisSection({
                         </FormItem>
                       )}
                     />
+                    <FormField
+                      control={form.control}
+                      name={`diagnosis.${mainDiagnosisIndex}.on_admission`}
+                      render={({ field }) => (
+                        <FormItem className="space-y-1.5">
+                          <FormLabel>On Admission</FormLabel>
+                          <FormControl>
+                            <Autocomplete
+                              options={[
+                                { label: "Yes", value: "y" },
+                                { label: "No", value: "n" },
+                                { label: "Unknown", value: "u" },
+                                { label: "Not applicable", value: "w" },
+                              ]}
+                              value={field.value}
+                              onChange={(value) => {
+                                form.setValue(
+                                  `diagnosis.${mainDiagnosisIndex}.on_admission`,
+                                  value as "y" | "n" | "u" | "w" | undefined
+                                );
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <Button
                       type="button"
                       variant="ghost"
@@ -511,58 +538,56 @@ function AddDiagnosisSection({
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name={`diagnosis.${mainDiagnosisIndex}.type`}
-                      render={({ field }) => (
-                        <FormItem className="space-y-1.5">
-                          <FormLabel>Type</FormLabel>
-                          <FormControl>
+                  <FormField
+                    control={form.control}
+                    name={`diagnosis.${mainDiagnosisIndex}.type`}
+                    render={({ field }) => (
+                      <FormItem className="space-y-1.5">
+                        <FormLabel>
+                          Type
+                          <span className="text-red-500 text-sm ml-0.5">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <div className="grid gap-4">
                             <ValuesetSelect
-                              system="system-diagnosis-type"
-                              value={field.value}
+                              system="system-claim-type"
+                              value={undefined}
                               onSelect={(value) => {
                                 form.setValue(
                                   `diagnosis.${mainDiagnosisIndex}.type`,
-                                  value
+                                  field.value
+                                    .map((c) => c.code)
+                                    .includes(value.code)
+                                    ? field.value
+                                    : [...field.value, value]
                                 );
                               }}
                             />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
 
-                    <FormField
-                      control={form.control}
-                      name={`diagnosis.${mainDiagnosisIndex}.on_admission`}
-                      render={({ field }) => (
-                        <FormItem className="space-y-1.5">
-                          <FormLabel>On Admission</FormLabel>
-                          <FormControl>
-                            <Autocomplete
-                              options={[
-                                { label: "Yes", value: "y" },
-                                { label: "No", value: "n" },
-                                { label: "Unknown", value: "u" },
-                                { label: "Not applicable", value: "w" },
-                              ]}
-                              value={field.value}
-                              onChange={(value) => {
-                                form.setValue(
-                                  `diagnosis.${mainDiagnosisIndex}.on_admission`,
-                                  value as "y" | "n" | "u" | "w" | undefined
-                                );
-                              }}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                            <div className="flex flex-wrap gap-2">
+                              {field.value.map((code) => (
+                                <Badge key={code.code} className="flex gap-2">
+                                  {code.display}
+                                  <XIcon
+                                    className="w-4 h-4 cursor-pointer"
+                                    onClick={() => {
+                                      form.setValue(
+                                        `diagnosis.${mainDiagnosisIndex}.type`,
+                                        field.value.filter(
+                                          (c) => c.code !== code.code
+                                        )
+                                      );
+                                    }}
+                                  />
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </CardContent>
               </Card>
             );
@@ -610,7 +635,7 @@ function AddProcedureSection({
       1;
     const newProcedure = {
       sequence: newSequence,
-      type: undefined,
+      type: [],
       date: undefined,
       procedure_reference: undefined,
       procedure_code: undefined,
@@ -670,7 +695,7 @@ function AddProcedureSection({
                           </FormLabel>
                           <FormControl>
                             <ValuesetSelect
-                              system="system-procedure-code"
+                              system="system-claim-type"
                               value={field.value}
                               onSelect={(value) => {
                                 form.setValue(
@@ -678,6 +703,30 @@ function AddProcedureSection({
                                   value
                                 );
                               }}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name={`procedure.${mainProcedureIndex}.date`}
+                      render={({ field }) => (
+                        <FormItem className="space-y-1.5">
+                          <FormLabel>Date</FormLabel>
+                          <FormControl>
+                            <DateTimePicker
+                              value={
+                                field.value ? new Date(field.value) : undefined
+                              }
+                              onChange={(value) => {
+                                form.setValue(
+                                  `procedure.${mainProcedureIndex}.date`,
+                                  value ? value.toISOString() : undefined
+                                );
+                              }}
+                              placeholder="Select date and time"
                             />
                           </FormControl>
                           <FormMessage />
@@ -716,55 +765,53 @@ function AddProcedureSection({
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name={`procedure.${mainProcedureIndex}.type`}
-                      render={({ field }) => (
-                        <FormItem className="space-y-1.5">
-                          <FormLabel>Type</FormLabel>
-                          <FormControl>
+                  <FormField
+                    control={form.control}
+                    name={`procedure.${mainProcedureIndex}.type`}
+                    render={({ field }) => (
+                      <FormItem className="space-y-1.5">
+                        <FormLabel>Type</FormLabel>
+                        <FormControl>
+                          <div className="grid gap-4">
                             <ValuesetSelect
-                              system="system-procedure-type"
-                              value={field.value}
+                              system="system-claim-type"
+                              value={undefined}
                               onSelect={(value) => {
                                 form.setValue(
                                   `procedure.${mainProcedureIndex}.type`,
-                                  value
+                                  field.value
+                                    .map((c) => c.code)
+                                    .includes(value.code)
+                                    ? field.value
+                                    : [...field.value, value]
                                 );
                               }}
                             />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
 
-                    <FormField
-                      control={form.control}
-                      name={`procedure.${mainProcedureIndex}.date`}
-                      render={({ field }) => (
-                        <FormItem className="space-y-1.5">
-                          <FormLabel>Date</FormLabel>
-                          <FormControl>
-                            <DateTimePicker
-                              value={
-                                field.value ? new Date(field.value) : undefined
-                              }
-                              onChange={(value) => {
-                                form.setValue(
-                                  `procedure.${mainProcedureIndex}.date`,
-                                  value ? value.toISOString() : undefined
-                                );
-                              }}
-                              placeholder="Select date and time"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
+                            <div className="flex flex-wrap gap-2">
+                              {field.value.map((code) => (
+                                <Badge key={code.code} className="flex gap-2">
+                                  {code.display}
+                                  <XIcon
+                                    className="w-4 h-4 cursor-pointer"
+                                    onClick={() => {
+                                      form.setValue(
+                                        `procedure.${mainProcedureIndex}.type`,
+                                        field.value.filter(
+                                          (c) => c.code !== code.code
+                                        )
+                                      );
+                                    }}
+                                  />
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </CardContent>
               </Card>
             );
@@ -1101,7 +1148,7 @@ function AddSupportingInfoSection({
                           </FormLabel>
                           <FormControl>
                             <ValuesetSelect
-                              system="system-supporting-info-code"
+                              system="system-claim-type"
                               value={field.value}
                               onSelect={(value) => {
                                 form.setValue(
@@ -1214,7 +1261,7 @@ function AddSupportingInfoSection({
                           </FormLabel>
                           <FormControl>
                             <ValuesetSelect
-                              system="system-supporting-info-category"
+                              system="system-claim-type"
                               value={field.value}
                               onSelect={(value) => {
                                 form.setValue(

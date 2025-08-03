@@ -35,7 +35,7 @@ export function ClaimOtherSection({ form }: ClaimOtherSectionProps) {
           <SettingsIcon className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <h3 className="text-lg font-semibold">Other Details</h3>
+          <h3 className="text-lg font-semibold">Other details</h3>
           <p className="text-sm text-muted-foreground">
             Configure additional claim settings and billing information.
           </p>
@@ -47,7 +47,6 @@ export function ClaimOtherSection({ form }: ClaimOtherSectionProps) {
           <CardTitle>Claim Configuration</CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Row 1: Use and Status */}
           <div className="grid grid-cols-2 gap-4">
             <FormField
               control={form.control}
@@ -111,7 +110,6 @@ export function ClaimOtherSection({ form }: ClaimOtherSectionProps) {
             />
           </div>
 
-          {/* Row 2: Priority and Type */}
           <div className="grid grid-cols-2 gap-4">
             <FormField
               control={form.control}
@@ -173,7 +171,6 @@ export function ClaimOtherSection({ form }: ClaimOtherSectionProps) {
             />
           </div>
 
-          {/* Row 3: Billable Period Start and End */}
           <div className="grid grid-cols-2 gap-4">
             <FormField
               control={form.control}

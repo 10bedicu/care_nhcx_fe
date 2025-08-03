@@ -40,7 +40,7 @@ export const claimCareTeamSchema = z.object({
 export const claimDiagnosisSchema = z
   .object({
     sequence: z.number().int().positive(),
-    type: codingSchema.optional(),
+    type: z.array(codingSchema).min(1).default([]),
     diagnosis_reference: z.string().uuid().optional(),
     diagnosis_code: codingSchema.optional(),
     on_admission: z.enum(CLAIM_DIAGNOSIS_ON_ADMISSION_CHOICES).optional(),
@@ -62,7 +62,7 @@ export const claimDiagnosisSchema = z
 export const claimProcedureSchema = z
   .object({
     sequence: z.number().int().positive(),
-    type: codingSchema.optional(),
+    type: z.array(codingSchema).default([]),
     date: z.string().datetime().optional(),
     procedure_reference: z.string().uuid().optional(),
     procedure_code: codingSchema.optional(),

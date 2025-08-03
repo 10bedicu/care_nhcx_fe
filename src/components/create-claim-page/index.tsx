@@ -7,8 +7,12 @@ import { ClaimRelatedSection } from "./claim-related-section";
 import { FC } from "react";
 import { Form } from "@/components/ui/form";
 import { Separator } from "../ui/separator";
+import { apis } from "@/apis";
 import { createClaimFormSchema } from "./schema";
+import { toast } from "sonner";
+import { uploadFile } from "@/lib/upload-file";
 import { useForm } from "react-hook-form";
+import { useMutation } from "@tanstack/react-query";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -33,8 +37,67 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     },
   });
 
-  function onSubmit(values: z.infer<typeof createClaimFormSchema>) {
-    console.log(values);
+  // const { mutate: submitClaim } = useMutation({
+  //   mutationFn: apis.claim.submit,
+  //   onSuccess: () => {
+  //     toast.success("Claim submitted successfully");
+  //   },
+  // });
+
+  const { mutate: createClaim, isPending: createClaimIsPending } = useMutation({
+    mutationFn: apis.claim.create,
+    onSuccess: (data) => {
+      console.log(data);
+      // form.reset();
+      toast.success("Claim created successfully");
+      // submitClaim(data.id);
+    },
+  });
+
+  async function onSubmit(values: z.infer<typeof createClaimFormSchema>) {
+    try {
+      const updatedValues = { ...values };
+
+      if (updatedValues.supporting_info?.length) {
+        for (let i = 0; i < updatedValues.supporting_info.length; i++) {
+          const info = updatedValues.supporting_info[i];
+
+          if (info.value_file && !info.value_attachment) {
+            try {
+              const fileUploadRequest = {
+                file_type: "encounter" as const,
+                file_category: "unspecified" as const,
+                name: info.value_file.name,
+                associating_id: encounterId,
+                original_name: info.value_file.name,
+                mime_type: info.value_file.type,
+              };
+
+              const uploadResponse = await uploadFile(
+                info.value_file,
+                fileUploadRequest
+              );
+
+              updatedValues.supporting_info[i].value_attachment =
+                uploadResponse.id;
+
+              delete updatedValues.supporting_info[i].value_file;
+            } catch (error) {
+              console.error("Error uploading file:", error);
+              throw new Error(
+                `Failed to upload file: ${info.value_file?.name}`
+              );
+            }
+          }
+        }
+      }
+
+      console.log("Final values with uploaded files:", updatedValues);
+
+      createClaim(updatedValues);
+    } catch (error) {
+      console.error("Error in onSubmit:", error);
+    }
   }
 
   return (
@@ -59,7 +122,14 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
           <ClaimOtherSection form={form} />
           <Separator />
 
-          <Button type="submit">Submit</Button>
+          <Button
+            className="w-full"
+            size="lg"
+            type="submit"
+            loading={createClaimIsPending}
+          >
+            Create Claim
+          </Button>
         </form>
       </Form>
     </div>

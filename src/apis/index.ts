@@ -1,11 +1,4 @@
 import {
-  Claim,
-  ClaimPriority,
-  ClaimStatus,
-  ClaimType,
-  ClaimUse,
-} from "@/types/claim";
-import {
   CreateFileRequest,
   CreateFileResponse,
   FileUploadModel,
@@ -13,11 +6,14 @@ import {
 import { queryString, request } from "./request";
 
 import { AbhaNumber } from "@/types/abha_number";
+import { Claim } from "@/types/claim";
 import { Coding } from "@/types/base";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { PaginatedResponse } from "./types";
 import { Policy } from "@/types/policy";
 import { User } from "@/types/user";
+import { createClaimFormSchema } from "@/components/create-claim-page/schema";
+import { z } from "zod";
 
 export const apis = {
   coverageEligibilityRequest: {
@@ -65,45 +61,7 @@ export const apis = {
       return await request<Claim>(`/api/nhcx/claim/${id}/`);
     },
 
-    create: async (body: {
-      type: ClaimType;
-      status: ClaimStatus;
-      use: ClaimUse;
-      priority: ClaimPriority;
-      encounter: string;
-      insurance: [
-        {
-          sequence: 1;
-          focal: true;
-          coverage: string;
-        }
-      ];
-      item: {
-        sequence: number;
-        category: {
-          code: string;
-          system: string;
-          display?: string;
-        };
-        product_or_service: {
-          system: string;
-          code: string;
-          display?: string;
-        };
-        quantity: number;
-        unit_price: number;
-      }[];
-      supporting_info: {
-        sequence: number;
-        category?: {
-          code: string;
-          system: string;
-          display?: string;
-        };
-        value?: string;
-        attachment?: string;
-      }[];
-    }) => {
+    create: async (body: z.infer<typeof createClaimFormSchema>) => {
       return await request<Claim>("/api/nhcx/claim/", {
         method: "POST",
         body: JSON.stringify(body),

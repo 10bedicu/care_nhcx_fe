@@ -43,7 +43,7 @@ export function ClaimAccidentSection({ form }: ClaimAccidentSectionProps) {
           <AlertTriangleIcon className="w-5 h-5 text-primary" />
         </div>
         <div className="flex-1">
-          <h3 className="text-lg font-semibold">Accident Information</h3>
+          <h3 className="text-lg font-semibold">Add accident details</h3>
           <p className="text-sm text-muted-foreground">
             Add accident details if this claim is related to an accident.
           </p>
@@ -107,7 +107,7 @@ export function ClaimAccidentSection({ form }: ClaimAccidentSectionProps) {
                     <FormLabel>Type</FormLabel>
                     <FormControl>
                       <ValuesetSelect
-                        system="system-accident-type"
+                        system="system-claim-type"
                         value={field.value}
                         onSelect={(value) => {
                           form.setValue("accident.type", value);
