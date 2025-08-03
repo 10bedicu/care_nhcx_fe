@@ -1,3 +1,5 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+
 import { Button } from "@/components/ui/button";
 import { ClaimAccidentSection } from "./claim-accident-section";
 import { ClaimInsuranceSection } from "./claim-insurance-section";
@@ -12,7 +14,7 @@ import { createClaimFormSchema } from "./schema";
 import { toast } from "sonner";
 import { uploadFile } from "@/lib/upload-file";
 import { useForm } from "react-hook-form";
-import { useMutation } from "@tanstack/react-query";
+import { useNavigate } from "raviger";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -27,6 +29,9 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   patientId,
   encounterId,
 }) => {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+
   const form = useForm<z.infer<typeof createClaimFormSchema>>({
     resolver: zodResolver(createClaimFormSchema),
     defaultValues: {
@@ -37,20 +42,23 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     },
   });
 
-  // const { mutate: submitClaim } = useMutation({
-  //   mutationFn: apis.claim.submit,
-  //   onSuccess: () => {
-  //     toast.success("Claim submitted successfully");
-  //   },
-  // });
+  const { mutate: submitClaim } = useMutation({
+    mutationFn: apis.claim.submit,
+    onSuccess: () => {
+      toast.success("Claim submitted successfully");
+      navigate(
+        `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`
+      );
+    },
+  });
 
   const { mutate: createClaim, isPending: createClaimIsPending } = useMutation({
     mutationFn: apis.claim.create,
     onSuccess: (data) => {
-      console.log(data);
-      // form.reset();
+      form.reset();
       toast.success("Claim created successfully");
-      // submitClaim(data.id);
+      submitClaim(data.id);
+      queryClient.invalidateQueries({ queryKey: ["claims", encounterId] });
     },
   });
 

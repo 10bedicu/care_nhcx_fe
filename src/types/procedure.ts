@@ -1,0 +1,1 @@
+export type Procedure = unknown;

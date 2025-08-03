@@ -18,3 +18,8 @@ export type HcxError = {
   code: CodableConcept;
   expression?: string;
 };
+
+export type Quantity = {
+  value: number;
+  unit?: Coding;
+};

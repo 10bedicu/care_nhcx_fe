@@ -129,7 +129,7 @@ export const apis = {
     },
   },
 
-  users: {
+  user: {
     facilityUsers: async (
       facilityId: string,
       query?: {

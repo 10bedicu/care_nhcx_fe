@@ -857,7 +857,7 @@ function AddCareTeamSection({
   const facilityId = form.getValues("facility");
   const { data: usersResponse, isLoading: loading } = useQuery({
     queryKey: ["facility-users", facilityId],
-    queryFn: () => apis.users.facilityUsers(facilityId),
+    queryFn: () => apis.user.facilityUsers(facilityId),
     enabled: isExpanded && !!facilityId,
   });
 
