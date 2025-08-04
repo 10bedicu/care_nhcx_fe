@@ -8,11 +8,14 @@ import { queryString, request } from "./request";
 import { AbhaNumber } from "@/types/abha_number";
 import { Claim } from "@/types/claim";
 import { Coding } from "@/types/base";
+import { Communication } from "@/types/communication";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { PaginatedResponse } from "./types";
 import { Policy } from "@/types/policy";
+import { Task } from "@/types/task";
 import { User } from "@/types/user";
 import { createClaimFormSchema } from "@/components/create-claim-page/schema";
+import { createCommunicationFormSchema } from "@/components/claim-encounter-tab/create-communication-schema";
 import { z } from "zod";
 
 export const apis = {
@@ -72,6 +75,12 @@ export const apis = {
       return await request<Claim>(`/api/nhcx/claim/${id}/submit/`, {
         method: "POST",
       });
+    },
+
+    tasks: async (id: string) => {
+      return await request<PaginatedResponse<Task>>(
+        `/api/nhcx/claim/${id}/tasks/`
+      );
     },
   },
 
@@ -142,6 +151,24 @@ export const apis = {
         `/api/v1/facility/${facilityId}/users/` + queryString(query),
         {
           method: "GET",
+        }
+      );
+    },
+  },
+
+  communication: {
+    create: async (body: z.infer<typeof createCommunicationFormSchema>) => {
+      return await request<Communication>(`/api/nhcx/communication/`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    },
+
+    send: async (id: string) => {
+      return await request<Communication>(
+        `/api/nhcx/communication/${id}/send/`,
+        {
+          method: "POST",
         }
       );
     },

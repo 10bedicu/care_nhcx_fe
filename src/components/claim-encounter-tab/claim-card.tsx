@@ -25,6 +25,7 @@ import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Claim } from "@/types/claim";
+import ClaimNotificationSheet from "./claim-notification-sheet";
 
 interface ClaimCardProps {
   claim: Claim;
@@ -82,15 +83,18 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim }) => {
               <CardTitle className="capitalize">{claim.use}</CardTitle>
               <CardDescription>Claim ID: #{claim.id}</CardDescription>
             </div>
-            <Badge
-              className={cn("capitalize text-xs", {
-                "bg-green-200 text-green-600": claim.priority === "stat",
-                "bg-yellow-200 text-yellow-600": claim.priority === "normal",
-                "bg-red-200 text-red-600": claim.priority === "deferred",
-              })}
-            >
-              {claim.priority}
-            </Badge>
+            <div className="flex items-center gap-2">
+              <ClaimNotificationSheet claim={claim} />
+              <Badge
+                className={cn("capitalize text-xs", {
+                  "bg-green-200 text-green-600": claim.priority === "stat",
+                  "bg-yellow-200 text-yellow-600": claim.priority === "normal",
+                  "bg-red-200 text-red-600": claim.priority === "deferred",
+                })}
+              >
+                {claim.priority}
+              </Badge>
+            </div>
           </div>
           <div className="mt-6 flex justify-between items-center">
             <div className="flex items-center space-x-2">

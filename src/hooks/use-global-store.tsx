@@ -1,0 +1,73 @@
+import { ReactNode, createContext, useContext, useState } from "react";
+
+interface GlobalStore {
+  [key: string]: unknown;
+}
+
+interface GlobalStoreContextValue {
+  store: GlobalStore;
+  setStore: (key: string, value: unknown) => void;
+  getStore: <T>(key: string) => T;
+  removeStore: (key: string) => void;
+  clearStore: () => void;
+}
+
+const GlobalStoreContext = createContext<GlobalStoreContextValue | undefined>(
+  undefined
+);
+
+interface GlobalStoreProviderProps {
+  children: ReactNode;
+  initialStore?: GlobalStore;
+}
+
+export function GlobalStoreProvider({
+  children,
+  initialStore = {},
+}: GlobalStoreProviderProps) {
+  const [store, setStoreState] = useState<GlobalStore>(initialStore);
+
+  const setStore = (key: string, value: unknown) => {
+    setStoreState((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const getStore = <T,>(key: string): T => {
+    return store[key] as T;
+  };
+
+  const removeStore = (key: string) => {
+    setStoreState((prev) => {
+      const newStore = { ...prev };
+      delete newStore[key];
+      return newStore;
+    });
+  };
+
+  const clearStore = () => {
+    setStoreState({});
+  };
+
+  const value: GlobalStoreContextValue = {
+    store,
+    setStore,
+    getStore,
+    removeStore,
+    clearStore,
+  };
+
+  return (
+    <GlobalStoreContext.Provider value={value}>
+      {children}
+    </GlobalStoreContext.Provider>
+  );
+}
+
+export function useGlobalStore(): GlobalStoreContextValue {
+  const context = useContext(GlobalStoreContext);
+
+  if (context === undefined) {
+    throw new Error("useGlobalStore must be used within a GlobalStoreProvider");
+  }
+
+  return context;
+}

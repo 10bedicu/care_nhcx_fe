@@ -100,8 +100,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         }
       }
 
-      console.log("Final values with uploaded files:", updatedValues);
-
       createClaim(updatedValues);
     } catch (error) {
       console.error("Error in onSubmit:", error);
