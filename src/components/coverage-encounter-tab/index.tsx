@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import CoverageEligibilityCard from "./coverage-eligibility-card";
 import { Encounter } from "@/types/encounter";
 import { FC } from "react";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
@@ -22,7 +23,7 @@ const CoverageEncounterTab: FC<EncounterTabProps> = ({
     queryKey: ["coverage-eligibility-requests", encounter?.id],
     queryFn: () =>
       apis.coverageEligibilityRequest.list({
-        encounter: encounter?.id,
+        // encounter: encounter?.id,
       }),
     enabled: !!encounter?.id,
   });
@@ -52,9 +53,20 @@ const CoverageEncounterTab: FC<EncounterTabProps> = ({
         </div>
 
         <div className="space-y-4">
-          <div className="text-center py-8 text-gray-500">
-            No coverage checks were made for this encounter.
-          </div>
+          {coverageEligibilityRequests?.count === 0 && (
+            <div className="text-center py-8 text-gray-500">
+              No coverage checks were made for this encounter.
+            </div>
+          )}
+
+          {coverageEligibilityRequests?.results?.map(
+            (coverageEligibilityRequest) => (
+              <CoverageEligibilityCard
+                key={coverageEligibilityRequest.id}
+                coverageEligibilityRequest={coverageEligibilityRequest}
+              />
+            )
+          )}
         </div>
       </div>
     </GlobalStoreProvider>

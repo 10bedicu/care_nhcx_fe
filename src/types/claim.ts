@@ -9,6 +9,7 @@ import { Coding, Period, Quantity } from "./base";
 import { ChargeItem } from "./charge_item";
 import { Condition } from "./condition";
 import { FileUpload } from "./file_upload";
+import { Participant } from "./participant";
 import { Policy } from "./policy";
 import { Procedure } from "./procedure";
 import { User } from "./user";
@@ -115,6 +116,7 @@ export type ClaimResponse = {
   add_item?: ClaimResponseAddItem[];
   total?: ClaimResponseTotal[];
   error?: ClaimResponseError[];
+  request: string; // uuid
   created_date: string;
   modified_date?: string;
 };
@@ -125,9 +127,10 @@ export type Claim = {
   status: ClaimStatusChoice;
   priority: ClaimPriorityChoice;
   type: Coding;
-  facility: string;
-  patient: string;
-  encounter?: string;
+  provider: string; // uuid
+  patient: string; // uuid
+  encounter?: string; // uuid
+  insurer: Participant;
   billable_period?: Period;
   related: ClaimRelated[];
   care_team: ClaimCareTeam[];

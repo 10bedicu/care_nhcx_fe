@@ -51,7 +51,7 @@ const ClaimEncounterTab: FC<EncounterTabProps> = ({
         </div>
 
         <div className="space-y-4">
-          {claims?.results?.length === 0 && (
+          {claims?.count === 0 && (
             <div className="text-center py-8 text-gray-500">
               No claims found for this encounter.
             </div>
