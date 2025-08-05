@@ -1,3 +1,4 @@
+import { FC, useState } from "react";
 import {
   Sheet,
   SheetContent,
@@ -9,7 +10,6 @@ import {
 import { BellIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Claim } from "@/types/claim";
-import { FC } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import TaskCard from "./task-card";
 import { apis } from "@/apis";
@@ -20,20 +20,23 @@ interface ClaimNotificationSheetProps {
 }
 
 const ClaimNotificationSheet: FC<ClaimNotificationSheetProps> = ({ claim }) => {
+  const [isOpen, setIsOpen] = useState(false);
+
   const { data: tasks, isLoading } = useQuery({
     queryKey: ["tasks", claim.id],
     queryFn: () => apis.claim.tasks(claim.id),
+    enabled: isOpen, // Only fetch when sheet is open
   });
 
   return (
-    <Sheet>
+    <Sheet open={isOpen} onOpenChange={setIsOpen}>
       <SheetTrigger asChild>
         <Button variant="ghost" size="icon">
           <BellIcon className="h-5 w-5" />
           <span className="sr-only">View notifications</span>
         </Button>
       </SheetTrigger>
-      <SheetContent side="right" className="w-2xl">
+      <SheetContent side="right">
         <SheetHeader className="pb-6 border-b border-gray-100">
           <SheetTitle className="flex items-center gap-3 text-xl">
             <div className="p-2 bg-blue-50 rounded-lg">
@@ -44,7 +47,7 @@ const ClaimNotificationSheet: FC<ClaimNotificationSheetProps> = ({ claim }) => {
                 {claim.use} #{claim.id.slice(0, 8)}
               </div>
               <div className="text-sm font-normal text-gray-500 mt-1">
-                {tasks?.results.length} total notification(s)
+                {tasks?.count ?? 0} total notification(s)
               </div>
             </div>
           </SheetTitle>
@@ -62,7 +65,7 @@ const ClaimNotificationSheet: FC<ClaimNotificationSheetProps> = ({ claim }) => {
                   Please wait while we fetch your tasks
                 </p>
               </div>
-            ) : tasks?.results.length === 0 ? (
+            ) : !tasks?.results || tasks.results.length === 0 ? (
               <div className="text-center py-12">
                 <div className="p-3 bg-gray-50 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
                   <BellIcon className="h-8 w-8 text-gray-400" />
@@ -75,7 +78,7 @@ const ClaimNotificationSheet: FC<ClaimNotificationSheetProps> = ({ claim }) => {
                 </p>
               </div>
             ) : (
-              tasks?.results.map((task) => (
+              tasks.results.map((task) => (
                 <TaskCard key={task.identifier} task={task} />
               ))
             )}

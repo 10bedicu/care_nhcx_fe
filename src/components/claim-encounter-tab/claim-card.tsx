@@ -84,7 +84,6 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim }) => {
               <CardDescription>Claim ID: #{claim.id}</CardDescription>
             </div>
             <div className="flex items-center gap-2">
-              <ClaimNotificationSheet claim={claim} />
               <Badge
                 className={cn("capitalize text-xs", {
                   "bg-green-200 text-green-600": claim.priority === "stat",
@@ -319,16 +318,19 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim }) => {
               </div>
             )}
           </div>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="w-9 p-0">
-              {isOpen ? (
-                <ChevronUpIcon className="h-4 w-4" />
-              ) : (
-                <ChevronDownIcon className="h-4 w-4" />
-              )}
-              <span className="sr-only">Toggle details</span>
-            </Button>
-          </CollapsibleTrigger>
+          <div className="flex items-center gap-2">
+            <ClaimNotificationSheet claim={claim} />
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="w-9 p-0">
+                {isOpen ? (
+                  <ChevronUpIcon className="h-4 w-4" />
+                ) : (
+                  <ChevronDownIcon className="h-4 w-4" />
+                )}
+                <span className="sr-only">Toggle details</span>
+              </Button>
+            </CollapsibleTrigger>
+          </div>
         </CardFooter>
       </Collapsible>
     </Card>
