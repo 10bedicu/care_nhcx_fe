@@ -114,11 +114,24 @@ const CreateCoverageEligibilityRequestPage: FC<
 
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium">Check Coverage Eligibility</h3>
-        <p className="text-sm text-muted-foreground">
-          Check the coverage eligibility for the patient.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-medium">Check Coverage Eligibility</h3>
+          <p className="text-sm text-muted-foreground">
+            Check the coverage eligibility for the patient.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            navigate(
+              `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/coverages`
+            );
+          }}
+        >
+          Back to Encounter
+        </Button>
       </div>
       <Separator />
       <Form {...form}>

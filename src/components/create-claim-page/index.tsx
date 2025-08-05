@@ -108,11 +108,24 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-medium">Create Claim</h3>
-        <p className="text-sm text-muted-foreground">
-          Create a new claim for the patient.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-medium">Create Claim</h3>
+          <p className="text-sm text-muted-foreground">
+            Create a new claim for the patient.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            navigate(
+              `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`
+            );
+          }}
+        >
+          Back to Encounter
+        </Button>
       </div>
       <Separator />
       <Form {...form}>
