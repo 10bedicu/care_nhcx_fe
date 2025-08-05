@@ -1,6 +1,4 @@
 import { Button } from "@/components/ui/button";
-import { Claim } from "@/types/claim";
-import ClaimCard from "./claim-card";
 import { Encounter } from "@/types/encounter";
 import { FC } from "react";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
@@ -15,15 +13,15 @@ export type EncounterTabProps = {
   facilityId: string;
 };
 
-const ClaimEncounterTab: FC<EncounterTabProps> = ({
+const CoverageEncounterTab: FC<EncounterTabProps> = ({
   encounter,
   patient,
   facilityId,
 }) => {
-  const { data: claims } = useQuery({
-    queryKey: ["claims", encounter?.id],
+  const { data: coverageEligibilityRequests } = useQuery({
+    queryKey: ["coverage-eligibility-requests", encounter?.id],
     queryFn: () =>
-      apis.claim.list({
+      apis.coverageEligibilityRequest.list({
         encounter: encounter?.id,
       }),
     enabled: !!encounter?.id,
@@ -32,38 +30,35 @@ const ClaimEncounterTab: FC<EncounterTabProps> = ({
   return (
     <GlobalStoreProvider
       initialStore={{
-        encounter,
         patient,
+        encounter,
         facilityId,
       }}
     >
       <div className="min-h-screen bg-gray-50 p-6 space-y-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Claims</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              Coverage Checks
+            </h1>
             <p className="text-sm text-gray-500">
-              {claims?.count ?? 0} claim(s) found for this encounter.
+              {coverageEligibilityRequests?.count ?? 0} coverage check(s) were
+              made for this encounter.
             </p>
           </div>
-          <Link href="claims/new">
-            <Button>Create Claim</Button>
+          <Link href="coverages/new">
+            <Button>Check Coverage</Button>
           </Link>
         </div>
 
         <div className="space-y-4">
-          {claims?.results?.length === 0 && (
-            <div className="text-center py-8 text-gray-500">
-              No claims found for this encounter.
-            </div>
-          )}
-
-          {claims?.results?.map((claim: Claim) => (
-            <ClaimCard key={claim.id} claim={claim} />
-          ))}
+          <div className="text-center py-8 text-gray-500">
+            No coverage checks were made for this encounter.
+          </div>
         </div>
       </div>
     </GlobalStoreProvider>
   );
 };
 
-export default ClaimEncounterTab;
+export default CoverageEncounterTab;

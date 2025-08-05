@@ -77,6 +77,32 @@ export type Coverage = {
   updated_by: User;
 };
 
+export const COVERAGE_ELIGIBILITY_REQUEST_STATUS_CHOICES = [
+  "active",
+  "cancelled",
+  "draft",
+  "entered-in-error",
+] as const;
+export type CoverageEligibilityRequestStatusChoice =
+  (typeof COVERAGE_ELIGIBILITY_REQUEST_STATUS_CHOICES)[number];
+
+export const COVERAGE_ELIGIBILITY_REQUEST_PRIORITY_CHOICES = [
+  "stat",
+  "normal",
+  "deferred",
+] as const;
+export type CoverageEligibilityRequestPriorityChoice =
+  (typeof COVERAGE_ELIGIBILITY_REQUEST_PRIORITY_CHOICES)[number];
+
+export const COVERAGE_ELIGIBILITY_REQUEST_PURPOSE_CHOICES = [
+  "auth-requirements",
+  "benefits",
+  "discovery",
+  "validation",
+] as const;
+export type CoverageEligibilityRequestPurposeChoice =
+  (typeof COVERAGE_ELIGIBILITY_REQUEST_PURPOSE_CHOICES)[number];
+
 export const COVERAGE_ELIGIBILITY_REQUEST_PURPOSE = [
   "auth-requirements",
   "benefits",

@@ -16,12 +16,13 @@ import { Task } from "@/types/task";
 import { User } from "@/types/user";
 import { createClaimFormSchema } from "@/components/create-claim-page/schema";
 import { createCommunicationFormSchema } from "@/components/claim-encounter-tab/create-communication-schema";
+import { createCoverageEligibilityRequestFormSchema } from "@/components/create-coverage-eligibility-request-page/schema";
 import { z } from "zod";
 
 export const apis = {
   coverageEligibilityRequest: {
     list: async (query?: {
-      patient?: string;
+      encounter?: string;
       ordering?:
         | "created_date"
         | "-created_date"
@@ -36,6 +37,27 @@ export const apis = {
     get: async (id: string) => {
       return await request<CoverageEligibilityRequest>(
         `/api/nhcx/coverage-eligibility-request/${id}/`
+      );
+    },
+
+    create: async (
+      body: z.infer<typeof createCoverageEligibilityRequestFormSchema>
+    ) => {
+      return await request<CoverageEligibilityRequest>(
+        "/api/nhcx/coverage-eligibility-request/",
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        }
+      );
+    },
+
+    check: async (id: string) => {
+      return await request<CoverageEligibilityRequest>(
+        `/api/nhcx/coverage-eligibility-request/${id}/check/`,
+        {
+          method: "POST",
+        }
       );
     },
   },

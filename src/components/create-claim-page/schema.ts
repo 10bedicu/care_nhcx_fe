@@ -123,21 +123,35 @@ export const claimInsuranceSchema = z.object({
   policy: policySchema,
 });
 
-export const claimItemSchema = z.object({
-  sequence: z.number().int().positive(),
-  care_team_sequence: z.array(z.number().int().positive()).default([]),
-  diagnosis_sequence: z.array(z.number().int().positive()).default([]),
-  procedure_sequence: z.array(z.number().int().positive()).default([]),
-  information_sequence: z.array(z.number().int().positive()).default([]),
-  category: codingSchema.optional(),
-  product_or_service: codingSchema.optional(),
-  charge_item: z.string().uuid().optional(),
-  program_code: z.array(codingSchema).default([]),
-  serviced_period: periodSchema.optional(),
-  quantity: quantitySchema,
-  unit_price: z.number().gt(0),
-  factor: z.number().optional(),
-});
+export const claimItemSchema = z
+  .object({
+    sequence: z.number().int().positive(),
+    care_team_sequence: z.array(z.number().int().positive()).default([]),
+    diagnosis_sequence: z.array(z.number().int().positive()).default([]),
+    procedure_sequence: z.array(z.number().int().positive()).default([]),
+    information_sequence: z.array(z.number().int().positive()).default([]),
+    category: codingSchema.optional(),
+    product_or_service: codingSchema.optional(),
+    charge_item: z.string().uuid().optional(),
+    program_code: z.array(codingSchema).default([]),
+    serviced_period: periodSchema.optional(),
+    quantity: quantitySchema,
+    unit_price: z.number().gt(0),
+    factor: z.number().optional(),
+  })
+  .refine(
+    (data) => {
+      return (
+        (data.product_or_service && !data.charge_item) ||
+        (!data.product_or_service && data.charge_item)
+      );
+    },
+    {
+      message:
+        "Either product_or_service or charge_item must be provided, but not both",
+      path: ["product_or_service", "charge_item"],
+    }
+  );
 
 export const claimAccidentSchema = z.object({
   date: z.string().datetime(),
