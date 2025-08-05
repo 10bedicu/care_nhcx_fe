@@ -1,6 +1,9 @@
 import { CodeableConcept, TaskInput, TaskOutput } from "@medplum/fhirtypes";
 import { Communication, CommunicationRequest } from "./communication";
 
+import { PaymentReconciliation } from "./payment";
+import { User } from "./user";
+
 export type TaskBase = {
   identifier?: string;
   status: string;
@@ -15,7 +18,20 @@ export type TaskBase = {
   claim: string;
   part_of?: string;
   focus?: unknown;
-  use_case: "communication_request" | "communication_response";
+  use_case:
+    | "communication_request"
+    | "communication_response"
+    | "payment_notice_request"
+    | "payment_notice_response"
+    | "reprocess_request"
+    | "reprocess_response"
+    | "insurance_plan_request"
+    | "search_request"
+    | "search_response";
+  created_date: string;
+  modified_date?: string;
+  created_by: User;
+  updated_by?: User;
 };
 
 export type CommunicationRequestTask = TaskBase & {
@@ -28,4 +44,18 @@ export type CommunicationTask = TaskBase & {
   focus: Communication;
 };
 
-export type Task = CommunicationRequestTask | CommunicationTask;
+export type PaymentNoticeTask = TaskBase & {
+  use_case: "payment_notice_request";
+  focus: PaymentReconciliation;
+};
+
+export type ProcessAcknowledgementTask = TaskBase & {
+  use_case: "payment_notice_response";
+  focus: undefined;
+};
+
+export type Task =
+  | CommunicationRequestTask
+  | CommunicationTask
+  | PaymentNoticeTask
+  | ProcessAcknowledgementTask;

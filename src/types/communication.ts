@@ -45,6 +45,8 @@ export type Communication = {
   based_on: string;
   part_of: string;
   about: string;
+  created_date: string;
+  modified_date?: string;
   created_by: User;
   updated_by?: User;
 };
@@ -62,5 +64,5 @@ export type CommunicationRequest = {
   about: string;
 
   created_date: string;
-  modified_date: string;
+  modified_date?: string;
 };

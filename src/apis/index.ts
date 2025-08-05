@@ -11,6 +11,7 @@ import { Coding } from "@/types/base";
 import { Communication } from "@/types/communication";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { PaginatedResponse } from "./types";
+import { PaymentReconciliation } from "@/types/payment";
 import { Policy } from "@/types/policy";
 import { Task } from "@/types/task";
 import { User } from "@/types/user";
@@ -192,6 +193,15 @@ export const apis = {
         {
           method: "POST",
         }
+      );
+    },
+  },
+
+  payment: {
+    acknowledge: async (id: string) => {
+      return await request<PaymentReconciliation>(
+        `/api/nhcx/payment/${id}/acknowledge/`,
+        { method: "POST" }
       );
     },
   },

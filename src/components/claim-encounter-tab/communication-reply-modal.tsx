@@ -1,13 +1,6 @@
 import { Card, CardContent, CardFooter } from "../ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { FC, useState } from "react";
-import {
+  CornerUpRightIcon,
   FileText,
   MessageSquareReplyIcon,
   PaperclipIcon,
@@ -15,6 +8,14 @@ import {
   TextIcon,
   X,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { FC, useState } from "react";
 import { useFieldArray, useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -158,7 +159,7 @@ const CommunicationReplyModal: FC<CommunicationReplyModalProps> = ({
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
-          <MessageSquareReplyIcon className="w-5 h-5" />
+          <CornerUpRightIcon className="w-5 h-5" />
           Reply
         </Button>
       </DialogTrigger>
