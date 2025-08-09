@@ -10,10 +10,12 @@ import { Claim } from "@/types/claim";
 import { Coding } from "@/types/base";
 import { Communication } from "@/types/communication";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
+import { HealthFacility } from "@/types/health_facility";
 import { InsurancePlan } from "@/types/insurance_plan";
 import { PaginatedResponse } from "./types";
 import { PaymentReconciliation } from "@/types/payment";
 import { Policy } from "@/types/policy";
+import { Provider } from "@/types/provider";
 import { Task } from "@/types/task";
 import { User } from "@/types/user";
 import { createClaimFormSchema } from "@/components/create-claim-page/schema";
@@ -144,6 +146,14 @@ export const apis = {
     },
   },
 
+  healthFacility: {
+    get: async (facilityId: string) => {
+      return await request<HealthFacility>(
+        `/api/abdm/health_facility/${facilityId}/`
+      );
+    },
+  },
+
   valueset: {
     expand: async (
       system: string,
@@ -217,6 +227,26 @@ export const apis = {
     request: async (body: { facility: string; policy: Policy }) => {
       return await request<InsurancePlan>(`/api/nhcx/insurance-plan/request/`, {
         method: "POST",
+        body: JSON.stringify(body),
+      });
+    },
+  },
+
+  provider: {
+    get: async (facilityId: string) => {
+      return await request<Provider>(`/api/nhcx/provider/${facilityId}/`);
+    },
+
+    create: async (body: { facility: string }) => {
+      return await request<Provider>(`/api/nhcx/provider/`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    },
+
+    update: async (facilityId: string, body: { regenerate_keys: boolean }) => {
+      return await request<Provider>(`/api/nhcx/provider/${facilityId}/`, {
+        method: "PUT",
         body: JSON.stringify(body),
       });
     },

@@ -5,7 +5,11 @@ const manifest = {
   plugin: "care_hcx",
   routes,
   extends: [],
-  components: {},
+  components: {
+    FacilityHomeActions: lazy(
+      () => import("./components/pluggables/facility-home-actions")
+    ),
+  },
   navItems: [],
   encounterTabs: {
     claims: lazy(() => import("./components/claim-encounter-tab/index")),
