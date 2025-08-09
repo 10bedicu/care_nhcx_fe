@@ -8,6 +8,8 @@ import { ClaimOtherSection } from "./claim-other-section";
 import { ClaimRelatedSection } from "./claim-related-section";
 import { FC } from "react";
 import { Form } from "@/components/ui/form";
+import { GlobalStoreProvider } from "@/hooks/use-global-store";
+import { InsurancePlanDetailsPanel } from "../insurance-plan-details-panel";
 import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
 import { createClaimFormSchema } from "./schema";
@@ -107,51 +109,73 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-medium">Create Claim</h3>
-          <p className="text-sm text-muted-foreground">
-            Create a new claim for the patient.
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => {
-            navigate(
-              `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`
-            );
-          }}
-        >
-          Back to Encounter
-        </Button>
-      </div>
-      <Separator />
-      <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-          <ClaimRelatedSection form={form} />
-          <Separator />
-          <ClaimInsuranceSection form={form} />
-          <Separator />
-          <ClaimItemSection form={form} />
-          <Separator />
-          <ClaimAccidentSection form={form} />
-          <Separator />
-          <ClaimOtherSection form={form} />
-          <Separator />
-
+    <GlobalStoreProvider
+      initialStore={{
+        encounterId,
+        patientId,
+        facilityId,
+      }}
+    >
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-medium">Create Claim</h3>
+            <p className="text-sm text-muted-foreground">
+              Create a new claim for the patient.
+            </p>
+          </div>
           <Button
-            className="w-full"
-            size="lg"
-            type="submit"
-            loading={createClaimIsPending}
+            type="button"
+            variant="outline"
+            onClick={() => {
+              navigate(
+                `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`
+              );
+            }}
           >
-            Create Claim
+            Back to Encounter
           </Button>
-        </form>
-      </Form>
-    </div>
+        </div>
+        <Separator />
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <Form {...form}>
+              <form
+                onSubmit={form.handleSubmit(onSubmit)}
+                className="space-y-8"
+              >
+                <ClaimRelatedSection form={form} />
+                <Separator />
+                <ClaimInsuranceSection form={form} />
+                <Separator />
+                <ClaimItemSection form={form} />
+                <Separator />
+                <ClaimAccidentSection form={form} />
+                <Separator />
+                <ClaimOtherSection form={form} />
+                <Separator />
+
+                <Button
+                  className="w-full"
+                  size="lg"
+                  type="submit"
+                  loading={createClaimIsPending}
+                >
+                  Create Claim
+                </Button>
+              </form>
+            </Form>
+          </div>
+
+          <div className="lg:col-span-1">
+            <InsurancePlanDetailsPanel
+              selectedInsurances={form.watch("insurance") || []}
+            />
+          </div>
+        </div>
+      </div>
+    </GlobalStoreProvider>
   );
 };
 

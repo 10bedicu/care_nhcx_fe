@@ -10,6 +10,7 @@ import { Claim } from "@/types/claim";
 import { Coding } from "@/types/base";
 import { Communication } from "@/types/communication";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
+import { InsurancePlan } from "@/types/insurance_plan";
 import { PaginatedResponse } from "./types";
 import { PaymentReconciliation } from "@/types/payment";
 import { Policy } from "@/types/policy";
@@ -203,6 +204,21 @@ export const apis = {
         `/api/nhcx/payment/${id}/acknowledge/`,
         { method: "POST" }
       );
+    },
+  },
+
+  insurancePlan: {
+    get: async (productId: string) => {
+      return await request<InsurancePlan>(
+        `/api/nhcx/insurance-plan/${productId}/`
+      );
+    },
+
+    request: async (body: { facility: string; policy: Policy }) => {
+      return await request<InsurancePlan>(`/api/nhcx/insurance-plan/request/`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
     },
   },
 };
