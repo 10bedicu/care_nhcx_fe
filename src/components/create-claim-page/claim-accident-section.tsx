@@ -107,7 +107,7 @@ export function ClaimAccidentSection({ form }: ClaimAccidentSectionProps) {
                     <FormLabel>Type</FormLabel>
                     <FormControl>
                       <ValuesetSelect
-                        system="system-claim-type"
+                        system="system-claim-accident-type"
                         value={field.value}
                         onSelect={(value) => {
                           form.setValue("accident.type", value);

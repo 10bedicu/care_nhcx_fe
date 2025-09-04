@@ -112,7 +112,7 @@ export function ClaimRelatedSection({ form }: ClaimRelatedSectionProps) {
                     <FormLabel>Relationship</FormLabel>
                     <FormControl>
                       <ValuesetSelect
-                        system="system-claim-type"
+                        system="system-claim-related-relationship"
                         value={field.value}
                         onSelect={(value) => {
                           form.setValue(`related.${index}.relationship`, value);

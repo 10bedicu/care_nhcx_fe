@@ -75,7 +75,7 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
                       </FormLabel>
                       <FormControl>
                         <ValuesetSelect
-                          system="system-claim-type"
+                          system="system-claim-product-or-service"
                           value={field.value}
                           onSelect={(value) => {
                             form.setValue(
@@ -112,7 +112,7 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
                     <FormLabel>Category</FormLabel>
                     <FormControl>
                       <ValuesetSelect
-                        system="system-claim-type"
+                        system="system-claim-item-category"
                         value={field.value}
                         onSelect={(value) => {
                           form.setValue(`item.${index}.category`, value);
@@ -134,7 +134,7 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
                     <FormControl>
                       <div className="grid gap-4">
                         <ValuesetSelect
-                          system="system-claim-type"
+                          system="system-claim-program-code"
                           value={undefined}
                           onSelect={(value) => {
                             form.setValue(
@@ -465,7 +465,7 @@ function AddDiagnosisSection({
                           </FormLabel>
                           <FormControl>
                             <ValuesetSelect
-                              system="system-condition-code"
+                              system="system-claim-diagnosis-code"
                               value={field.value}
                               onSelect={(value) => {
                                 form.setValue(
@@ -550,7 +550,7 @@ function AddDiagnosisSection({
                         <FormControl>
                           <div className="grid gap-4">
                             <ValuesetSelect
-                              system="system-claim-type"
+                              system="system-claim-diagnosis-type"
                               value={undefined}
                               onSelect={(value) => {
                                 form.setValue(
@@ -695,7 +695,7 @@ function AddProcedureSection({
                           </FormLabel>
                           <FormControl>
                             <ValuesetSelect
-                              system="system-claim-type"
+                              system="system-claim-procedure-code"
                               value={field.value}
                               onSelect={(value) => {
                                 form.setValue(
@@ -774,7 +774,7 @@ function AddProcedureSection({
                         <FormControl>
                           <div className="grid gap-4">
                             <ValuesetSelect
-                              system="system-claim-type"
+                              system="system-claim-procedure-type"
                               value={undefined}
                               onSelect={(value) => {
                                 form.setValue(
@@ -1148,7 +1148,7 @@ function AddSupportingInfoSection({
                           </FormLabel>
                           <FormControl>
                             <ValuesetSelect
-                              system="system-claim-type"
+                              system="system-claim-supporting-info-code"
                               value={field.value}
                               onSelect={(value) => {
                                 form.setValue(
@@ -1261,7 +1261,7 @@ function AddSupportingInfoSection({
                           </FormLabel>
                           <FormControl>
                             <ValuesetSelect
-                              system="system-claim-type"
+                              system="system-claim-supporting-info-category"
                               value={field.value}
                               onSelect={(value) => {
                                 form.setValue(

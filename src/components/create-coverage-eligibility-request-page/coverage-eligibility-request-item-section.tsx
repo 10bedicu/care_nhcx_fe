@@ -74,7 +74,7 @@ export function CoverageEligibilityRequestItemSection({
                       </FormLabel>
                       <FormControl>
                         <ValuesetSelect
-                          system="system-claim-type"
+                          system="system-coverage-eligibility-request-product-or-service"
                           value={field.value}
                           onSelect={(value) => {
                             form.setValue(
@@ -113,7 +113,7 @@ export function CoverageEligibilityRequestItemSection({
                     </FormLabel>
                     <FormControl>
                       <ValuesetSelect
-                        system="system-claim-type"
+                        system="system-coverage-eligibility-request-item-category"
                         value={field.value}
                         onSelect={(value) => {
                           form.setValue(`item.${index}.category`, value);
@@ -301,7 +301,7 @@ function AddDiagnosisSection({
 
       {isExpanded && (
         <div className="space-y-4 pl-4">
-          {diagnosisFields.map((diagnosis, diagnosisIndex) => (
+          {diagnosisFields.map((_diagnosis, diagnosisIndex) => (
             <Card key={diagnosisIndex}>
               <CardHeader>
                 <div className="flex justify-between items-center gap-2">
@@ -316,7 +316,7 @@ function AddDiagnosisSection({
                         </FormLabel>
                         <FormControl>
                           <ValuesetSelect
-                            system="system-condition-code"
+                            system="system-coverage-eligibility-request-item-diagnosis-code"
                             value={field.value}
                             onSelect={(value) => {
                               form.setValue(
