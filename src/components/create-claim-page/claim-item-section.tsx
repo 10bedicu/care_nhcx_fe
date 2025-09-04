@@ -266,7 +266,7 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
                       <FormLabel>Quantity Unit</FormLabel>
                       <FormControl>
                         <ValuesetSelect
-                          system="system-claim-type"
+                          system="system-ucum-units"
                           value={field.value}
                           onSelect={(value) => {
                             form.setValue(`item.${index}.quantity.unit`, value);
