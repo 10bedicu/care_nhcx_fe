@@ -488,16 +488,15 @@ function AddDiagnosisSection({
                           <FormControl>
                             <Autocomplete
                               options={[
-                                { label: "Yes", value: "y" },
-                                { label: "No", value: "n" },
-                                { label: "Unknown", value: "u" },
-                                { label: "Not applicable", value: "w" },
+                                { label: "Yes", value: "yes" },
+                                { label: "No", value: "no" },
+                                { label: "Unknown", value: "unknown" },
                               ]}
                               value={field.value}
                               onChange={(value) => {
                                 form.setValue(
                                   `diagnosis.${mainDiagnosisIndex}.on_admission`,
-                                  value as "y" | "n" | "u" | "w" | undefined
+                                  value as "yes" | "no" | "unknown" | undefined
                                 );
                               }}
                             />

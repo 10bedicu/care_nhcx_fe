@@ -33,10 +33,9 @@ export const CLAIM_PRIORITY_CHOICES = ["stat", "normal", "deferred"] as const;
 export type ClaimPriorityChoice = (typeof CLAIM_PRIORITY_CHOICES)[number];
 
 export const CLAIM_DIAGNOSIS_ON_ADMISSION_CHOICES = [
-  "y",
-  "n",
-  "u",
-  "w",
+  "yes",
+  "no",
+  "unknown",
 ] as const;
 export type ClaimDiagnosisOnAdmissionChoice =
   (typeof CLAIM_DIAGNOSIS_ON_ADMISSION_CHOICES)[number];
