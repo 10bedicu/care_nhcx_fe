@@ -81,7 +81,13 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim }) => {
           <div className="flex justify-between items-start">
             <div>
               <CardTitle className="capitalize">{claim.use}</CardTitle>
-              <CardDescription>Claim ID: #{claim.id}</CardDescription>
+              <CardDescription>
+                <p>Claim ID: #{claim.id}</p>
+                <p>
+                  Claim Process ID: #
+                  {claim.related?.[0]?.claim as unknown as string}
+                </p>
+              </CardDescription>
             </div>
             <div className="flex items-center gap-2">
               <Badge
@@ -320,6 +326,9 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim }) => {
           </div>
           <div className="flex items-center gap-2">
             <ClaimNotificationSheet claim={claim} />
+            <Button asChild variant="secondary" size="sm">
+              <a href={`claims/new?related=${claim.id}`}>Follow up</a>
+            </Button>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" size="sm" className="w-9 p-0">
                 {isOpen ? (

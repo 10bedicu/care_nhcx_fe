@@ -16,7 +16,7 @@ import { createClaimFormSchema } from "./schema";
 import { toast } from "sonner";
 import { uploadFile } from "@/lib/upload-file";
 import { useForm, useWatch } from "react-hook-form";
-import { useNavigate } from "raviger";
+import { useNavigate, useQueryParams } from "raviger";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -33,6 +33,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [queryParams] = useQueryParams();
 
   const form = useForm<z.infer<typeof createClaimFormSchema>>({
     resolver: zodResolver(createClaimFormSchema),
@@ -44,6 +45,21 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       priority: "normal",
     },
   });
+
+  useEffect(() => {
+    const related = queryParams?.related as string | undefined;
+
+    if (related) {
+      const existingRelated = form.getValues("related") || [];
+      if (!existingRelated.find((r) => r.claim === related)) {
+        form.setValue("related", [
+          { claim: related, relationship: undefined, reference: "" },
+          ...existingRelated,
+        ]);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const previousClaimId = useWatch({
     control: form.control,
