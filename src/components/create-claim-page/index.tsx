@@ -41,6 +41,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       patient: patientId,
       encounter: encounterId,
       status: "draft",
+      priority: "normal",
     },
   });
 

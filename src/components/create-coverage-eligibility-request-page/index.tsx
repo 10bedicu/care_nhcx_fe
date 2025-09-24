@@ -39,6 +39,7 @@ const CreateCoverageEligibilityRequestPage: FC<
       patient: patientId,
       encounter: encounterId,
       status: "draft",
+      priority: "normal",
     },
   });
 
