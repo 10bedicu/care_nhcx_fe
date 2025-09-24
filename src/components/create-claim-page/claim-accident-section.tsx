@@ -15,10 +15,34 @@ import { UseFormReturn } from "react-hook-form";
 import ValuesetSelect from "../common/valueset-select";
 import { createClaimFormSchema } from "./schema";
 import { z } from "zod";
+import Autocomplete from "../ui/autocomplete";
 
 interface ClaimAccidentSectionProps {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
 }
+
+const ACCIDENT_TYPES = [
+  {
+    code: "MVA",
+    system: "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+    display: "Motor vehicle accident",
+  },
+  {
+    code: "SCHOOL",
+    system: "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+    display: "School Accident",
+  },
+  {
+    code: "SPT",
+    system: "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+    display: "Sporting Accident",
+  },
+  {
+    code: "WPA",
+    system: "http://terminology.hl7.org/CodeSystem/v3-ActCode",
+    display: "Workplace accident",
+  },
+];
 
 export function ClaimAccidentSection({ form }: ClaimAccidentSectionProps) {
   const accidentData = form.watch("accident");
@@ -106,13 +130,29 @@ export function ClaimAccidentSection({ form }: ClaimAccidentSectionProps) {
                   <FormItem className="space-y-1.5">
                     <FormLabel>Type</FormLabel>
                     <FormControl>
-                      <ValuesetSelect
+                      <Autocomplete
+                        options={ACCIDENT_TYPES.map((code) => ({
+                          label: code.display,
+                          value: code.code,
+                        }))}
+                        value={field.value?.code}
+                        onChange={(value) => {
+                          const code = ACCIDENT_TYPES.find(
+                            (code) => code.code === value
+                          );
+                          if (!code) {
+                            return;
+                          }
+                          form.setValue(`accident.type`, code);
+                        }}
+                      />
+                      {/* <ValuesetSelect
                         system="system-claim-accident-type"
                         value={field.value}
                         onSelect={(value) => {
                           form.setValue("accident.type", value);
                         }}
-                      />
+                      /> */}
                     </FormControl>
                     <FormMessage />
                   </FormItem>

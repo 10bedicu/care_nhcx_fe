@@ -38,6 +38,588 @@ interface ClaimItemSectionProps {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
 }
 
+const PROGRAM_CODES = [
+  {
+    code: "ESIC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "ESIC",
+  },
+  {
+    code: "PIP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Add private insurance program(PIP)",
+  },
+  {
+    code: "CAPF",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "CAPF",
+  },
+  {
+    code: "HMDG",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "RAN/HMDG",
+  },
+  {
+    code: "STATE",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "STATE SCHEMES",
+  },
+  {
+    code: "MAA",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display:
+      "MAA (Mothers’ Absolute Affection) Programme for Infant and Young Child Feeding",
+  },
+  {
+    code: "NIPIAC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Iron Plus Initiative for Anaemia Control",
+  },
+  {
+    code: "NVAPP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Vitamin A prophylaxis Programe",
+  },
+  {
+    code: "ICDS",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Integrated Child Development Services",
+  },
+  {
+    code: "MDMP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Mid-Day Meal Programme",
+  },
+  {
+    code: "NTEP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Tuberculosis Elimination Programme",
+  },
+  {
+    code: "PPP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Pulse Polio Programme",
+  },
+  {
+    code: "NPCTOD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display:
+      "National Programme for Control Treatment of Occupational Diseases",
+  },
+  {
+    code: "PMNDP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Pradhan Mantri National Dialysis Programme",
+  },
+  {
+    code: "LaQshya",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "LaQshya’ programme (Labour Room Quality Improvement Initiative)",
+  },
+  {
+    code: "NHM",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Health Mission",
+  },
+  {
+    code: "PM-ABHIM",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "PM Ayushman Bharat Health Infrastructure Mission",
+  },
+  {
+    code: "PHI",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Private Health Insurance",
+  },
+  {
+    code: "AB-PMJAY",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Ayushman Bharat Pradhan Mantri Jan Arogya Yojana (AB-PMJAY)",
+  },
+  {
+    code: "CGHS",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Central Government Health Scheme (CGHS)",
+  },
+  {
+    code: "ECHS",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Ex-Servicemen Contributory Health Scheme(ECHS)",
+  },
+  {
+    code: "JSSK",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Janani Shishu Suraksha Karyakaram",
+  },
+  {
+    code: "RKSK",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Rashtriya Kishor Swasthya Karyakram",
+  },
+  {
+    code: "RBSK",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Rashtriya Bal SwasthyaKaryakram",
+  },
+  {
+    code: "JSY",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Janani Suraksha Yojana",
+  },
+  {
+    code: "PMSMA",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Pradhan Mantri Surakshit Matritva Abhiyan",
+  },
+  {
+    code: "NSSK",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "NavjaatShishu Suraksha Karyakram",
+  },
+  {
+    code: "NPPCF",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Programme for Prevention and Control of Fluorosis",
+  },
+  {
+    code: "IDSP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Integrated Disease Surveillance Programme",
+  },
+  {
+    code: "NLEP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Leprosy Eradication Programme",
+  },
+  {
+    code: "NCVBDCP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Centre for Vector Borne Diseases Control Progarmme",
+  },
+  {
+    code: "PPCL",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Programme for Prevention and Control of leptospirosis",
+  },
+  {
+    code: "NACP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National AIDS Control Programme",
+  },
+  {
+    code: "NVHCP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Viral Hepatitis Control Program",
+  },
+  {
+    code: "NRCP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Rabies Control Programme",
+  },
+  {
+    code: "AMR",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Programme on Containment of Anti-Microbial Resistance",
+  },
+  {
+    code: "NTCP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Tobacco Control Programme",
+  },
+  {
+    code: "NPCDCS",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display:
+      "National Programme for Prevention and Control of Cancer, Diabetes, Cardiovascular Diseases & Stroke",
+  },
+  {
+    code: "NPPCD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Programme for Prevention and Control of Deafness",
+  },
+  {
+    code: "NMHP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Mental Health Programme",
+  },
+  {
+    code: "NPCBVI",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Programme for Control of Blindness& Visual Impairment",
+  },
+  {
+    code: "NPHCE",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Programme for the Health Care for the Elderly",
+  },
+  {
+    code: "NPPMBI",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Programme for Prevention & Management of Burn Injuries",
+  },
+  {
+    code: "NOHP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Oral Health programme",
+  },
+  {
+    code: "NPCCHH",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Programme on Climate Change & Human Health",
+  },
+  {
+    code: "ABY",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Ayushman Bharat Yojana",
+  },
+  {
+    code: "PMSSY",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Pradhan Mantri Swasthya Suraksha Yojana",
+  },
+  {
+    code: "ABDM",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Ayushman Bharat Digital Mission",
+  },
+  {
+    code: "NPPC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "National Programme for Palliative Care",
+  },
+  {
+    code: "OTH",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-program-code",
+    display: "Other",
+  },
+];
+
+const SUPPORTING_INFO_CODES = [
+  {
+    code: "AT",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Attachment",
+  },
+  {
+    code: "VRCF",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Vehicle Registration Certificate / Smart card",
+  },
+  {
+    code: "WB",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Water Bill with address",
+  },
+  {
+    code: "EB",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Electricity Bill of Govt./private company (not older than 3 months)",
+  },
+  {
+    code: "TB",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Telephone Bill of a fixed line. (Any Service Provider)",
+  },
+  {
+    code: "RA",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Registered Sale/Lease (Rent) Agreement",
+  },
+  {
+    code: "IAO",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "IT Assessment Order",
+  },
+  {
+    code: "SRIC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Surrender ID Card (BLT etc.) issued by Govt. of India signed by IGP of the state",
+  },
+  {
+    code: "PDS",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "PDS Card",
+  },
+  {
+    code: "MNREGA",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "MNREGA Job Card",
+  },
+  {
+    code: "ACC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Army Canteen Card",
+  },
+  {
+    code: "FED",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Any other Central/ State government issued family entitlement document",
+  },
+  {
+    code: "MCF",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Marriage Certificate issued by the government",
+  },
+  {
+    code: "DCF",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-identifier-type-code",
+    display: "Domicile Certificate",
+  },
+  {
+    code: "PPN",
+    system: "http://terminology.hl7.org/CodeSystem/v2-0203",
+    display: "Passport number",
+  },
+  {
+    code: "DL",
+    system: "http://terminology.hl7.org/CodeSystem/v2-0203",
+    display: "Driver's license number",
+  },
+];
+
+const SUPPORTING_INFO_CATEGORIES = [
+  {
+    code: "POI",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Proof of identity",
+  },
+  {
+    code: "POA",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Proof of address",
+  },
+  {
+    code: "DOB",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Proof of Date of Birth",
+  },
+  {
+    code: "POR",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Proof of relation",
+  },
+  {
+    code: "PHT",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Photograph",
+  },
+  {
+    code: "BVC",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Benefiaciary verification card",
+  },
+  {
+    code: "DEF",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Declaration form",
+  },
+  {
+    code: "SIG",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Signature",
+  },
+  {
+    code: "FCF",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Filled claim form",
+  },
+  {
+    code: "CER",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Medical Certficate",
+  },
+  {
+    code: "MB",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Medical bill",
+  },
+  {
+    code: "DIA",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Diagnostic report",
+  },
+  {
+    code: "HDS",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Hospital discharge summary",
+  },
+  {
+    code: "REF",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Referal latter",
+  },
+  {
+    code: "DEL",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Doctor signed extention letter",
+  },
+  {
+    code: "CD",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Clinical document",
+  },
+  {
+    code: "EID",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Employee id card",
+  },
+  {
+    code: "FIR",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "FIR copy",
+  },
+  {
+    code: "CIL",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Claim status intimation letter",
+  },
+  {
+    code: "INF",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display:
+      "Additional info related to claim ( conveying additional situation and condition information.)",
+  },
+  {
+    code: "DIS",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Discharge status and discharge to location detail",
+  },
+  {
+    code: "ONS",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display:
+      "Period, start or end dates of aspects of the Condition. (e.g. admission, discharge etc)",
+  },
+  {
+    code: "REL",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Related service",
+  },
+  {
+    code: "EXC",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Exception",
+  },
+  {
+    code: "MAT",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Materials Forwarded",
+  },
+  {
+    code: "ATT",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Attachment",
+  },
+  {
+    code: "OTH",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Other",
+  },
+  {
+    code: "COI",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Injury or accident detail",
+  },
+  {
+    code: "VRE",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Patient Reason for Visit",
+  },
+  {
+    code: "CRD",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Claim received",
+  },
+  {
+    code: "NMI",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Claim query detail",
+  },
+  {
+    code: "TRD",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Treatment detail",
+  },
+  {
+    code: "IND",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Indicator flag",
+  },
+  {
+    code: "IMP",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Document Type - Implant",
+  },
+  {
+    code: "INV",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Document Type - Investigation",
+  },
+  {
+    code: "DRUG",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Document Type - Drug",
+  },
+  {
+    code: "PCT",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Document Type - Patient Consent",
+  },
+  {
+    code: "DCT",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Document Type - Doctor Consent",
+  },
+  {
+    code: "HCT",
+    system:
+      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+    display: "Document Type - Hospital Consent",
+  },
+];
+
 export function ClaimItemSection({ form }: ClaimItemSectionProps) {
   const { fields, append, remove } = useFieldArray({
     name: "item",
@@ -133,7 +715,29 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
                     <FormLabel>Program Code</FormLabel>
                     <FormControl>
                       <div className="grid gap-4">
-                        <ValuesetSelect
+                        <Autocomplete
+                          options={PROGRAM_CODES.map((code) => ({
+                            label: code.display,
+                            value: code.code,
+                          }))}
+                          value={undefined}
+                          onChange={(value) => {
+                            const code = PROGRAM_CODES.find(
+                              (code) => code.code === value
+                            );
+                            if (!code) {
+                              return;
+                            }
+                            form.setValue(
+                              `item.${index}.program_code`,
+                              field.value.map((c) => c.code).includes(code.code)
+                                ? field.value
+                                : [...field.value, code]
+                            );
+                          }}
+                        />
+
+                        {/* <ValuesetSelect
                           system="system-claim-program-code"
                           value={undefined}
                           onSelect={(value) => {
@@ -146,7 +750,7 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
                                 : [...field.value, value]
                             );
                           }}
-                        />
+                        /> */}
 
                         <div className="flex flex-wrap gap-2">
                           {field.value.map((code) => (
@@ -1146,7 +1750,26 @@ function AddSupportingInfoSection({
                             </span>
                           </FormLabel>
                           <FormControl>
-                            <ValuesetSelect
+                            <Autocomplete
+                              options={SUPPORTING_INFO_CODES.map((code) => ({
+                                label: code.display,
+                                value: code.code,
+                              }))}
+                              value={field.value?.code}
+                              onChange={(value) => {
+                                const code = SUPPORTING_INFO_CODES.find(
+                                  (code) => code.code === value
+                                );
+                                if (!code) {
+                                  return;
+                                }
+                                form.setValue(
+                                  `supporting_info.${mainInfoIndex}.code`,
+                                  code
+                                );
+                              }}
+                            />
+                            {/* <ValuesetSelect
                               system="system-claim-supporting-info-code"
                               value={field.value}
                               onSelect={(value) => {
@@ -1155,7 +1778,7 @@ function AddSupportingInfoSection({
                                   value
                                 );
                               }}
-                            />
+                            /> */}
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -1259,7 +1882,28 @@ function AddSupportingInfoSection({
                             </span>
                           </FormLabel>
                           <FormControl>
-                            <ValuesetSelect
+                            <Autocomplete
+                              options={SUPPORTING_INFO_CATEGORIES.map(
+                                (code) => ({
+                                  label: code.display,
+                                  value: code.code,
+                                })
+                              )}
+                              value={field.value?.code}
+                              onChange={(value) => {
+                                const code = SUPPORTING_INFO_CATEGORIES.find(
+                                  (code) => code.code === value
+                                );
+                                if (!code) {
+                                  return;
+                                }
+                                form.setValue(
+                                  `supporting_info.${mainInfoIndex}.category`,
+                                  code
+                                );
+                              }}
+                            />
+                            {/* <ValuesetSelect
                               system="system-claim-supporting-info-category"
                               value={field.value}
                               onSelect={(value) => {
@@ -1268,7 +1912,7 @@ function AddSupportingInfoSection({
                                   value
                                 );
                               }}
-                            />
+                            /> */}
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -1336,6 +1980,15 @@ function SupportingInfoFileUpload({
   mainInfoIndex: number;
 }) {
   const currentFile = form.watch(`supporting_info.${mainInfoIndex}.value_file`);
+  const attachmentId = form.watch(
+    `supporting_info.${mainInfoIndex}.value_attachment`
+  );
+
+  const { data: existingFile } = useQuery({
+    queryKey: ["file", attachmentId],
+    queryFn: () => apis.file.get(attachmentId as string),
+    enabled: !!attachmentId && !currentFile,
+  });
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -1393,7 +2046,43 @@ function SupportingInfoFileUpload({
                 </div>
               )}
 
-              {!currentFile && (
+              {!currentFile && existingFile?.read_signed_url && (
+                <div className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50/50">
+                  <div className="flex-shrink-0">
+                    {/* Best-effort preview for images; otherwise show generic icon */}
+                    {existingFile.extension &&
+                    ["jpg", "jpeg", "png", "gif", "webp"].includes(
+                      existingFile.extension.toLowerCase()
+                    ) ? (
+                      <img
+                        src={existingFile.read_signed_url}
+                        alt={existingFile.name || "attachment"}
+                        className="h-12 w-12 rounded-md object-cover border"
+                      />
+                    ) : (
+                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-gray-200 border">
+                        <FileIcon className="h-6 w-6 text-gray-600" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <a
+                      href={existingFile.read_signed_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm font-medium text-primary truncate hover:underline"
+                    >
+                      {existingFile.name ||
+                        `file.${existingFile.extension || "bin"}`}
+                    </a>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Remote attachment
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {!currentFile && !existingFile?.read_signed_url && (
                 <div className="relative">
                   <Button
                     type="button"

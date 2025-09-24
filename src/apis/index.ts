@@ -126,6 +126,10 @@ export const apis = {
         }
       );
     },
+
+    get: async (id: string) => {
+      return await request<FileUploadModel>(`/api/v1/files/${id}/`);
+    },
   },
 
   gateway: {

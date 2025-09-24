@@ -56,7 +56,7 @@ export function ClaimRelatedSection({ form }: ClaimRelatedSectionProps) {
           <Card>
             <CardHeader>
               <FormField
-                key={field.id}
+                key={`${field.id}-claim`}
                 control={form.control}
                 name={`related.${index}.claim`}
                 render={({ field }) => (
@@ -104,7 +104,7 @@ export function ClaimRelatedSection({ form }: ClaimRelatedSectionProps) {
             </CardHeader>
             <CardContent className="grid sm:grid-cols-2 gap-4">
               <FormField
-                key={field.id}
+                key={`${field.id}-relationship`}
                 control={form.control}
                 name={`related.${index}.relationship`}
                 render={({ field }) => (
@@ -124,7 +124,7 @@ export function ClaimRelatedSection({ form }: ClaimRelatedSectionProps) {
                 )}
               />
               <FormField
-                key={field.id}
+                key={`${field.id}-reference`}
                 control={form.control}
                 name={`related.${index}.reference`}
                 render={({ field }) => (
