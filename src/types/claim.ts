@@ -122,6 +122,7 @@ export type ClaimResponse = {
 
 export type Claim = {
   id: string;
+  claim_flow_id: string;
   use: ClaimUseChoice;
   status: ClaimStatusChoice;
   priority: ClaimPriorityChoice;

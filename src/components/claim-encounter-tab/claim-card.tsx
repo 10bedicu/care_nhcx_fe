@@ -83,10 +83,7 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim }) => {
               <CardTitle className="capitalize">{claim.use}</CardTitle>
               <CardDescription>
                 <p>Claim ID: #{claim.id}</p>
-                <p>
-                  Claim Process ID: #
-                  {claim.related?.[0]?.claim as unknown as string}
-                </p>
+                <p>Flow ID: #{claim.claim_flow_id}</p>
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">

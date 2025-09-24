@@ -161,7 +161,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
           })) || [],
 
         // accident
-        accident: previousClaim.accident,
+        accident: previousClaim.accident ?? undefined,
 
         // payment is not part of creation typically; omit/undefined
         payment: undefined,
