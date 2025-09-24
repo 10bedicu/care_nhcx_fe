@@ -22,12 +22,15 @@ import { UseFormReturn } from "react-hook-form";
 import ValuesetSelect from "../common/valueset-select";
 import { createClaimFormSchema } from "./schema";
 import { z } from "zod";
+import { cn } from "@/lib/utils";
 
 interface ClaimOtherSectionProps {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
 }
 
 export function ClaimOtherSection({ form }: ClaimOtherSectionProps) {
+  const hasRelated = (form.watch("related") || []).length > 0;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3 mb-6">
@@ -75,7 +78,20 @@ export function ClaimOtherSection({ form }: ClaimOtherSectionProps) {
                       </SelectTrigger>
                       <SelectContent>
                         {CLAIM_USE_CHOICES.map((choice) => (
-                          <SelectItem key={choice} value={choice}>
+                          <SelectItem
+                            key={choice}
+                            value={choice}
+                            disabled={choice === "claim" && !hasRelated}
+                            title={
+                              choice === "claim" && !hasRelated
+                                ? "Add at least one related claim to select 'claim'"
+                                : undefined
+                            }
+                            className={cn({
+                              "opacity-50 cursor-not-allowed pointer-events-auto":
+                                choice === "claim" && !hasRelated,
+                            })}
+                          >
                             {choice.charAt(0).toUpperCase() + choice.slice(1)}
                           </SelectItem>
                         ))}
