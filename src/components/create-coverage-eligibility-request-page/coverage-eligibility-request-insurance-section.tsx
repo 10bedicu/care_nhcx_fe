@@ -37,13 +37,16 @@ export function CoverageEligibilityRequestInsuranceSection({
   });
 
   const { data: policies } = useQuery({
-    queryKey: ["policies", abhaNumber?.abha_number],
+    queryKey: ["policies", abhaNumber?.abha_number, abhaNumber?.mobile],
     queryFn: () =>
       apis.gateway.policies({
-        identifiertype: "AbhaNumber",
-        identifiervalue: abhaNumber?.abha_number?.replace(/-/g, "") ?? "",
+        identifiertype: abhaNumber?.mobile ? "MobileNo" : "AbhaNumber",
+        identifiervalue:
+          abhaNumber?.mobile ??
+          abhaNumber?.abha_number?.replace(/-/g, "") ??
+          "",
       }),
-    enabled: !!abhaNumber?.abha_number,
+    enabled: !!abhaNumber?.abha_number || !!abhaNumber?.mobile,
   });
 
   return (
