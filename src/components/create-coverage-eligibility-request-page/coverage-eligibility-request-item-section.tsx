@@ -24,7 +24,9 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import ValuesetSelect from "../common/valueset-select";
+import { apis } from "@/apis";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { z } from "zod";
 
@@ -557,6 +559,15 @@ function SupportingInfoFileUpload({
   mainInfoIndex: number;
 }) {
   const currentFile = form.watch(`supporting_info.${mainInfoIndex}.value_file`);
+  const attachmentId = form.watch(
+    `supporting_info.${mainInfoIndex}.value_attachment`
+  );
+
+  const { data: existingFile } = useQuery({
+    queryKey: ["file", attachmentId],
+    queryFn: () => apis.file.get(attachmentId as string),
+    enabled: !!attachmentId && !currentFile,
+  });
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -614,7 +625,42 @@ function SupportingInfoFileUpload({
                 </div>
               )}
 
-              {!currentFile && (
+              {!currentFile && existingFile?.read_signed_url && (
+                <div className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50/50">
+                  <div className="flex-shrink-0">
+                    {existingFile.extension &&
+                    ["jpg", "jpeg", "png", "gif", "webp"].includes(
+                      existingFile.extension.toLowerCase()
+                    ) ? (
+                      <img
+                        src={existingFile.read_signed_url}
+                        alt={existingFile.name || "attachment"}
+                        className="h-12 w-12 rounded-md object-cover border"
+                      />
+                    ) : (
+                      <div className="flex h-12 w-12 items-center justify-center rounded-md bg-gray-200 border">
+                        <FileIcon className="h-6 w-6 text-gray-600" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <a
+                      href={existingFile.read_signed_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm font-medium text-primary truncate hover:underline"
+                    >
+                      {existingFile.name ||
+                        `file.${existingFile.extension || "bin"}`}
+                    </a>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Remote attachment
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {!currentFile && !existingFile?.read_signed_url && (
                 <div className="relative">
                   <Button
                     type="button"

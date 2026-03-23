@@ -1,10 +1,13 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Condition, ConditionCategory } from "@/types/condition";
+import { FC, useEffect, useRef } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
+import { ChargeItem } from "@/types/charge_item";
 import { CoverageEligibilityRequestInsuranceSection } from "./coverage-eligibility-request-insurance-section";
 import { CoverageEligibilityRequestItemSection } from "./coverage-eligibility-request-item-section";
 import { CoverageEligibilityRequestOtherSection } from "./coverage-eligibility-request-other-section";
-import { FC } from "react";
+import { FileUploadModel } from "@/types/file_upload";
 import { Form } from "@/components/ui/form";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
 import { InsurancePlanDetailsPanel } from "../insurance-plan-details-panel";
@@ -17,6 +20,18 @@ import { useForm } from "react-hook-form";
 import { useNavigate } from "raviger";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+
+function chargeItemHasCoding(ci: ChargeItem): boolean {
+  return Boolean(ci.code?.system?.trim() && ci.code?.code?.trim());
+}
+
+function parsePositiveNumber(
+  value: string | undefined,
+  fallback: number
+): number {
+  const n = parseFloat(value ?? "");
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 
 export type CreateCoverageEligibilityRequestPageProps = {
   facilityId: string;
@@ -40,8 +55,126 @@ const CreateCoverageEligibilityRequestPage: FC<
       encounter: encounterId,
       status: "draft",
       priority: "normal",
+      purpose: ["benefits"],
     },
   });
+
+  const didPrefillEncounterRef = useRef(false);
+
+  const { data: encounterDiagnoses, isFetched: encounterDiagnosesFetched } =
+    useQuery({
+      queryKey: ["cer-encounter-diagnoses", patientId, encounterId],
+      queryFn: async (): Promise<Condition[]> => {
+        const res = await apis.diagnosis.list(patientId, {
+          encounter: encounterId,
+          category: [ConditionCategory.encounter_diagnosis],
+          ordering: "-created_date",
+        });
+        return res.results || [];
+      },
+      enabled: !!patientId && !!encounterId,
+      staleTime: 60 * 1000,
+    });
+
+  const { data: encounterFiles, isFetched: encounterFilesFetched } = useQuery({
+    queryKey: ["cer-encounter-files", encounterId],
+    queryFn: async (): Promise<FileUploadModel[]> => {
+      const res = await apis.file.list({
+        file_type: "encounter",
+        associating_id: encounterId,
+        ordering: "-created_date",
+      });
+      return (res.results || []).filter((file) => !!file.id);
+    },
+    enabled: !!encounterId,
+    staleTime: 60 * 1000,
+  });
+
+  const { data: encounterChargeItems, isFetched: encounterChargeItemsFetched } =
+    useQuery({
+      queryKey: ["cer-encounter-charge-items", facilityId, encounterId],
+      queryFn: async (): Promise<ChargeItem[]> => {
+        const res = await apis.charge_item.list(facilityId, {
+          encounter: encounterId,
+          ordering: "-created_date",
+        });
+        return res.results || [];
+      },
+      enabled: !!facilityId && !!encounterId,
+      staleTime: 60 * 1000,
+    });
+
+  useEffect(() => {
+    if (didPrefillEncounterRef.current) return;
+    if (
+      !encounterDiagnosesFetched ||
+      !encounterFilesFetched ||
+      !encounterChargeItemsFetched
+    ) {
+      return;
+    }
+
+    const existingItems = form.getValues("item") || [];
+    const existingSupportingInfo = form.getValues("supporting_info") || [];
+
+    if (existingItems.length > 0 || existingSupportingInfo.length > 0) {
+      didPrefillEncounterRef.current = true;
+      return;
+    }
+
+    didPrefillEncounterRef.current = true;
+
+    const supportingInfo =
+      (encounterFiles || []).map((file, idx) => ({
+        sequence: idx + 1,
+        value_string: undefined,
+        value_attachment: file.id as string,
+      })) || [];
+
+    const informationSequences = supportingInfo.map((info) => info.sequence);
+    form.setValue("supporting_info", supportingInfo);
+
+    const itemDiagnoses = (encounterDiagnoses || []).map((c) => ({
+      diagnosis_reference: undefined,
+      diagnosis_code: c.code,
+    }));
+
+    const codedChargeItems = (encounterChargeItems || []).filter(
+      chargeItemHasCoding
+    );
+
+    if (codedChargeItems.length > 0) {
+      form.setValue(
+        "item",
+        codedChargeItems.map((ci) => ({
+          supporting_info_sequence: [...informationSequences],
+          category: {
+            display: "Primary healthcare service",
+            system: "http://snomed.info/sct",
+            code: "1586771000168103",
+          },
+          product_or_service: {
+            system: ci.code.system,
+            code: ci.code.code,
+            display: ci.code.display,
+          },
+          quantity: {
+            value: parsePositiveNumber(ci.quantity, 1),
+          },
+          unit_price: parsePositiveNumber(ci.total_price, 1),
+          diagnosis: itemDiagnoses.map((d) => ({ ...d })),
+        }))
+      );
+    }
+  }, [
+    encounterChargeItems,
+    encounterChargeItemsFetched,
+    encounterDiagnoses,
+    encounterDiagnosesFetched,
+    encounterFiles,
+    encounterFilesFetched,
+    form,
+  ]);
 
   const { mutate: checkCoverageEligibility } = useMutation({
     mutationFn: apis.coverageEligibilityRequest.check,

@@ -6,10 +6,13 @@ import {
 import { queryString, request } from "./request";
 
 import { AbhaNumber } from "@/types/abha_number";
+import { ChargeItem } from "@/types/charge_item";
 import { Claim } from "@/types/claim";
 import { Coding } from "@/types/base";
 import { Communication } from "@/types/communication";
+import { Condition } from "@/types/condition";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
+import { Encounter } from "@/types/encounter";
 import { HealthFacility } from "@/types/health_facility";
 import { InsurancePlan } from "@/types/insurance_plan";
 import { PaginatedResponse } from "./types";
@@ -24,6 +27,48 @@ import { createCoverageEligibilityRequestFormSchema } from "@/components/create-
 import { z } from "zod";
 
 export const apis = {
+  diagnosis: {
+    list: async (
+      patientId: string,
+      query?: {
+        ordering?:
+          | "created_date"
+          | "-created_date"
+          | "modified_date"
+          | "-modified_date";
+        category?: Condition["category"][];
+        clinical_status?: Condition["clinical_status"][];
+        exclude_verification_status?: Condition["verification_status"][];
+        encounter?: string;
+        limit?: number;
+        offset?: number;
+      }
+    ) => {
+      const queryParams = {
+        ordering: query?.ordering,
+        category: query?.category?.join(","),
+        clinical_status: query?.clinical_status?.join(","),
+        exclude_verification_status:
+          query?.exclude_verification_status?.join(","),
+        encounter: query?.encounter,
+        limit: query?.limit,
+        offset: query?.offset,
+      };
+
+      return await request<PaginatedResponse<Condition>>(
+        `/api/v1/patient/${patientId}/diagnosis/` + queryString(queryParams)
+      );
+    },
+  },
+
+  encounter: {
+    get: async (facilityId: string, encounterId: string) => {
+      return await request<Encounter>(
+        `/api/v1/encounter/${encounterId}/?facility=${facilityId}`
+      );
+    },
+  },
+
   coverageEligibilityRequest: {
     list: async (query?: {
       encounter?: string;
@@ -129,6 +174,18 @@ export const apis = {
 
     get: async (id: string) => {
       return await request<FileUploadModel>(`/api/v1/files/${id}/`);
+    },
+
+    list: async (query?: {
+      file_type: "patient" | "encounter";
+      associating_id: string;
+      ordering?: "created_date" | "-created_date";
+      limit?: number;
+      offset?: number;
+    }) => {
+      return await request<PaginatedResponse<FileUploadModel>>(
+        `/api/v1/files/` + queryString(query)
+      );
     },
   },
 
@@ -253,6 +310,27 @@ export const apis = {
         method: "PUT",
         body: JSON.stringify(body),
       });
+    },
+  },
+
+  charge_item: {
+    list: async (
+      facilityId: string,
+      query?: {
+        title?: string;
+        encounter?: string;
+        account?: string;
+        patient?: string;
+        performer_actor?: string;
+        created_by?: string;
+        ordering?: "created_date" | "-created_date";
+        limit?: number;
+        offset?: number;
+      }
+    ) => {
+      return await request<PaginatedResponse<ChargeItem>>(
+        `/api/v1/facility/${facilityId}/charge_item/` + queryString(query)
+      );
     },
   },
 };
