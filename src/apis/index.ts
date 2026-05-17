@@ -14,7 +14,17 @@ import { Condition } from "@/types/condition";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { Encounter } from "@/types/encounter";
 import { HealthFacility } from "@/types/health_facility";
-import { InsurancePlan } from "@/types/insurance_plan";
+import {
+  InsurancePlan,
+  InsurancePlanBenefit,
+  InsurancePlanBenefitDetail,
+  InsurancePlanCoverageSection,
+  InsurancePlanExtensions,
+  InsurancePlanQuestionnaire,
+  InsurancePlanQuestionnaireDetail,
+  InsurancePlanSupportingInfoRequirement,
+  InsurancePlanTier,
+} from "@/types/insurance_plan";
 import { MemberBiometricAuth } from "@/types/member_biometric_auth";
 import { PaginatedResponse } from "./types";
 import { PaymentReconciliation } from "@/types/payment";
@@ -357,17 +367,129 @@ export const apis = {
   },
 
   insurancePlan: {
-    get: async (productId: string) => {
-      return await request<InsurancePlan>(
-        `/api/nhcx/insurance-plan/${productId}/`
+    list: async (query?: {
+      name?: string;
+      status?: string;
+      identifier_value?: string;
+      ordering?: string;
+    }) => {
+      return await request<PaginatedResponse<InsurancePlan>>(
+        `/api/nhcx/insurance-plan/` + queryString(query)
+      );
+    },
+
+    get: async (id: string) => {
+      return await request<InsurancePlan>(`/api/nhcx/insurance-plan/${id}/`);
+    },
+
+    plans: async (id: string) => {
+      return await request<InsurancePlanTier[]>(
+        `/api/nhcx/insurance-plan/${id}/plans/`
+      );
+    },
+
+    coverages: async (id: string) => {
+      return await request<InsurancePlanCoverageSection[]>(
+        `/api/nhcx/insurance-plan/${id}/coverages/`
+      );
+    },
+
+    extensions: async (id: string) => {
+      return await request<InsurancePlanExtensions>(
+        `/api/nhcx/insurance-plan/${id}/extensions/`
       );
     },
 
     request: async (body: { facility: string; policy: Policy }) => {
-      return await request<InsurancePlan>(`/api/nhcx/insurance-plan/request/`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
+      return await request<{ task_id: string }>(
+        `/api/nhcx/insurance-plan/request/`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        }
+      );
+    },
+  },
+
+  insurancePlanBenefit: {
+    list: async (query?: {
+      insurance_plan?: string;
+      plan_tier?: string;
+      coverage?: string;
+      q?: string;
+      type_code?: string;
+      coverage_type_code?: string;
+      plan_type_code?: string;
+      specialty_category_code?: string;
+      procedure_type?: string;
+      authorization_required?: boolean;
+      is_day_care?: boolean;
+      implant_applicable?: boolean;
+      stratification_allowed?: boolean;
+      has_copayment?: boolean;
+      has_deductible?: boolean;
+      has_waiting_period?: boolean;
+      has_stratification_qualifier?: boolean;
+      has_implant_qualifier?: boolean;
+      has_consumable_qualifier?: boolean;
+      has_questionnaire?: boolean;
+      requires_supporting_info?: boolean;
+      min_cost_gte?: number;
+      max_cost_lte?: number;
+      ordering?: string;
+      limit?: number;
+      offset?: number;
+    }) => {
+      return await request<PaginatedResponse<InsurancePlanBenefit>>(
+        `/api/nhcx/insurance-plan-benefit/` + queryString(query)
+      );
+    },
+
+    get: async (id: string) => {
+      return await request<InsurancePlanBenefitDetail>(
+        `/api/nhcx/insurance-plan-benefit/${id}/`
+      );
+    },
+
+    lookup: async (body: {
+      insurance_plan: string;
+      type_code: string;
+      plan_tier?: string;
+      coverage_type_code?: string;
+    }) => {
+      return await request<InsurancePlanBenefitDetail>(
+        `/api/nhcx/insurance-plan-benefit/lookup/`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        }
+      );
+    },
+
+    requirements: async (id: string) => {
+      return await request<InsurancePlanSupportingInfoRequirement[]>(
+        `/api/nhcx/insurance-plan-benefit/${id}/requirements/`
+      );
+    },
+
+    questionnaires: async (id: string) => {
+      return await request<InsurancePlanQuestionnaire[]>(
+        `/api/nhcx/insurance-plan-benefit/${id}/questionnaires/`
+      );
+    },
+
+    extensions: async (id: string) => {
+      return await request<InsurancePlanExtensions>(
+        `/api/nhcx/insurance-plan-benefit/${id}/extensions/`
+      );
+    },
+  },
+
+  insurancePlanQuestionnaire: {
+    get: async (id: string) => {
+      return await request<InsurancePlanQuestionnaireDetail>(
+        `/api/nhcx/insurance-plan-questionnaire/${id}/`
+      );
     },
   },
 
