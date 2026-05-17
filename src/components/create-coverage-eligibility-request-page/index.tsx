@@ -1,5 +1,6 @@
 import { Condition, ConditionCategory } from "@/types/condition";
 import { FC, useEffect, useRef } from "react";
+import { useForm, useWatch } from "react-hook-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
@@ -11,12 +12,12 @@ import { FileUploadModel } from "@/types/file_upload";
 import { Form } from "@/components/ui/form";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
 import { InsurancePlanDetailsPanel } from "../insurance-plan-details-panel";
+import { PmjayBiometricVerificationGate } from "@/components/common/pmjay-biometric-verification-gate";
 import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
 import { toast } from "@/lib/utils";
 import { uploadFile } from "@/lib/upload-file";
-import { useForm } from "react-hook-form";
 import { useNavigate } from "raviger";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -57,6 +58,11 @@ const CreateCoverageEligibilityRequestPage: FC<
       priority: "normal",
       purpose: ["benefits"],
     },
+  });
+
+  const insuranceSelection = useWatch({
+    control: form.control,
+    name: "insurance",
   });
 
   const didPrefillEncounterRef = useRef(false);
@@ -257,6 +263,10 @@ const CreateCoverageEligibilityRequestPage: FC<
       }}
     >
       <div className="space-y-6">
+        <PmjayBiometricVerificationGate
+          encounterId={encounterId}
+          insurance={insuranceSelection || []}
+        />
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-medium">Check Coverage Eligibility</h3>

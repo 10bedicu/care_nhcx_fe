@@ -41,9 +41,26 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    port: 5174,
+    allowedHosts: true,
+    host: "0.0.0.0",
+    cors: true,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
+      "Access-Control-Allow-Headers": "*",
+    },
+  },
   preview: {
-    port: 3173,
+    port: 5174,
     host: "0.0.0.0",
     allowedHosts: true,
+    cors: true,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
+      "Access-Control-Allow-Headers": "*",
+    },
   },
 });

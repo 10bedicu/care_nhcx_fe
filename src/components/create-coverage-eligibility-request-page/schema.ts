@@ -130,5 +130,5 @@ export const createCoverageEligibilityRequestFormSchema = z.object({
         message: "At least one focal insurance is required",
       }
     ),
-  item: z.array(coverageEligibilityRequestItemSchema).min(1).default([]),
+  item: z.array(coverageEligibilityRequestItemSchema).min(0).default([]),
 });

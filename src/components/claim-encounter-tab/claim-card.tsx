@@ -20,19 +20,74 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { FC, useMemo, useState } from "react";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import {
+  cn,
+  formatCurrency,
+  formatDate,
+  toast,
+} from "@/lib/utils";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Claim } from "@/types/claim";
 import ClaimNotificationSheet from "./claim-notification-sheet";
+import { apis } from "@/apis";
+
+function hasFollowUpClaim(allClaims: Claim[], claimId: string): boolean {
+  return allClaims.some(
+    (c) =>
+      c.id !== claimId &&
+      (c.related ?? []).some((r) => r.claim?.id === claimId)
+  );
+}
 
 interface ClaimCardProps {
   claim: Claim;
+  /** Same encounter’s claims; used to detect follow-up claims that reference this claim. */
+  allClaims?: Claim[];
+  encounterId?: string;
 }
 
-const ClaimCard: FC<ClaimCardProps> = ({ claim }) => {
+const ClaimCard: FC<ClaimCardProps> = ({
+  claim,
+  allClaims = [],
+  encounterId,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  const { mutate: cancelClaim, isPending: isCancelPending } = useMutation({
+    mutationFn: apis.claim.cancel,
+    onSuccess: () => {
+      toast.success("Preauthorization cancelled");
+      if (encounterId) {
+        queryClient.invalidateQueries({ queryKey: ["claims", encounterId] });
+      }
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to cancel preauthorization");
+    },
+  });
+
+  const { mutate: reprocessClaim, isPending: isReprocessPending } =
+    useMutation({
+      mutationFn: apis.claim.reprocess,
+      onSuccess: () => {
+        toast.success("Claim reprocess requested");
+        if (encounterId) {
+          queryClient.invalidateQueries({ queryKey: ["claims", encounterId] });
+        }
+      },
+      onError: (error: Error) => {
+        toast.error(error.message || "Failed to reprocess claim");
+      },
+    });
+
+  const showCancelPreauth =
+    claim.use === "preauthorization" &&
+    claim.status !== "cancelled" &&
+    !hasFollowUpClaim(allClaims, claim.id);
 
   const totalRequestedAmount = useMemo(() => {
     return (
@@ -65,6 +120,10 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim }) => {
       return "partially-approved";
     }
   }, [claim.latest_response, totalApprovedAmount, totalRequestedAmount]);
+
+  const showReprocess =
+    claim.use === "claim" &&
+    (status === "partially-approved" || status === "rejected");
 
   const getResponseItemForClaimItem = (claimItemSequence: number) => {
     if (!claim.latest_response?.item) return null;
@@ -323,6 +382,36 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim }) => {
           </div>
           <div className="flex items-center gap-2">
             <ClaimNotificationSheet claim={claim} />
+            {showCancelPreauth && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-destructive border-destructive/50 hover:bg-destructive/10"
+                disabled={isCancelPending}
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      "Cancel this preauthorization? This cannot be undone."
+                    )
+                  ) {
+                    return;
+                  }
+                  cancelClaim(claim.id);
+                }}
+              >
+                {isCancelPending ? "Cancelling…" : "Cancel"}
+              </Button>
+            )}
+            {showReprocess && (
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={isReprocessPending}
+                onClick={() => reprocessClaim(claim.id)}
+              >
+                {isReprocessPending ? "Reprocessing…" : "Reprocess"}
+              </Button>
+            )}
             <Button asChild variant="secondary" size="sm">
               <a href={`claims/new?related=${claim.id}`}>Follow up</a>
             </Button>

@@ -9,4 +9,10 @@ declare global {
   let __CORE_ENV__: {
     readonly apiUrl: string;
   };
+
+  interface Window {
+    __CORE_ENV__?: {
+      readonly apiUrl: string;
+    };
+  }
 }

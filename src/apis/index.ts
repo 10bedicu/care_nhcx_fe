@@ -3,7 +3,7 @@ import {
   CreateFileResponse,
   FileUploadModel,
 } from "@/types/file_upload";
-import { queryString, request } from "./request";
+import { queryString, request } from "@/apis/request";
 
 import { AbhaNumber } from "@/types/abha_number";
 import { ChargeItem } from "@/types/charge_item";
@@ -15,6 +15,7 @@ import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { Encounter } from "@/types/encounter";
 import { HealthFacility } from "@/types/health_facility";
 import { InsurancePlan } from "@/types/insurance_plan";
+import { MemberBiometricAuth } from "@/types/member_biometric_auth";
 import { PaginatedResponse } from "./types";
 import { PaymentReconciliation } from "@/types/payment";
 import { Policy } from "@/types/policy";
@@ -148,6 +149,18 @@ export const apis = {
       });
     },
 
+    cancel: async (id: string) => {
+      return await request<Claim>(`/api/nhcx/claim/${id}/cancel/`, {
+        method: "POST",
+      });
+    },
+
+    reprocess: async (id: string) => {
+      return await request<Claim>(`/api/nhcx/claim/${id}/reprocess/`, {
+        method: "POST",
+      });
+    },
+
     tasks: async (id: string) => {
       return await request<PaginatedResponse<Task>>(
         `/api/nhcx/claim/${id}/tasks/`
@@ -198,6 +211,71 @@ export const apis = {
         method: "POST",
         body: JSON.stringify(body),
       });
+    },
+
+    abhaBiometricAuthInit: async (body: {
+      authMode?: "FINGERPRINT" | "IRIS" | "FACE_AUTH";
+      abhaNumber: string;
+      payerId: string;
+      process?: "Preauth" | "Discharge";
+    }) => {
+      return await request<{
+        txnId: string;
+        authMode: "FINGERPRINT" | "IRIS" | "FACE_AUTH" | null;
+        message: string;
+        status: "success" | "error" | null;
+      }>(`/api/nhcx/gateway/abha-biometric-auth-init/`, {
+        method: "POST",
+        body: JSON.stringify({
+          authMode: body.authMode ?? "FINGERPRINT",
+          process: body.process ?? "Preauth",
+          ...body,
+        }),
+      });
+    },
+
+    abhaBiometricAuthVerify: async (body: {
+      txnId: string;
+      authMode?: "FINGERPRINT" | "IRIS" | "FACE_AUTH";
+      authData: string;
+      payerId: string;
+      process?: "Preauth" | "Discharge";
+      encounter: string;
+    }) => {
+      return await request<{ message: string }>(
+        `/api/nhcx/gateway/abha-biometric-auth-verify/`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            authMode: body.authMode ?? "FINGERPRINT",
+            process: body.process ?? "Preauth",
+            ...body,
+          }),
+        }
+      );
+    },
+  },
+
+  rdService: {
+    capture: async () => {
+      const response = await fetch("https://127.0.0.1:11100/rd/capture", {
+        method: "CAPTURE",
+        body: `<?xml version="1.0"?> <PidOptions ver="1.0"> <Opts env="P" fCount="1" fType="2" format="0" pidVer="2.0" wadh="RZ+k4w9ySTzOibQdDHPzCFqrKScZ74b3EibKYy1WyGw=" timeout="10000" posh="UNKNOWN" /> <CustOpts><Param name="mantrakey" value="B0CZLLZ98Z" /></CustOpts> </PidOptions>`,
+      });
+
+      return response.text();
+    },
+  },
+
+  memberBiometricAuth: {
+    lookup: async (params: { payer_id: string; encounter_id: string }) => {
+      return await request<MemberBiometricAuth>(
+        `/api/nhcx/member-biometric-auth/lookup/` +
+          queryString({
+            payer_id: params.payer_id,
+            encounter_id: params.encounter_id,
+          })
+      );
     },
   },
 

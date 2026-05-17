@@ -17,6 +17,7 @@ import { FileUploadModel } from "@/types/file_upload";
 import { Form } from "@/components/ui/form";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
 import { InsurancePlanDetailsPanel } from "../insurance-plan-details-panel";
+import { PmjayBiometricVerificationGate } from "@/components/common/pmjay-biometric-verification-gate";
 import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
 import { createClaimFormSchema } from "./schema";
@@ -81,6 +82,11 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   const previousClaimId = useWatch({
     control: form.control,
     name: "related.0.claim",
+  });
+
+  const insuranceSelection = useWatch({
+    control: form.control,
+    name: "insurance",
   });
 
   const { data: previousClaim } = useQuery({
@@ -232,10 +238,10 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         sequence: idx + 1,
         type: [
           {
-            code: c.verification_status,
-            system:
-              "http://terminology.hl7.org/CodeSystem/condition-ver-status",
-            display: c.verification_status,
+            code: "89100005", // TODO: Map this based on the verification status
+            system: "http://snomed.info/sct",
+            display:
+              "Final diagnosis (discharge) (contextual qualifier) (qualifier value)",
           },
         ],
         diagnosis_reference: undefined,
@@ -505,6 +511,10 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       }}
     >
       <div className="space-y-6">
+        <PmjayBiometricVerificationGate
+          encounterId={encounterId}
+          insurance={insuranceSelection || []}
+        />
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-medium">Create Claim</h3>

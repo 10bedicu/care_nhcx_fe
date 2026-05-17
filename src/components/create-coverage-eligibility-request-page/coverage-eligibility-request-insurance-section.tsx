@@ -40,6 +40,11 @@ export function CoverageEligibilityRequestInsuranceSection({
     queryKey: ["policies", abhaNumber?.abha_number, abhaNumber?.mobile],
     queryFn: () =>
       apis.gateway.policies({
+        // identifiertype: abhaNumber?.mobile ? "MobileNo" : "AbhaNumber",
+        // identifiervalue:
+        //   abhaNumber?.mobile ??
+        //   abhaNumber?.abha_number?.replace(/-/g, "") ??
+        //   "",
         identifiertype: "MemberId",
         identifiervalue: "SBXSTG007",
       }),

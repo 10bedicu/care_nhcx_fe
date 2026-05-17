@@ -112,7 +112,12 @@ const ClaimEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
               )}
 
               {claims?.results?.map((claim: Claim) => (
-                <ClaimCard key={claim.id} claim={claim} />
+                <ClaimCard
+                  key={claim.id}
+                  claim={claim}
+                  allClaims={claims.results}
+                  encounterId={encounter.id}
+                />
               ))}
             </div>
           </>
