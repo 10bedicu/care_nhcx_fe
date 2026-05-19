@@ -58,6 +58,7 @@ export type CoverageEligibilityRequestItem = {
   category: Coding;
   product_or_service: Coding;
   charge_item?: ChargeItem;
+  modifier?: Coding[];
   quantity: Quantity;
   unit_price: number;
   diagnosis: CoverageEligibilityRequestItemDiagnosis[];

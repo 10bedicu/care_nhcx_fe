@@ -6,6 +6,7 @@ import {
   PaperclipIcon,
   PlusIcon,
   ShoppingBasketIcon,
+  XIcon,
 } from "lucide-react";
 import { FileIcon, TrashIcon } from "lucide-react";
 import {
@@ -25,10 +26,11 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import ValuesetSelect from "../common/valueset-select";
+import Autocomplete from "../ui/autocomplete";
 import { apis } from "@/apis";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { z } from "zod";
 
 interface CoverageEligibilityRequestItemSectionProps {
@@ -103,14 +105,11 @@ export function CoverageEligibilityRequestItemSection({
                           insurancePlanId={planId}
                           value={field.value}
                           onSelect={(benefit) => {
-                            form.setValue(
-                              `item.${index}.product_or_service`,
-                              {
-                                system: PROCEDURE_CODE_SYSTEM,
-                                code: benefit.type_code,
-                                display: benefit.type_display,
-                              }
-                            );
+                            form.setValue(`item.${index}.product_or_service`, {
+                              system: PROCEDURE_CODE_SYSTEM,
+                              code: benefit.type_code,
+                              display: benefit.type_display,
+                            });
                             form.setValue(`item.${index}.category`, {
                               system: BENEFIT_CATEGORY_SYSTEM,
                               code: benefit.coverage_type_code,
@@ -170,6 +169,8 @@ export function CoverageEligibilityRequestItemSection({
                   );
                 }}
               />
+
+              <ModifierField form={form} index={index} planId={planId} />
 
               <AddDiagnosisSection form={form} index={index} />
               <AddSupportingInfoSection form={form} index={index} />
@@ -270,6 +271,7 @@ export function CoverageEligibilityRequestItemSection({
                       category: undefined as unknown as Coding,
                       product_or_service: undefined,
                       charge_item: undefined,
+                      modifier: [],
                       quantity: {
                         value: 0,
                       },
@@ -289,6 +291,116 @@ export function CoverageEligibilityRequestItemSection({
         />
       </div>
     </div>
+  );
+}
+
+function ModifierField({
+  form,
+  index,
+  planId,
+}: {
+  form: UseFormReturn<z.infer<typeof createCoverageEligibilityRequestFormSchema>>;
+  index: number;
+  planId: string | null;
+}) {
+  const productCode = form.watch(`item.${index}.product_or_service`)?.code;
+
+  const { data: benefitDetail, isLoading } = useQuery({
+    queryKey: ["insurancePlanBenefit", "lookup", planId, productCode],
+    queryFn: () =>
+      apis.insurancePlanBenefit.lookup({
+        insurance_plan: planId!,
+        type_code: productCode!,
+      }),
+    enabled: Boolean(planId && productCode),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const qualifiers = useMemo<Coding[]>(() => {
+    if (!benefitDetail?.costs) return [];
+    const seen = new Set<string>();
+    const result: Coding[] = [];
+    for (const cost of benefitDetail.costs) {
+      for (const q of cost.qualifiers) {
+        if (!seen.has(q.qualifier_code)) {
+          seen.add(q.qualifier_code);
+          result.push({
+            system: q.qualifier.coding?.[0]?.system ?? "",
+            code: q.qualifier_code,
+            display: q.qualifier.text ?? q.qualifier.coding?.[0]?.display,
+          });
+        }
+      }
+    }
+    return result;
+  }, [benefitDetail]);
+
+  return (
+    <FormField
+      control={form.control}
+      name={`item.${index}.modifier`}
+      render={({ field }) => (
+        <FormItem className="space-y-1.5">
+          <FormLabel>Modifier</FormLabel>
+          <FormControl>
+            <div className="grid gap-4">
+              <Autocomplete
+                options={qualifiers.map((q) => ({
+                  label: q.display ? `${q.code} – ${q.display}` : q.code,
+                  value: q.code,
+                }))}
+                value={undefined}
+                onChange={(code) => {
+                  const qualifier = qualifiers.find((q) => q.code === code);
+                  if (!qualifier) return;
+                  const existing = field.value ?? [];
+                  if (existing.some((c) => c.code === qualifier.code)) return;
+                  form.setValue(`item.${index}.modifier`, [
+                    ...existing,
+                    qualifier,
+                  ]);
+                }}
+                disabled={!productCode || isLoading}
+                placeholder={
+                  !productCode
+                    ? "Select a benefit first"
+                    : isLoading
+                      ? "Loading qualifiers…"
+                      : qualifiers.length === 0
+                        ? "No qualifiers available"
+                        : "Select a modifier"
+                }
+                noOptionsMessage={
+                  !productCode
+                    ? "Select a benefit first"
+                    : "No qualifiers available"
+                }
+              />
+              <div className="flex flex-wrap gap-2">
+                {(field.value ?? []).map((code) => (
+                  <Badge key={code.code} className="flex gap-2">
+                    <span className="font-mono">{code.code}</span>
+                    {code.display && (
+                      <span className="opacity-80"> – {code.display}</span>
+                    )}
+                    <XIcon
+                      className="w-4 h-4 cursor-pointer"
+                      onClick={() => {
+                        form.setValue(
+                          `item.${index}.modifier`,
+                          field.value.filter((c) => c.code !== code.code)
+                        );
+                      }}
+                    />
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </FormControl>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
   );
 }
 

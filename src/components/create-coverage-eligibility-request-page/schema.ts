@@ -87,6 +87,7 @@ export const coverageEligibilityRequestItemSchema = z
     category: codingSchema,
     product_or_service: codingSchema.optional(),
     charge_item: z.string().uuid().optional(),
+    modifier: z.array(codingSchema).default([]),
     quantity: quantitySchema,
     unit_price: z.number().gt(0),
     diagnosis: z.array(coverageEligibilityRequestDiagnosisSchema).default([]),

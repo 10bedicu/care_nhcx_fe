@@ -133,6 +133,7 @@ export const claimItemSchema = z
     category: codingSchema.optional(),
     product_or_service: codingSchema.optional(),
     charge_item: z.string().uuid().optional(),
+    modifier: z.array(codingSchema).default([]),
     program_code: z.array(codingSchema).default([]),
     serviced_period: periodSchema.optional(),
     quantity: quantitySchema,
