@@ -20,6 +20,7 @@ import { UseFormReturn, useFieldArray } from "react-hook-form";
 
 import Autocomplete from "../ui/autocomplete";
 import { Badge } from "../ui/badge";
+import BenefitSearchSelect from "../common/benefit-search-select";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Coding } from "@/types/base";
@@ -620,11 +621,35 @@ const SUPPORTING_INFO_CATEGORIES = [
   },
 ];
 
+const BENEFIT_CATEGORY_SYSTEM =
+  "https://nrces.in/ndhm/fhir/r4/ValueSet/ndhm-benefitcategory";
+const PROCEDURE_CODE_SYSTEM =
+  "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-procedures-code";
+const AB_PMJAY_CODE = PROGRAM_CODES.find((c) => c.code === "AB-PMJAY")!;
+
 export function ClaimItemSection({ form }: ClaimItemSectionProps) {
   const { fields, append, remove } = useFieldArray({
     name: "item",
     control: form.control,
   });
+
+  // Derive the insurance plan ID from the focal (or first) selected policy
+  const selectedInsurances = form.watch("insurance");
+  const focalPolicy =
+    selectedInsurances?.find((i) => i.focal)?.policy ??
+    selectedInsurances?.[0]?.policy;
+
+  const { data: planListData } = useQuery({
+    queryKey: ["insurancePlan", "list", focalPolicy?.sno],
+    queryFn: () =>
+      apis.insurancePlan.list({
+        identifier_value: "100155-IN2910001986", // FIXME: replace with focalPolicy!.sno
+      }),
+    enabled: Boolean(focalPolicy?.sno),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const planId = planListData?.results?.[0]?.id ?? null;
 
   return (
     <div className="space-y-6">
@@ -656,14 +681,32 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
                         <span className="text-red-500 text-sm ml-0.5">*</span>
                       </FormLabel>
                       <FormControl>
-                        <ValuesetSelect
-                          system="system-claim-product-or-service"
+                        <BenefitSearchSelect
+                          insurancePlanId={planId}
                           value={field.value}
-                          onSelect={(value) => {
+                          onSelect={(benefit) => {
                             form.setValue(
                               `item.${index}.product_or_service`,
-                              value
+                              {
+                                system: PROCEDURE_CODE_SYSTEM,
+                                code: benefit.type_code,
+                                display: benefit.type_display,
+                              }
                             );
+                            form.setValue(`item.${index}.category`, {
+                              system: BENEFIT_CATEGORY_SYSTEM,
+                              code: benefit.coverage_type_code,
+                              display: benefit.coverage_type_display,
+                            });
+                            const existing =
+                              form.getValues(`item.${index}.program_code`) ??
+                              [];
+                            if (!existing.find((c) => c.code === "AB-PMJAY")) {
+                              form.setValue(`item.${index}.program_code`, [
+                                ...existing,
+                                AB_PMJAY_CODE,
+                              ]);
+                            }
                           }}
                         />
                       </FormControl>
@@ -689,21 +732,32 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
                 key={field.id}
                 control={form.control}
                 name={`item.${index}.category`}
-                render={({ field }) => (
-                  <FormItem className="space-y-1.5">
-                    <FormLabel>Category</FormLabel>
-                    <FormControl>
-                      <ValuesetSelect
-                        system="system-claim-item-category"
-                        value={field.value}
-                        onSelect={(value) => {
-                          form.setValue(`item.${index}.category`, value);
-                        }}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                render={({ field }) => {
+                  const hasProduct = Boolean(
+                    form.watch(`item.${index}.product_or_service`)?.code
+                  );
+                  return (
+                    <FormItem className="space-y-1.5">
+                      <FormLabel>Category</FormLabel>
+                      <FormControl>
+                        <ValuesetSelect
+                          system="system-claim-item-category"
+                          value={field.value}
+                          onSelect={(value) => {
+                            form.setValue(`item.${index}.category`, value);
+                          }}
+                          disabled={hasProduct}
+                        />
+                      </FormControl>
+                      {hasProduct && (
+                        <p className="text-xs text-muted-foreground">
+                          Auto-set from selected benefit
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
               />
 
               <FormField

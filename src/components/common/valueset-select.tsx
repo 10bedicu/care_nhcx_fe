@@ -9,6 +9,7 @@ type ValuesetSelectProps = {
   value: Coding | undefined;
   onSelect: (code: Coding) => void;
   count?: number;
+  disabled?: boolean;
 };
 
 export default function ValuesetSelect({
@@ -16,6 +17,7 @@ export default function ValuesetSelect({
   value,
   onSelect,
   count = 10,
+  disabled,
 }: ValuesetSelectProps) {
   const [search, setSearch] = useState("");
 
@@ -48,6 +50,7 @@ export default function ValuesetSelect({
         }
       }}
       onSearch={setSearch}
+      disabled={disabled}
     />
   );
 }

@@ -18,6 +18,7 @@ import {
 import { UseFormReturn, useFieldArray } from "react-hook-form";
 
 import { Badge } from "../ui/badge";
+import BenefitSearchSelect from "../common/benefit-search-select";
 import { Button } from "../ui/button";
 import { Coding } from "@/types/base";
 import { Input } from "../ui/input";
@@ -36,6 +37,11 @@ interface CoverageEligibilityRequestItemSectionProps {
   >;
 }
 
+const BENEFIT_CATEGORY_SYSTEM =
+  "https://nrces.in/ndhm/fhir/r4/ValueSet/ndhm-benefitcategory";
+const PROCEDURE_CODE_SYSTEM =
+  "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-procedures-code";
+
 export function CoverageEligibilityRequestItemSection({
   form,
 }: CoverageEligibilityRequestItemSectionProps) {
@@ -43,6 +49,24 @@ export function CoverageEligibilityRequestItemSection({
     name: "item",
     control: form.control,
   });
+
+  // Derive the insurance plan ID from the focal (or first) selected policy
+  const selectedInsurances = form.watch("insurance");
+  const focalPolicy =
+    selectedInsurances?.find((i) => i.focal)?.policy ??
+    selectedInsurances?.[0]?.policy;
+
+  const { data: planListData } = useQuery({
+    queryKey: ["insurancePlan", "list", focalPolicy?.sno],
+    queryFn: () =>
+      apis.insurancePlan.list({
+        identifier_value: "100155-IN2910001986", // FIXME: replace with focalPolicy!.sno
+      }),
+    enabled: Boolean(focalPolicy?.sno),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const planId = planListData?.results?.[0]?.id ?? null;
 
   return (
     <div className="space-y-6">
@@ -75,14 +99,23 @@ export function CoverageEligibilityRequestItemSection({
                         <span className="text-red-500 text-sm ml-0.5">*</span>
                       </FormLabel>
                       <FormControl>
-                        <ValuesetSelect
-                          system="system-coverage-eligibility-request-product-or-service"
+                        <BenefitSearchSelect
+                          insurancePlanId={planId}
                           value={field.value}
-                          onSelect={(value) => {
+                          onSelect={(benefit) => {
                             form.setValue(
                               `item.${index}.product_or_service`,
-                              value
+                              {
+                                system: PROCEDURE_CODE_SYSTEM,
+                                code: benefit.type_code,
+                                display: benefit.type_display,
+                              }
                             );
+                            form.setValue(`item.${index}.category`, {
+                              system: BENEFIT_CATEGORY_SYSTEM,
+                              code: benefit.coverage_type_code,
+                              display: benefit.coverage_type_display,
+                            });
                           }}
                         />
                       </FormControl>
@@ -107,24 +140,35 @@ export function CoverageEligibilityRequestItemSection({
               <FormField
                 control={form.control}
                 name={`item.${index}.category`}
-                render={({ field }) => (
-                  <FormItem className="space-y-1.5">
-                    <FormLabel>
-                      Category
-                      <span className="text-red-500 text-sm ml-0.5">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <ValuesetSelect
-                        system="system-coverage-eligibility-request-item-category"
-                        value={field.value}
-                        onSelect={(value) => {
-                          form.setValue(`item.${index}.category`, value);
-                        }}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                render={({ field }) => {
+                  const hasProduct = Boolean(
+                    form.watch(`item.${index}.product_or_service`)?.code
+                  );
+                  return (
+                    <FormItem className="space-y-1.5">
+                      <FormLabel>
+                        Category
+                        <span className="text-red-500 text-sm ml-0.5">*</span>
+                      </FormLabel>
+                      <FormControl>
+                        <ValuesetSelect
+                          system="system-coverage-eligibility-request-item-category"
+                          value={field.value}
+                          onSelect={(value) => {
+                            form.setValue(`item.${index}.category`, value);
+                          }}
+                          disabled={hasProduct}
+                        />
+                      </FormControl>
+                      {hasProduct && (
+                        <p className="text-xs text-muted-foreground">
+                          Auto-set from selected benefit
+                        </p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
               />
 
               <AddDiagnosisSection form={form} index={index} />
