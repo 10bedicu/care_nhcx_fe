@@ -54,8 +54,8 @@ export const claimDiagnosisSchema = z
     },
     {
       message:
-        "Either diagnosis_reference or diagnosis_code must be provided, but not both",
-      path: ["diagnosis_reference", "diagnosis_code"],
+        "Either a diagnosis reference or a diagnosis code must be provided, but not both",
+      path: ["diagnosis_code"],
     }
   );
 
@@ -76,8 +76,8 @@ export const claimProcedureSchema = z
     },
     {
       message:
-        "Either procedure_reference or procedure_code must be provided, but not both",
-      path: ["procedure_reference", "procedure_code"],
+        "Either a procedure reference or a procedure code must be provided, but not both",
+      path: ["procedure_code"],
     }
   );
 
@@ -101,8 +101,8 @@ export const claimSupportingInfoSchema = z
     },
     {
       message:
-        "Either value_string or value_attachment must be provided, but not both",
-      path: ["value_string", "value_attachment"],
+        "Please provide a value — either enter text or upload an attachment",
+      path: ["value_string"],
     }
   );
 
@@ -139,6 +139,7 @@ export const claimItemSchema = z
     quantity: quantitySchema,
     unit_price: z.number().gt(0),
     factor: z.number().optional(),
+    _mandatory_docs_error: z.string().optional(),
   })
   .refine(
     (data) => {
@@ -149,9 +150,18 @@ export const claimItemSchema = z
     },
     {
       message:
-        "Either product_or_service or charge_item must be provided, but not both",
-      path: ["product_or_service", "charge_item"],
+        "Either a product/service or a charge item must be provided, but not both",
+      path: ["product_or_service"],
     }
+  )
+  .refine(
+    (data) => !data._mandatory_docs_error,
+    (data) => ({
+      message:
+        data._mandatory_docs_error ??
+        "All mandatory documents must be provided",
+      path: ["_mandatory_docs_error"],
+    })
   );
 
 export const claimAccidentSchema = z.object({

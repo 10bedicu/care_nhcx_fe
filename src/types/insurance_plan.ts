@@ -143,6 +143,7 @@ export type InsurancePlanSupportingInfoRequirement = {
   code: CodeableConcept;
   documentation_url: string | null;
   questionnaire: InsurancePlanQuestionnaireRef | null;
+  is_required: boolean;
 };
 
 export type InsurancePlanQuestionnaire = {
