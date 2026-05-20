@@ -282,28 +282,20 @@ const CoverageEligibilityDetailsCard: FC<
                       )}
                     </div>
 
-                    {coverageEligibilityRequest.latest_response.insurance && (
+                    {coverageEligibilityRequest.latest_response.insurances && (
                       <div className="space-y-2">
                         <div className="text-xs font-medium text-gray-700">
-                          Coverage Period:
+                          Members:
                         </div>
-                        {coverageEligibilityRequest.latest_response.insurance.map(
-                          (insurance, index) => (
+                        {coverageEligibilityRequest.latest_response.insurances.map(
+                          (entry, index) => (
                             <div key={index} className="text-xs text-gray-600">
-                              {insurance.benefitPeriod?.start && (
+                              <div>{entry.name ?? "Unknown"}</div>
+                              {entry.policy_period && (
                                 <div>
-                                  Start:{" "}
-                                  {formatDate(insurance.benefitPeriod.start)}
-                                </div>
-                              )}
-                              {insurance.benefitPeriod?.end && (
-                                <div>
-                                  End: {formatDate(insurance.benefitPeriod.end)}
-                                </div>
-                              )}
-                              {insurance.coverage?.reference && (
-                                <div>
-                                  Reference: {insurance.coverage.reference}
+                                  Period:{" "}
+                                  {formatDate(entry.policy_period.start)} →{" "}
+                                  {formatDate(entry.policy_period.end)}
                                 </div>
                               )}
                             </div>
@@ -312,22 +304,20 @@ const CoverageEligibilityDetailsCard: FC<
                       </div>
                     )}
 
-                    {coverageEligibilityRequest.latest_response.error &&
-                      coverageEligibilityRequest.latest_response.error.length >
-                        0 && (
-                        <div className="space-y-2">
-                          <div className="text-xs font-medium text-red-700">
-                            Errors:
-                          </div>
-                          {coverageEligibilityRequest.latest_response.error.map(
-                            (error, index) => (
-                              <div key={index} className="text-xs text-red-600">
-                                {error.code?.text || "Unknown error"}
-                              </div>
-                            )
-                          )}
+                    {coverageEligibilityRequest.latest_response.error && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium text-red-700">
+                          Error:
                         </div>
-                      )}
+                        <pre className="text-xs text-red-600 whitespace-pre-wrap">
+                          {JSON.stringify(
+                            coverageEligibilityRequest.latest_response.error,
+                            null,
+                            2
+                          )}
+                        </pre>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

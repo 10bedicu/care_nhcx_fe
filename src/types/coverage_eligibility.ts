@@ -1,8 +1,4 @@
 import { Coding, Quantity } from "./base";
-import {
-  CoverageEligibilityResponseError,
-  CoverageEligibilityResponseInsurance,
-} from "@medplum/fhirtypes";
 
 import { ChargeItem } from "./charge_item";
 import { Condition } from "./condition";
@@ -66,14 +62,60 @@ export type CoverageEligibilityRequestItem = {
   diagnosis: CoverageEligibilityRequestItemDiagnosis[];
 };
 
+export type Money = {
+  value: number;
+  currency: string;
+};
+
+export type Balance = {
+  allowed: Money;
+  used: Money;
+};
+
+export type ProcedureDocument = {
+  code: string;
+  display: string;
+};
+
+export type ProcedureQuestionnaire = {
+  id: string;
+  display: string;
+  url: string;
+};
+
+export type EligibilityProcedure = {
+  code: string;
+  display: string | null;
+  category: { code: string; display: string } | null;
+  excluded: boolean;
+  allowed_amount: Money | null;
+  authorization_required: boolean;
+  required_documents: ProcedureDocument[];
+  required_questionnaires: ProcedureQuestionnaire[];
+};
+
+export type InsuranceEntry = {
+  pmjay_id: string;
+  is_primary: boolean;
+  name: string | null;
+  dob: string | null;
+  gender: string | null;
+  abha_id: string | null;
+  inforce: boolean;
+  plan_name: string | null;
+  plan_id: string | null;
+  policy_period: { start: string; end: string } | null;
+  balance: Balance | null;
+  procedure: EligibilityProcedure | null;
+};
+
 export type CoverageEligibilityResponse = {
-  outcome: string;
-  disposition?: string;
-  insurance?: CoverageEligibilityResponseInsurance[];
-  error?: CoverageEligibilityResponseError[];
-  request: string; // uuid
+  id: string;
+  outcome: "complete" | "error" | "partial" | "queued";
+  disposition: string | null;
+  insurances: InsuranceEntry[] | null;
+  error: object | null;
   created_date: string;
-  modified_date?: string;
 };
 
 export type CoverageEligibilityRequest = {
@@ -89,7 +131,7 @@ export type CoverageEligibilityRequest = {
   insurance: CoverageEligibilityRequestInsurance[];
   item: CoverageEligibilityRequestItem[];
 
-  latest_response?: CoverageEligibilityResponse;
+  latest_response: CoverageEligibilityResponse | null;
   created_date: string;
   modified_date?: string;
   created_by: User;
