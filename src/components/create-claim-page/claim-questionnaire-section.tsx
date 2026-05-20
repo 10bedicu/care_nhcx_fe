@@ -35,6 +35,7 @@ import {
   UseFormReturn,
   useController,
   useFieldArray,
+  useWatch,
 } from "react-hook-form";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
@@ -46,7 +47,14 @@ import { Input } from "../ui/input";
 
 import { Textarea } from "../ui/textarea";
 import { apis } from "@/apis";
-import { buildInitialItems, extractCoding, itemLabel } from "./questionnaire-helpers";
+import {
+  buildInitialItems,
+  countMissingRequiredItems,
+  extractCoding,
+  hasAnswerValue,
+  itemLabel,
+} from "./questionnaire-helpers";
+import { QuestionnaireResponseItemInput } from "./schema";
 import { cn } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
 import { uploadFile } from "@/lib/upload-file";
@@ -584,6 +592,15 @@ function QuestionnaireItemRenderer({
 }) {
   const [groupExpanded, setGroupExpanded] = useState(true);
 
+  // Always watch the answer array so the required-error indicator stays in
+  // sync as the user fills in the field.  Called unconditionally (hook rule).
+  const watchedAnswer = useWatch({
+    control: form.control,
+    name: `${itemBasePath}.answer` as FieldPath<
+      z.infer<typeof createClaimFormSchema>
+    >,
+  }) as Array<Record<string, unknown>> | undefined;
+
   if (fhirItem.type === "display") {
     return (
       <p className="text-sm text-muted-foreground italic py-0.5">
@@ -624,6 +641,13 @@ function QuestionnaireItemRenderer({
     );
   }
 
+  const answers = watchedAnswer ?? [];
+  const hasValue = fhirItem.repeats
+    ? answers.some((a) => hasAnswerValue(a))
+    : hasAnswerValue(answers[0]);
+  const showRequiredError =
+    fhirItem.required && form.formState.isSubmitted && !hasValue;
+
   return (
     <FormItem className="space-y-1.5">
       <FormLabel className="text-sm">
@@ -652,6 +676,11 @@ function QuestionnaireItemRenderer({
           />
         )}
       </FormControl>
+      {showRequiredError && (
+        <p className="text-sm font-medium text-destructive">
+          This field is required
+        </p>
+      )}
       <FormMessage />
     </FormItem>
   );
@@ -677,12 +706,62 @@ export function QuestionnaireResponseCard({
     PHX: "Past / Family History",
   };
 
+  // Track required-item completeness and surface as a virtual error field so
+  // the Zod refine on claimQuestionnaireResponseSchema blocks submission.
+  const { field: requiredItemsField, fieldState: requiredItemsFieldState } =
+    useController({
+      name: `questionnaire_responses.${qrIdx}._required_items_error` as FieldPath<
+        z.infer<typeof createClaimFormSchema>
+      >,
+      control: form.control,
+    });
+
+  const watchedItems = useWatch({
+    control: form.control,
+    name: `questionnaire_responses.${qrIdx}.item` as FieldPath<
+      z.infer<typeof createClaimFormSchema>
+    >,
+  }) as QuestionnaireResponseItemInput[] | undefined;
+
+  useEffect(() => {
+    const missing = countMissingRequiredItems(detail.items, watchedItems ?? []);
+    requiredItemsField.onChange(
+      missing > 0
+        ? `${missing} required question(s) must be answered`
+        : undefined
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedItems, detail.items, requiredItemsField.onChange]);
+
+  const errorMessage =
+    requiredItemsFieldState.error?.message ||
+    (requiredItemsField.value as string | undefined);
+  const hasError = !!errorMessage;
+
   return (
-    <Card className="border-muted">
+    <Card
+      className={cn(
+        "border",
+        hasError
+          ? "border-destructive bg-destructive/5"
+          : "border-muted"
+      )}
+    >
       <CardHeader className="pb-3 pt-4">
         <div className="flex items-center gap-2">
-          <ClipboardListIcon className="w-4 h-4 text-primary shrink-0" />
+          <ClipboardListIcon
+            className={cn(
+              "w-4 h-4 shrink-0",
+              hasError ? "text-destructive" : "text-primary"
+            )}
+          />
           <span className="font-semibold text-sm">{detail.title}</span>
+          {hasError && (
+            <Badge variant="destructive" className="ml-1 text-xs font-normal gap-1">
+              <AlertCircleIcon className="w-3 h-3" />
+              Incomplete
+            </Badge>
+          )}
           {detail.purpose && (
             <Badge variant="outline" className="ml-auto text-xs font-normal">
               {PURPOSE_LABELS[detail.purpose] ?? detail.purpose}
@@ -712,6 +791,12 @@ export function QuestionnaireResponseCard({
             encounterId={encounterId}
           />
         ))}
+        {hasError && (
+          <div className="flex items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">
+            <AlertCircleIcon className="w-4 h-4 shrink-0" />
+            {errorMessage}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

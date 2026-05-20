@@ -213,13 +213,24 @@ export const questionnaireResponseItemSchema: z.ZodType<QuestionnaireResponseIte
     })
   );
 
-export const claimQuestionnaireResponseSchema = z.object({
-  sequence: z.number().int().nonnegative().default(0),
-  questionnaire: z.string(),
-  category: codingSchema,
-  code: codingSchema,
-  item: z.array(questionnaireResponseItemSchema).default([]),
-});
+export const claimQuestionnaireResponseSchema = z
+  .object({
+    sequence: z.number().int().nonnegative().default(0),
+    questionnaire: z.string(),
+    category: codingSchema,
+    code: codingSchema,
+    item: z.array(questionnaireResponseItemSchema).default([]),
+    _required_items_error: z.string().optional(),
+  })
+  .refine(
+    (data) => !data._required_items_error,
+    (data) => ({
+      message:
+        data._required_items_error ??
+        "All required questions must be answered",
+      path: ["_required_items_error"],
+    })
+  );
 
 export const claimPaymentSchema = z.object({});
 
