@@ -1,7 +1,5 @@
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
-  AlertCircleIcon,
-  CheckCircle2Icon,
   ChevronDownIcon,
   ChevronRightIcon,
   CircleMinusIcon,
@@ -18,23 +16,21 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { UseFormReturn, useController, useFieldArray } from "react-hook-form";
+import { UseFormReturn, useFieldArray } from "react-hook-form";
 
 import { Badge } from "../ui/badge";
 import BenefitSearchSelect from "../common/benefit-search-select";
 import { Button } from "../ui/button";
 import { Coding } from "@/types/base";
 import { Input } from "../ui/input";
-import { InsurancePlanSupportingInfoRequirement } from "@/types/insurance_plan";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import ValuesetSelect from "../common/valueset-select";
 import Autocomplete from "../ui/autocomplete";
 import { apis } from "@/apis";
-import { cn } from "@/lib/utils";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { z } from "zod";
 
 interface CoverageEligibilityRequestItemSectionProps {
@@ -73,8 +69,6 @@ export function CoverageEligibilityRequestItemSection({
   });
 
   const planId = planListData?.results?.[0]?.id ?? null;
-  const watchedItems = form.watch("item");
-  const hasSubmitted = form.formState.submitCount > 0;
 
   return (
     <div className="space-y-6">
@@ -93,19 +87,8 @@ export function CoverageEligibilityRequestItemSection({
       </div>
 
       <div className="space-y-4">
-        {fields.map((field, index) => {
-          const mandatoryDocsError =
-            watchedItems?.[index]?._mandatory_docs_error;
-          return (
-          <Card
-            key={field.id}
-            className={cn(
-              mandatoryDocsError &&
-                (hasSubmitted
-                  ? "border-destructive ring-1 ring-destructive"
-                  : "border-amber-400 ring-1 ring-amber-400")
-            )}
-          >
+        {fields.map((field, index) => (
+          <Card key={field.id}>
             <CardHeader>
               <FormField
                 control={form.control}
@@ -190,11 +173,7 @@ export function CoverageEligibilityRequestItemSection({
               <ModifierField form={form} index={index} planId={planId} />
 
               <AddDiagnosisSection form={form} index={index} />
-              <AddSupportingInfoSection
-                form={form}
-                index={index}
-                planId={planId}
-              />
+              <AddSupportingInfoSection form={form} index={index} />
 
               <div className="grid grid-cols-2 gap-4">
                 <FormField
@@ -273,29 +252,8 @@ export function CoverageEligibilityRequestItemSection({
                 )}
               />
             </CardContent>
-            {mandatoryDocsError && (
-              <CardFooter
-                className={cn(
-                  "px-6 py-3 border-t",
-                  hasSubmitted
-                    ? "border-destructive/30 bg-destructive/5"
-                    : "border-amber-300 bg-amber-50"
-                )}
-              >
-                <div
-                  className={cn(
-                    "flex items-center gap-2 text-sm font-medium",
-                    hasSubmitted ? "text-destructive" : "text-amber-700"
-                  )}
-                >
-                  <AlertCircleIcon className="h-4 w-4 flex-shrink-0" />
-                  {mandatoryDocsError}
-                </div>
-              </CardFooter>
-            )}
           </Card>
-          );
-        })}
+        ))}
 
         <FormField
           control={form.control}
@@ -388,7 +346,7 @@ function ModifierField({
             <div className="grid gap-4">
               <Autocomplete
                 options={qualifiers.map((q) => ({
-                  label: q.display ? `${q.code} - ${q.display}` : q.code,
+                  label: q.display ? `${q.code} – ${q.display}` : q.code,
                   value: q.code,
                 }))}
                 value={undefined}
@@ -423,7 +381,7 @@ function ModifierField({
                   <Badge key={code.code} className="flex gap-2">
                     <span className="font-mono">{code.code}</span>
                     {code.display && (
-                      <span className="opacity-80"> - {code.display}</span>
+                      <span className="opacity-80"> – {code.display}</span>
                     )}
                     <XIcon
                       className="w-4 h-4 cursor-pointer"
@@ -562,172 +520,38 @@ function AddDiagnosisSection({
 function AddSupportingInfoSection({
   form,
   index,
-  planId,
 }: {
   form: UseFormReturn<
     z.infer<typeof createCoverageEligibilityRequestFormSchema>
   >;
   index: number;
-  planId: string | null;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const supportingInfoFields = form.watch("supporting_info") || [];
   const itemSupportingInfoSequences =
     form.watch(`item.${index}.supporting_info_sequence`) || [];
-  const productCode = form.watch(`item.${index}.product_or_service`)?.code;
-
   const { fields: supportingInfoArrayFields, append: appendSupportingInfo } =
     useFieldArray({
       name: "supporting_info",
       control: form.control,
     });
 
-  const { data: benefitDetail } = useQuery({
-    queryKey: ["insurancePlanBenefit", "lookup", planId, productCode],
-    queryFn: () =>
-      apis.insurancePlanBenefit.lookup({
-        insurance_plan: planId!,
-        type_code: productCode!,
-      }),
-    enabled: Boolean(planId && productCode),
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const allSupportingInfoRequirements = useMemo(() => {
-    const all = benefitDetail?.supporting_info_requirements ?? [];
-    const filtered = all.filter((req) => !req.documentation_url);
-    const seen = new Set<string>();
-    return filtered.filter((req) => {
-      const key = `${req.category_code}:${req.code_code}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }, [benefitDetail]);
-
-  const requiredRequirements = useMemo(
-    () => allSupportingInfoRequirements.filter((req) => req.is_required),
-    [allSupportingInfoRequirements]
-  );
-
-  const recommendedRequirements = useMemo(
-    () => allSupportingInfoRequirements.filter((req) => !req.is_required),
-    [allSupportingInfoRequirements]
-  );
-
   const itemSpecificSupportingInfo = supportingInfoFields.filter((info) =>
     itemSupportingInfoSequences.includes(info.sequence)
   );
-
-  type RequirementStatus = "satisfied" | "incomplete" | "missing";
-
-  const getRequirementStatus = (
-    req: InsurancePlanSupportingInfoRequirement
-  ): RequirementStatus => {
-    const matchingEntry = itemSpecificSupportingInfo.find(
-      (info) =>
-        info.category?.code === req.category_code &&
-        info.code?.code === req.code_code
-    );
-    if (!matchingEntry) return "missing";
-    const hasValue =
-      matchingEntry.value_string ||
-      matchingEntry.value_attachment ||
-      matchingEntry.value_file;
-    return hasValue ? "satisfied" : "incomplete";
-  };
-
-  const requirementStatuses = useMemo(
-    () =>
-      requiredRequirements.map((req) => ({
-        req,
-        status: getRequirementStatus(req),
-      })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [requiredRequirements, itemSpecificSupportingInfo]
-  );
-
-  const recommendedStatuses = useMemo(
-    () =>
-      recommendedRequirements.map((req) => ({
-        req,
-        status: getRequirementStatus(req),
-      })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [recommendedRequirements, itemSpecificSupportingInfo]
-  );
-
-  const unsatisfiedCount = requirementStatuses.filter(
-    ({ status }) => status !== "satisfied"
-  ).length;
-
-  const {
-    field: mandatoryDocsField,
-    fieldState: mandatoryDocsFieldState,
-  } = useController({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    name: `item.${index}._mandatory_docs_error` as any,
-    control: form.control,
-  });
-
-  useEffect(() => {
-    if (requiredRequirements.length > 0 && unsatisfiedCount > 0) {
-      mandatoryDocsField.onChange(
-        `${unsatisfiedCount} required document(s) must be uploaded before submitting`
-      );
-    } else {
-      mandatoryDocsField.onChange(undefined);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mandatoryDocsField.onChange, requiredRequirements.length, unsatisfiedCount]);
-
-  const addSupportingInfoForRequirement = (
-    req: InsurancePlanSupportingInfoRequirement
-  ) => {
-    const alreadyAdded = itemSpecificSupportingInfo.some(
-      (info) =>
-        info.category?.code === req.category_code &&
-        info.code?.code === req.code_code
-    );
-    if (!alreadyAdded) {
-      const newSequence =
-        (supportingInfoArrayFields[supportingInfoArrayFields.length - 1]
-          ?.sequence ?? 0) + 1;
-      appendSupportingInfo({
-        sequence: newSequence,
-        category: {
-          system: req.category.coding?.[0]?.system ?? "",
-          code: req.category_code,
-          display: req.category.text ?? req.category.coding?.[0]?.display,
-        },
-        code: {
-          system: req.code.coding?.[0]?.system ?? "",
-          code: req.code_code,
-          display: req.code.text ?? req.code.coding?.[0]?.display,
-        },
-        value_string: undefined,
-        value_attachment: undefined,
-      });
-      const currentSequences =
-        form.getValues(`item.${index}.supporting_info_sequence`) || [];
-      form.setValue(`item.${index}.supporting_info_sequence`, [
-        ...currentSequences,
-        newSequence,
-      ]);
-    }
-    if (!isExpanded) setIsExpanded(true);
-  };
 
   const addNewSupportingInfo = () => {
     const newSequence =
       (supportingInfoArrayFields[supportingInfoArrayFields.length - 1]
         ?.sequence ?? 0) + 1;
-    appendSupportingInfo({
+    const newSupportingInfo = {
       sequence: newSequence,
       value_string: undefined,
       value_attachment: undefined,
       value_file: undefined,
-    });
+    };
+
+    appendSupportingInfo(newSupportingInfo);
 
     const currentSequences =
       form.getValues(`item.${index}.supporting_info_sequence`) || [];
@@ -740,10 +564,7 @@ function AddSupportingInfoSection({
   return (
     <div className="space-y-4">
       <div
-        className={cn(
-          "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
-          unsatisfiedCount > 0 && "border-amber-400 bg-amber-50/50"
-        )}
+        className="flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center space-x-2">
@@ -758,206 +579,42 @@ function AddSupportingInfoSection({
               {itemSpecificSupportingInfo.length}
             </Badge>
           )}
-          {unsatisfiedCount > 0 && (
-            <Badge variant="destructive" className="ml-1 text-xs">
-              {unsatisfiedCount} doc{unsatisfiedCount > 1 ? "s" : ""} required
-            </Badge>
-          )}
         </div>
       </div>
 
-      {(mandatoryDocsFieldState.error?.message || mandatoryDocsField.value) && (
-        <p className="text-sm font-medium text-destructive px-1">
-          {mandatoryDocsFieldState.error?.message || mandatoryDocsField.value}
-        </p>
-      )}
-
       {isExpanded && (
         <div className="space-y-4 pl-4">
-          {/* Required Documents Panel */}
-          {requirementStatuses.length > 0 && (
-            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Required Documents
-              </p>
-              <div className="space-y-1.5">
-                {requirementStatuses.map(({ req, status }) => {
-                  const label =
-                    req.code.text ??
-                    req.code.coding?.[0]?.display ??
-                    req.code_code;
-                  const categoryLabel =
-                    req.category.text ??
-                    req.category.coding?.[0]?.display ??
-                    req.category_code;
-                  return (
-                    <div
-                      key={req.id}
-                      className={cn(
-                        "flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm",
-                        status === "satisfied" && "bg-green-50 text-green-800",
-                        (status === "incomplete" || status === "missing") &&
-                          "bg-amber-50 text-amber-800"
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        {status === "satisfied" ? (
-                          <CheckCircle2Icon className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
-                        ) : (
-                          <AlertCircleIcon className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                        )}
-                        <span className="truncate">
-                          {label}{" "}
-                          <span className="opacity-60 text-xs">
-                            ({categoryLabel})
-                          </span>
-                        </span>
-                      </div>
-                      {status === "missing" && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-6 text-xs px-2 shrink-0 border-amber-300 bg-white hover:bg-amber-50"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            addSupportingInfoForRequirement(req);
-                          }}
-                        >
-                          <PlusIcon className="w-3 h-3 mr-0.5" />
-                          Add
-                        </Button>
-                      )}
-                      {status === "incomplete" && (
-                        <span className="text-xs text-amber-600 shrink-0 font-medium">
-                          Upload required
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Recommended Documents Panel */}
-          {recommendedStatuses.length > 0 && (
-            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                Recommended Documents
-              </p>
-              <div className="space-y-1.5">
-                {recommendedStatuses.map(({ req, status }) => {
-                  const label =
-                    req.code.text ??
-                    req.code.coding?.[0]?.display ??
-                    req.code_code;
-                  const categoryLabel =
-                    req.category.text ??
-                    req.category.coding?.[0]?.display ??
-                    req.category_code;
-                  return (
-                    <div
-                      key={req.id}
-                      className={cn(
-                        "flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm",
-                        status === "satisfied" && "bg-green-50 text-green-800",
-                        (status === "incomplete" || status === "missing") &&
-                          "bg-blue-50 text-blue-800"
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        {status === "satisfied" ? (
-                          <CheckCircle2Icon className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
-                        ) : (
-                          <AlertCircleIcon className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                        )}
-                        <span className="truncate">
-                          {label}{" "}
-                          <span className="opacity-60 text-xs">
-                            ({categoryLabel})
-                          </span>
-                        </span>
-                      </div>
-                      {status === "missing" && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-6 text-xs px-2 shrink-0 border-blue-300 bg-white hover:bg-blue-50"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            addSupportingInfoForRequirement(req);
-                          }}
-                        >
-                          <PlusIcon className="w-3 h-3 mr-0.5" />
-                          Add
-                        </Button>
-                      )}
-                      {status === "incomplete" && (
-                        <span className="text-xs text-blue-600 shrink-0 font-medium">
-                          Upload pending
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           {itemSpecificSupportingInfo.map((info, infoIndex) => {
             const mainInfoIndex = supportingInfoFields.findIndex(
               (i) => i.sequence === info.sequence
             );
-            const matchingRequirement = allSupportingInfoRequirements.find(
-              (req) =>
-                req.category_code === info.category?.code &&
-                req.code_code === info.code?.code
-            );
-            const isRequiredDoc = Boolean(matchingRequirement?.is_required);
-
             return (
               <Card key={infoIndex}>
                 <CardHeader>
                   <div className="flex justify-between items-center gap-2">
                     <FormField
                       control={form.control}
-                      name={`supporting_info.${mainInfoIndex}.code`}
+                      name={`supporting_info.${mainInfoIndex}.sequence`}
                       render={({ field }) => (
                         <FormItem className="space-y-1.5 w-full">
                           <FormLabel>
-                            Document
-                            {matchingRequirement && (
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "ml-2 text-xs font-normal",
-                                  isRequiredDoc
-                                    ? "border-amber-400 text-amber-700"
-                                    : "border-blue-400 text-blue-700"
-                                )}
-                              >
-                                {isRequiredDoc ? "Required" : "Recommended"}
-                              </Badge>
-                            )}
+                            Sequence
+                            <span className="text-red-500 text-sm ml-0.5">
+                              *
+                            </span>
                           </FormLabel>
                           <FormControl>
-                            {isRequiredDoc ? (
-                              <Input
-                                value={
-                                  field.value?.display ?? field.value?.code ?? ""
-                                }
-                                disabled
-                                className="bg-muted"
-                              />
-                            ) : (
-                              <Input
-                                value="Supporting Document"
-                                disabled
-                                className="bg-muted text-muted-foreground"
-                              />
-                            )}
+                            <Input
+                              type="number"
+                              value={field.value || ""}
+                              onChange={(e) => {
+                                form.setValue(
+                                  `supporting_info.${mainInfoIndex}.sequence`,
+                                  e.target.value ? parseInt(e.target.value) : 0
+                                );
+                              }}
+                              placeholder="Enter sequence number"
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -996,42 +653,6 @@ function AddSupportingInfoSection({
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {isRequiredDoc && (
-                    <FormField
-                      control={form.control}
-                      name={`supporting_info.${mainInfoIndex}.category`}
-                      render={({ field }) => (
-                        <FormItem className="space-y-1.5">
-                          <FormLabel>Category</FormLabel>
-                          <FormControl>
-                            <Input
-                              value={
-                                field.value?.display ?? field.value?.code ?? ""
-                              }
-                              disabled
-                              className="bg-muted"
-                            />
-                          </FormControl>
-                          {matchingRequirement && (
-                            <p
-                              className={cn(
-                                "text-xs",
-                                isRequiredDoc
-                                  ? "text-amber-600"
-                                  : "text-blue-600"
-                              )}
-                            >
-                              {isRequiredDoc
-                                ? "Required by insurance plan benefit"
-                                : "Recommended by insurance plan benefit"}
-                            </p>
-                          )}
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  )}
-
                   <SupportingInfoFileUpload
                     form={form}
                     mainInfoIndex={mainInfoIndex}

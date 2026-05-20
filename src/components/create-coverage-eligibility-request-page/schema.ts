@@ -26,8 +26,6 @@ export const quantitySchema = z.object({
 export const coverageEligibilityRequestSupportingInfoSchema = z
   .object({
     sequence: z.number().int().positive(),
-    category: codingSchema.optional(),
-    code: codingSchema.optional(),
     value_string: z.string().optional(),
     value_attachment: z.string().uuid().optional(),
     value_file: z.instanceof(File).optional(),
@@ -42,8 +40,8 @@ export const coverageEligibilityRequestSupportingInfoSchema = z
     },
     {
       message:
-        "Please provide a value — either enter text or upload an attachment",
-      path: ["value_string"],
+        "Either value_string or value_attachment must be provided, but not both",
+      path: ["value_string", "value_attachment"],
     }
   );
 
@@ -78,8 +76,8 @@ export const coverageEligibilityRequestDiagnosisSchema = z
     },
     {
       message:
-        "Either a diagnosis reference or a diagnosis code must be provided, but not both",
-      path: ["diagnosis_code"],
+        "Either diagnosis_reference or diagnosis_code must be provided, but not both",
+      path: ["diagnosis_reference", "diagnosis_code"],
     }
   );
 
@@ -93,7 +91,6 @@ export const coverageEligibilityRequestItemSchema = z
     quantity: quantitySchema,
     unit_price: z.number().gt(0),
     diagnosis: z.array(coverageEligibilityRequestDiagnosisSchema).default([]),
-    _mandatory_docs_error: z.string().optional(),
   })
   .refine(
     (data) => {
@@ -104,18 +101,9 @@ export const coverageEligibilityRequestItemSchema = z
     },
     {
       message:
-        "Either a product/service or a charge item must be provided, but not both",
-      path: ["product_or_service"],
+        "Either product_or_service or charge_item must be provided, but not both",
+      path: ["product_or_service", "charge_item"],
     }
-  )
-  .refine(
-    (data) => !data._mandatory_docs_error,
-    (data) => ({
-      message:
-        data._mandatory_docs_error ??
-        "All mandatory documents must be provided",
-      path: ["_mandatory_docs_error"],
-    })
   );
 
 export const createCoverageEligibilityRequestFormSchema = z.object({
