@@ -12,6 +12,11 @@ import {
   FormItem,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  PolicyIdentifierTab,
+  PolicyLookupTabs,
+} from "@/components/common/policy-lookup-tabs";
+import { useEffect, useState } from "react";
 
 import { Checkbox } from "../ui/checkbox";
 import { Policy } from "@/types/policy";
@@ -25,26 +30,62 @@ interface ClaimInsuranceSectionProps {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
 }
 
+type SearchParams = {
+  identifiertype: "AbhaNumber" | "MobileNo" | "MemberId";
+  identifiervalue: string;
+};
+
 export function ClaimInsuranceSection({ form }: ClaimInsuranceSectionProps) {
+  const [activeTab, setActiveTab] = useState<PolicyIdentifierTab>("abha");
+  const [mobileInput, setMobileInput] = useState("");
+  const [memberIdInput, setMemberIdInput] = useState("SBXSTG007");
+  const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
+
   const { data: abhaNumber } = useQuery({
     queryKey: ["abhaNumber", form.getValues("patient")],
     queryFn: () => apis.abhaNumber.get(form.getValues("patient")),
     enabled: !!form.getValues("patient"),
   });
 
-  const { data: policies } = useQuery({
-    queryKey: ["policies", abhaNumber?.abha_number, abhaNumber?.mobile],
-    queryFn: () =>
-      apis.gateway.policies({
-        // identifiertype: abhaNumber?.mobile ? "MobileNo" : "AbhaNumber",
-        // identifiervalue:
-        //   abhaNumber?.mobile ??
-        //   abhaNumber?.abha_number?.replace(/-/g, "") ??
-        //   "",
-        identifiertype: "MemberId",
-        identifiervalue: "SBXSTG007",
-      }),
-    enabled: !!abhaNumber?.abha_number || !!abhaNumber?.mobile,
+  useEffect(() => {
+    if (abhaNumber?.mobile) {
+      setMobileInput(abhaNumber.mobile);
+    }
+  }, [abhaNumber?.mobile]);
+
+  useEffect(() => {
+    if (activeTab === "abha" && abhaNumber?.abha_number) {
+      setSearchParams({
+        identifiertype: "AbhaNumber",
+        identifiervalue: abhaNumber.abha_number.replace(/-/g, ""),
+      });
+    } else if (activeTab === "mobile" && abhaNumber?.mobile) {
+      setSearchParams({
+        identifiertype: "MobileNo",
+        identifiervalue: abhaNumber.mobile,
+      });
+    } else if (activeTab !== "memberId") {
+      setSearchParams(null);
+    }
+  }, [activeTab, abhaNumber]);
+
+  const handleTabChange = (tab: PolicyIdentifierTab) => {
+    setActiveTab(tab);
+    setSearchParams(null);
+  };
+
+  const handleSearch = () => {
+    if (activeTab === "mobile" && mobileInput) {
+      setSearchParams({ identifiertype: "MobileNo", identifiervalue: mobileInput });
+    } else if (activeTab === "memberId" && memberIdInput) {
+      setSearchParams({ identifiertype: "MemberId", identifiervalue: memberIdInput });
+    }
+  };
+
+  const { data: policies, isFetching: isPoliciesLoading } = useQuery({
+    queryKey: ["policies", searchParams],
+    queryFn: () => apis.gateway.policies(searchParams!),
+    enabled: !!searchParams,
   });
 
   return (
@@ -60,6 +101,18 @@ export function ClaimInsuranceSection({ form }: ClaimInsuranceSectionProps) {
           </p>
         </div>
       </div>
+
+      <PolicyLookupTabs
+        abhaValue={abhaNumber?.abha_number ?? ""}
+        mobileValue={mobileInput}
+        memberIdValue={memberIdInput}
+        onMobileChange={setMobileInput}
+        onMemberIdChange={setMemberIdInput}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        onSearch={handleSearch}
+        isLoading={isPoliciesLoading}
+      />
 
       <div>
         <FormField
