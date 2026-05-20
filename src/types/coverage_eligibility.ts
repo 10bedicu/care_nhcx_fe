@@ -44,6 +44,7 @@ export type CoverageEligibilityRequestSupportingInfo = {
 };
 
 export type CoverageEligibilityRequestInsurance = {
+  sequence: number;
   focal: boolean;
   policy: Policy;
 };
@@ -54,6 +55,7 @@ export type CoverageEligibilityRequestItemDiagnosis = {
 };
 
 export type CoverageEligibilityRequestItem = {
+  sequence: number;
   supporting_info_sequence: number[];
   category: Coding;
   product_or_service: Coding;

@@ -83,6 +83,7 @@ export const coverageEligibilityRequestDiagnosisSchema = z
 
 export const coverageEligibilityRequestItemSchema = z
   .object({
+    sequence: z.number().int().positive(),
     supporting_info_sequence: z.array(z.number().int().positive()).default([]),
     category: codingSchema,
     product_or_service: codingSchema.optional(),

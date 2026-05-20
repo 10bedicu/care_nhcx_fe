@@ -17,7 +17,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { UseFormReturn, useFieldArray } from "react-hook-form";
+import { useMemo, useState } from "react";
 
+import Autocomplete from "../ui/autocomplete";
 import { Badge } from "../ui/badge";
 import BenefitSearchSelect from "../common/benefit-search-select";
 import { Button } from "../ui/button";
@@ -26,11 +28,9 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import ValuesetSelect from "../common/valueset-select";
-import Autocomplete from "../ui/autocomplete";
 import { apis } from "@/apis";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
 import { z } from "zod";
 
 interface CoverageEligibilityRequestItemSectionProps {
@@ -268,6 +268,7 @@ export function CoverageEligibilityRequestItemSection({
                   className="w-full"
                   onClick={() =>
                     append({
+                      sequence: (fields[fields.length - 1]?.sequence ?? 0) + 1,
                       category: undefined as unknown as Coding,
                       product_or_service: undefined,
                       charge_item: undefined,

@@ -152,7 +152,8 @@ const CreateCoverageEligibilityRequestPage: FC<
     if (codedChargeItems.length > 0) {
       form.setValue(
         "item",
-        codedChargeItems.map((ci) => ({
+        codedChargeItems.map((ci, idx) => ({
+          sequence: idx + 1,
           supporting_info_sequence: [...informationSequences],
           category: {
             display: "Primary healthcare service",
