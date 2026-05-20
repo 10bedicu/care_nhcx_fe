@@ -140,6 +140,7 @@ export const claimItemSchema = z
     unit_price: z.number().gt(0),
     factor: z.number().optional(),
     _mandatory_docs_error: z.string().optional(),
+    _mandatory_questionnaires_error: z.string().optional(),
   })
   .refine(
     (data) => {
@@ -161,6 +162,15 @@ export const claimItemSchema = z
         data._mandatory_docs_error ??
         "All mandatory documents must be provided",
       path: ["_mandatory_docs_error"],
+    })
+  )
+  .refine(
+    (data) => !data._mandatory_questionnaires_error,
+    (data) => ({
+      message:
+        data._mandatory_questionnaires_error ??
+        "All mandatory questionnaires must be completed",
+      path: ["_mandatory_questionnaires_error"],
     })
   );
 

@@ -1,5 +1,7 @@
 import { Card, CardContent, CardHeader } from "../ui/card";
 import {
+  AlertCircleIcon,
+  CheckCircle2Icon,
   ChevronDownIcon,
   ChevronRightIcon,
   ClipboardListIcon,
@@ -13,6 +15,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import {
+  InsurancePlanQuestionnaire,
   InsurancePlanQuestionnaireDetail,
   InsurancePlanSupportingInfoRequirement,
   QuestionnaireAnswerOption,
@@ -33,7 +36,7 @@ import {
   useController,
   useFieldArray,
 } from "react-hook-form";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { Badge } from "../ui/badge";
@@ -758,25 +761,57 @@ export function AddQuestionnaireSection({
     staleTime: 5 * 60 * 1000,
   });
 
-  // Primary source: the questionnaires[] array on the benefit detail
-  // (has_questionnaire flag on the benefit is a quick check)
-  const benefitQuestionnaires = benefitDetail?.questionnaires ?? [];
+  // Questionnaire requirements are supporting_info_requirements that have a documentation_url.
+  // is_required is read directly from the requirement — no separate derivation needed.
+  const questionnaireRequirements = useMemo(() => {
+    const all = benefitDetail?.supporting_info_requirements ?? [];
+    const filtered = all.filter((req) => req.documentation_url !== null);
+    // Deduplicate by questionnaire fhir_id
+    const seen = new Set<string>();
+    return filtered.filter((req) => {
+      const key = req.questionnaire?.fhir_id ?? req.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [benefitDetail]);
 
-  // For each questionnaire, find the matching supporting_info_requirement
-  // to get the category + code needed for submission
-  const requirementByFhirId = useMemo(() => {
-    const map = new Map<string, InsurancePlanSupportingInfoRequirement>();
-    for (const req of benefitDetail?.supporting_info_requirements ?? []) {
-      if (req.questionnaire?.fhir_id) {
-        map.set(req.questionnaire.fhir_id, req);
-      }
+  const requiredRequirements = useMemo(
+    () => questionnaireRequirements.filter((req) => req.is_required),
+    [questionnaireRequirements]
+  );
+
+  const optionalRequirements = useMemo(
+    () => questionnaireRequirements.filter((req) => !req.is_required),
+    [questionnaireRequirements]
+  );
+
+  // Map fhir_id → InsurancePlanQuestionnaire to resolve the internal id for API calls
+  const questionnaireByFhirId = useMemo(() => {
+    const map = new Map<string, InsurancePlanQuestionnaire>();
+    for (const q of benefitDetail?.questionnaires ?? []) {
+      map.set(q.fhir_id, q);
     }
     return map;
   }, [benefitDetail]);
 
-  // Fetch full questionnaire details (items array + full_url)
+  // Build the list of questionnaires to fetch — one per unique requirement
+  const questionnairesToFetch = useMemo(() => {
+    const seen = new Set<string>();
+    return questionnaireRequirements
+      .map((req) => {
+        if (!req.questionnaire?.fhir_id) return null;
+        const q = questionnaireByFhirId.get(req.questionnaire.fhir_id);
+        if (!q || seen.has(q.id)) return null;
+        seen.add(q.id);
+        return q;
+      })
+      .filter(Boolean) as InsurancePlanQuestionnaire[];
+  }, [questionnaireRequirements, questionnaireByFhirId]);
+
+  // Fetch full questionnaire details using the questionnaire id (not fhir_id)
   const detailQueries = useQueries({
-    queries: benefitQuestionnaires.map((q) => ({
+    queries: questionnairesToFetch.map((q) => ({
       queryKey: ["insurancePlanQuestionnaire", q.id],
       queryFn: () => apis.insurancePlanQuestionnaire.get(q.id),
       enabled: Boolean(q.id),
@@ -794,82 +829,109 @@ export function AddQuestionnaireSection({
     [detailQueries.map((q) => q.dataUpdatedAt).join()]
   );
 
-  // Upsert questionnaire_responses entries as details arrive
-  const initKeyRef = useRef<string>("");
-  useEffect(() => {
-    if (!allDetailsLoaded || loadedDetails.length === 0) return;
-    const key = loadedDetails.map((d) => d.full_url).join(",");
-    if (initKeyRef.current === key) return;
-    initKeyRef.current = key;
-
-    const currentResponses = form.getValues("questionnaire_responses") ?? [];
-    let changed = false;
-    const next = [...currentResponses];
-
-    loadedDetails.forEach((detail) => {
-      if (next.find((r) => r.questionnaire === detail.full_url)) return;
-
-      // Get category/code from the matched supporting_info_requirement.
-      // Fall back to purpose-based defaults when no requirement is linked.
-      const req = requirementByFhirId.get(detail.fhir_id);
-      const category = req
-        ? extractCoding(req.category)
-        : {
-            system:
-              "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
-            code: "INF",
-            display: "Additional info related to claim",
-          };
-      const code = req
-        ? extractCoding(req.code)
-        : {
-            system:
-              "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
-            code: detail.purpose ?? "INF",
-            display: detail.title,
-          };
-
-      next.push({
-        sequence: 0,
-        questionnaire: detail.full_url,
-        category,
-        code,
-        item: buildInitialItems(detail.items),
-      });
-      changed = true;
-    });
-
-    if (changed) {
-      form.setValue("questionnaire_responses", next, { shouldDirty: false });
+  // Map fhir_id → detail for quick lookup per requirement
+  const detailByFhirId = useMemo(() => {
+    const map = new Map<string, InsurancePlanQuestionnaireDetail>();
+    for (const detail of loadedDetails) {
+      map.set(detail.fhir_id, detail);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allDetailsLoaded, loadedDetails]);
+    return map;
+  }, [loadedDetails]);
+
+  const getDetailForReq = (req: InsurancePlanSupportingInfoRequirement) => {
+    if (!req.questionnaire?.fhir_id) return undefined;
+    return detailByFhirId.get(req.questionnaire.fhir_id);
+  };
 
   const watchedQR = form.watch("questionnaire_responses") ?? [];
 
-  // Nothing to show until a benefit is selected
-  if (!productCode) return null;
+  type QStatus = "missing" | "added";
 
-  // Nothing to show until the insurance plan resolves (query would be disabled otherwise)
-  if (!planId) return null;
+  const getQStatus = (req: InsurancePlanSupportingInfoRequirement): QStatus => {
+    const detail = getDetailForReq(req);
+    if (!detail) return "missing";
+    return watchedQR.some((r) => r.questionnaire === detail.full_url)
+      ? "added"
+      : "missing";
+  };
 
-  // Once benefit detail is confirmed loaded with no questionnaires, hide the panel
-  if (!isBenefitLoading && benefitDetail && !benefitDetail.has_questionnaire) {
+  const requiredStatuses = useMemo(
+    () => requiredRequirements.map((req) => ({ req, status: getQStatus(req) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [requiredRequirements, watchedQR, detailByFhirId]
+  );
+
+  const optionalStatuses = useMemo(
+    () => optionalRequirements.map((req) => ({ req, status: getQStatus(req) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [optionalRequirements, watchedQR, detailByFhirId]
+  );
+
+  const unsatisfiedCount = requiredStatuses.filter(
+    ({ status }) => status !== "added"
+  ).length;
+
+  // Validation controller for mandatory questionnaires
+  const { field: mandatoryQRField, fieldState: mandatoryQRFieldState } =
+    useController({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      name: `item.${index}._mandatory_questionnaires_error` as any,
+      control: form.control,
+    });
+
+  useEffect(() => {
+    if (requiredRequirements.length > 0 && unsatisfiedCount > 0) {
+      mandatoryQRField.onChange(
+        `${unsatisfiedCount} required questionnaire(s) must be completed before submitting`
+      );
+    } else {
+      mandatoryQRField.onChange(undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mandatoryQRField.onChange, requiredRequirements.length, unsatisfiedCount]);
+
+  // Initialise a questionnaire response entry when the user clicks Add
+  const addQuestionnaireForReq = (
+    req: InsurancePlanSupportingInfoRequirement
+  ) => {
+    const detail = getDetailForReq(req);
+    if (!detail) return;
+    const currentResponses = form.getValues("questionnaire_responses") ?? [];
+    if (currentResponses.find((r) => r.questionnaire === detail.full_url))
+      return;
+    form.setValue(
+      "questionnaire_responses",
+      [
+        ...currentResponses,
+        {
+          sequence: 0,
+          questionnaire: detail.full_url,
+          category: extractCoding(req.category),
+          code: extractCoding(req.code),
+          item: buildInitialItems(detail.items),
+        },
+      ],
+      { shouldDirty: true }
+    );
+    if (!isExpanded) setIsExpanded(true);
+  };
+
+  if (!productCode || !planId) return null;
+  if (!isBenefitLoading && benefitDetail && questionnaireRequirements.length === 0)
     return null;
-  }
 
   const isLoading =
-    isBenefitLoading || (benefitDetail?.has_questionnaire && !allDetailsLoaded);
+    isBenefitLoading ||
+    (questionnaireRequirements.length > 0 && !allDetailsLoaded);
 
   return (
     <div className="space-y-4">
-      {/* Collapsible header — same visual style as AddSupportingInfoSection */}
       <div
         className={cn(
           "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
-          isExpanded && "border-primary/30 bg-primary/5"
+          unsatisfiedCount > 0 && "border-amber-400 bg-amber-50/50"
         )}
-        onClick={() => setIsExpanded((v) => !v)}
+        onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center space-x-2">
           {isExpanded ? (
@@ -878,9 +940,14 @@ export function AddQuestionnaireSection({
             <ChevronRightIcon className="w-4 h-4" />
           )}
           <span className="font-medium">Questionnaires</span>
-          {benefitQuestionnaires.length > 0 && (
+          {watchedQR.length > 0 && (
             <Badge variant="secondary" className="ml-2">
-              {benefitQuestionnaires.length}
+              {watchedQR.length}
+            </Badge>
+          )}
+          {unsatisfiedCount > 0 && (
+            <Badge variant="destructive" className="ml-1 text-xs">
+              {unsatisfiedCount} required
             </Badge>
           )}
         </div>
@@ -891,17 +958,127 @@ export function AddQuestionnaireSection({
         )}
       </div>
 
+      {(mandatoryQRFieldState.error?.message || mandatoryQRField.value) && (
+        <p className="text-sm font-medium text-destructive px-1">
+          {mandatoryQRFieldState.error?.message || mandatoryQRField.value}
+        </p>
+      )}
+
       {isExpanded && (
-        <div className="pl-4">
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground py-2">
-              Loading questionnaires…
-            </p>
-          ) : loadedDetails.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-2">
-              No questionnaires found for this benefit.
-            </p>
-          ) : (
+        <div className="space-y-4 pl-4">
+          {/* Required Questionnaires Panel */}
+          {requiredStatuses.length > 0 && (
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Required Questionnaires
+              </p>
+              <div className="space-y-1.5">
+                {requiredStatuses.map(({ req, status }) => {
+                  const label =
+                    req.questionnaire?.title ??
+                    req.code.text ??
+                    req.code.coding?.[0]?.display ??
+                    req.code_code;
+                  const detail = getDetailForReq(req);
+                  return (
+                    <div
+                      key={req.id}
+                      className={cn(
+                        "flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm",
+                        status === "added" && "bg-green-50 text-green-800",
+                        status === "missing" && "bg-amber-50 text-amber-800"
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {status === "added" ? (
+                          <CheckCircle2Icon className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                        ) : (
+                          <AlertCircleIcon className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                        )}
+                        <span className="truncate">{label}</span>
+                      </div>
+                      {status === "missing" && detail && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-xs px-2 shrink-0 border-amber-300 bg-white hover:bg-amber-50"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addQuestionnaireForReq(req);
+                          }}
+                        >
+                          <PlusIcon className="w-3 h-3 mr-0.5" />
+                          Add
+                        </Button>
+                      )}
+                      {status === "missing" && !detail && isLoading && (
+                        <span className="text-xs text-amber-600 animate-pulse">
+                          Loading…
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Optional Questionnaires Panel */}
+          {optionalStatuses.length > 0 && (
+            <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                Optional Questionnaires
+              </p>
+              <div className="space-y-1.5">
+                {optionalStatuses.map(({ req, status }) => {
+                  const label =
+                    req.questionnaire?.title ??
+                    req.code.text ??
+                    req.code.coding?.[0]?.display ??
+                    req.code_code;
+                  const detail = getDetailForReq(req);
+                  return (
+                    <div
+                      key={req.id}
+                      className={cn(
+                        "flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm",
+                        status === "added" && "bg-green-50 text-green-800",
+                        status === "missing" && "bg-blue-50 text-blue-800"
+                      )}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        {status === "added" ? (
+                          <CheckCircle2Icon className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+                        ) : (
+                          <AlertCircleIcon className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                        )}
+                        <span className="truncate">{label}</span>
+                      </div>
+                      {status === "missing" && detail && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-xs px-2 shrink-0 border-blue-300 bg-white hover:bg-blue-50"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addQuestionnaireForReq(req);
+                          }}
+                        >
+                          <PlusIcon className="w-3 h-3 mr-0.5" />
+                          Add
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Questionnaire response forms for added entries */}
+          {loadedDetails.length > 0 && (
             <div className="space-y-4">
               {loadedDetails.map((detail) => {
                 const qrIdx = watchedQR.findIndex(
