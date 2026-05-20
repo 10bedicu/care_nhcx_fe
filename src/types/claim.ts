@@ -107,6 +107,35 @@ export type ClaimAccident = {
   location?: string;
 };
 
+export type ClaimQuestionnaireResponseAnswer = {
+  value_boolean?: boolean;
+  value_decimal?: number;
+  value_integer?: number;
+  value_date?: string;
+  value_date_time?: string;
+  value_time?: string;
+  value_string?: string;
+  value_uri?: string;
+  value_coding?: Coding;
+  value_quantity?: { value: number; unit?: string };
+  value_attachment?: string;
+};
+
+export type ClaimQuestionnaireResponseItem = {
+  link_id: string;
+  text?: string;
+  answer: ClaimQuestionnaireResponseAnswer[];
+  item?: ClaimQuestionnaireResponseItem[];
+};
+
+export type ClaimQuestionnaireResponse = {
+  sequence: number;
+  questionnaire: string;
+  category: Coding;
+  code: Coding;
+  item: ClaimQuestionnaireResponseItem[];
+};
+
 export type ClaimPayee = unknown;
 
 export type ClaimResponse = {
@@ -143,6 +172,7 @@ export type Claim = {
   accident?: ClaimAccident;
   payee?: ClaimPayee;
   latest_response?: ClaimResponse;
+  questionnaire_responses?: ClaimQuestionnaireResponse[];
   created_date: string;
   modified_date?: string;
   created_by: User;

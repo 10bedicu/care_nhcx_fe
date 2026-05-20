@@ -164,6 +164,7 @@ const CreateCoverageEligibilityRequestPage: FC<
             code: ci.code.code,
             display: ci.code.display,
           },
+          modifier: [],
           quantity: {
             value: parsePositiveNumber(ci.quantity, 1),
           },

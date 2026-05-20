@@ -317,6 +317,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             code: ci.code.code,
             display: ci.code.display,
           },
+          modifier: [],
           diagnosis_sequence: [...diagnosisSequences],
           information_sequence: [...informationSequences],
           quantity: {
@@ -419,6 +420,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             information_sequence: it.information_sequence || [],
             category: it.category,
             product_or_service: it.product_or_service,
+            modifier: it.modifier ?? [],
             charge_item: undefined,
             program_code: it.program_code || [],
             serviced_period: it.serviced_period,
@@ -432,6 +434,17 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
         // payment is not part of creation typically; omit/undefined
         payment: undefined,
+
+        // Prefill questionnaire responses — sequence will be recomputed on submit
+        questionnaire_responses: (
+          previousClaim.questionnaire_responses ?? []
+        ).map((qr) => ({
+          sequence: 0, // recomputed on submit
+          questionnaire: qr.questionnaire,
+          category: qr.category,
+          code: qr.code,
+          item: qr.item,
+        })),
       };
 
       form.reset(mappedValues, { keepDefaultValues: false });
@@ -494,6 +507,20 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             }
           }
         }
+      }
+
+      // Compute globally unique sequences for questionnaire_responses.
+      // They must not collide with supporting_info sequences.
+      if (updatedValues.questionnaire_responses?.length) {
+        const maxSupportingInfoSeq = Math.max(
+          0,
+          ...(updatedValues.supporting_info ?? []).map((s) => s.sequence)
+        );
+        updatedValues.questionnaire_responses =
+          updatedValues.questionnaire_responses.map((qr, idx) => ({
+            ...qr,
+            sequence: maxSupportingInfoSeq + idx + 1,
+          }));
       }
 
       createClaim(updatedValues);

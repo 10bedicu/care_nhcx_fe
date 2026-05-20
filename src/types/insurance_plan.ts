@@ -154,11 +154,46 @@ export type InsurancePlanQuestionnaire = {
   purpose: string;
 };
 
+export type QuestionnaireItemType =
+  | "group"
+  | "display"
+  | "boolean"
+  | "decimal"
+  | "integer"
+  | "date"
+  | "dateTime"
+  | "time"
+  | "string"
+  | "text"
+  | "url"
+  | "choice"
+  | "open-choice"
+  | "attachment"
+  | "quantity";
+
+export type QuestionnaireAnswerOption = {
+  valueCoding?: { system: string; code: string; display: string };
+  valueString?: string;
+  valueInteger?: number;
+};
+
+export type QuestionnaireItem = {
+  linkId: string;
+  text?: string;      // may be absent — use prefix as fallback
+  prefix?: string;    // used instead of text in some PMJAY payloads
+  type: QuestionnaireItemType;
+  required?: boolean;
+  repeats?: boolean;
+  readOnly?: boolean;
+  answerOption?: QuestionnaireAnswerOption[];
+  item?: QuestionnaireItem[];
+};
+
 export type InsurancePlanQuestionnaireDetail = InsurancePlanQuestionnaire & {
   subject_type: string[];
   url: string;
   full_url: string;
-  items: unknown[];
+  items: QuestionnaireItem[];
 };
 
 export type InsurancePlanBenefit = {

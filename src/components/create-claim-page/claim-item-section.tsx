@@ -35,6 +35,7 @@ import ValuesetSelect from "../common/valueset-select";
 import { apis } from "@/apis";
 import { cn } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
+import { AddQuestionnaireSection } from "./claim-questionnaire-section";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
@@ -853,6 +854,11 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
               <AddProcedureSection form={form} index={index} />
               <AddCareTeamSection form={form} index={index} />
               <AddSupportingInfoSection
+                form={form}
+                index={index}
+                planId={planId}
+              />
+              <AddQuestionnaireSection
                 form={form}
                 index={index}
                 planId={planId}

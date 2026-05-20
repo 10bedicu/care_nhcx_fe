@@ -409,6 +409,12 @@ export const apis = {
         }
       );
     },
+
+    questionnaires: async (id: string) => {
+      return await request<InsurancePlanQuestionnaireDetail[]>(
+        `/api/nhcx/insurance-plan/${id}/questionnaires/`
+      );
+    },
   },
 
   insurancePlanBenefit: {

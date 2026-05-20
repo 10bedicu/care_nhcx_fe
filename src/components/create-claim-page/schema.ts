@@ -19,7 +19,7 @@ export const periodSchema = z.object({
 });
 
 export const quantitySchema = z.object({
-  value: z.number().gt(0),
+  value: z.coerce.number().gt(0),
   unit: codingSchema.optional(),
   code: codingSchema.optional(),
 });
@@ -170,6 +170,47 @@ export const claimAccidentSchema = z.object({
   location: z.string().optional(),
 });
 
+export const questionnaireAnswerSchema = z.object({
+  value_boolean: z.boolean().optional(),
+  value_decimal: z.number().optional(),
+  value_integer: z.number().int().optional(),
+  value_date: z.string().optional(),
+  value_date_time: z.string().optional(),
+  value_time: z.string().optional(),
+  value_string: z.string().optional(),
+  value_uri: z.string().optional(),
+  value_coding: codingSchema.optional(),
+  value_quantity: z
+    .object({ value: z.number(), unit: z.string().optional() })
+    .optional(),
+  value_attachment: z.string().uuid().optional(),
+});
+
+export type QuestionnaireResponseItemInput = {
+  link_id: string;
+  text?: string;
+  answer?: z.infer<typeof questionnaireAnswerSchema>[];
+  item?: QuestionnaireResponseItemInput[];
+};
+
+export const questionnaireResponseItemSchema: z.ZodType<QuestionnaireResponseItemInput> =
+  z.lazy(() =>
+    z.object({
+      link_id: z.string(),
+      text: z.string().optional(),
+      answer: z.array(questionnaireAnswerSchema).optional(),
+      item: z.array(questionnaireResponseItemSchema).optional(),
+    })
+  );
+
+export const claimQuestionnaireResponseSchema = z.object({
+  sequence: z.number().int().nonnegative().default(0),
+  questionnaire: z.string(),
+  category: codingSchema,
+  code: codingSchema,
+  item: z.array(questionnaireResponseItemSchema).default([]),
+});
+
 export const claimPaymentSchema = z.object({});
 
 export const createClaimFormSchema = z.object({
@@ -201,4 +242,7 @@ export const createClaimFormSchema = z.object({
   item: z.array(claimItemSchema).min(1).default([]),
   accident: claimAccidentSchema.optional(),
   payment: claimPaymentSchema.optional(),
+  questionnaire_responses: z
+    .array(claimQuestionnaireResponseSchema)
+    .default([]),
 });
