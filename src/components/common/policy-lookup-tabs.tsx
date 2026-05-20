@@ -3,7 +3,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Loader2Icon } from "lucide-react";
 
 export type PolicyIdentifierTab = "abha" | "mobile" | "memberId";
@@ -36,7 +35,7 @@ export function PolicyLookupTabs({
       value={activeTab}
       onValueChange={(v) => onTabChange(v as PolicyIdentifierTab)}
     >
-      <TabsList className="mb-4">
+      <TabsList>
         <TabsTrigger value="abha" className="gap-2">
           <ScanLineIcon className="h-4 w-4" />
           ABHA Number
@@ -53,7 +52,6 @@ export function PolicyLookupTabs({
 
       <TabsContent value="abha">
         <div className="space-y-2">
-          <Label htmlFor="abha-input">ABHA Number</Label>
           <div className="flex gap-2">
             <Input
               id="abha-input"
@@ -78,7 +76,6 @@ export function PolicyLookupTabs({
 
       <TabsContent value="mobile">
         <div className="space-y-2">
-          <Label htmlFor="mobile-input">Mobile Number</Label>
           <div className="flex gap-2">
             <Input
               id="mobile-input"
@@ -105,7 +102,6 @@ export function PolicyLookupTabs({
 
       <TabsContent value="memberId">
         <div className="space-y-2">
-          <Label htmlFor="memberid-input">Member ID</Label>
           <div className="flex gap-2">
             <Input
               id="memberid-input"
