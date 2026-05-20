@@ -1,5 +1,9 @@
 import { Condition, ConditionCategory } from "@/types/condition";
 import { FC, useEffect, useRef } from "react";
+import {
+  PlanLevelQuestionnairesSection,
+  PlanLevelSupportingInfoSection,
+} from "./claim-plan-level-section";
 import { useForm, useWatch } from "react-hook-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useQueryParams } from "raviger";
@@ -573,6 +577,10 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                 <ClaimRelatedSection form={form} />
                 <Separator />
                 <ClaimInsuranceSection form={form} />
+                <Separator />
+                <PlanLevelSupportingInfoSection form={form} />
+                <Separator />
+                <PlanLevelQuestionnairesSection form={form} />
                 <Separator />
                 <ClaimItemSection form={form} />
                 <Separator />

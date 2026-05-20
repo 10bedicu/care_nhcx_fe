@@ -37,7 +37,7 @@ import { cn } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
 import { AddQuestionnaireSection } from "./claim-questionnaire-section";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 
 interface ClaimItemSectionProps {
@@ -1887,6 +1887,7 @@ function AddSupportingInfoSection({
   planId: string | null;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const didAutoExpandRef = useRef(false);
   const supportingInfoFields = form.watch("supporting_info") || [];
   const itemSupportingInfoSequences =
     form.watch(`item.${index}.information_sequence`) || [];
@@ -1937,6 +1938,14 @@ function AddSupportingInfoSection({
     itemSupportingInfoSequences.includes(info.sequence)
   );
 
+  // Auto-expand once when there is pre-filled supporting info for this item.
+  useEffect(() => {
+    if (itemSpecificSupportingInfo.length > 0 && !didAutoExpandRef.current) {
+      didAutoExpandRef.current = true;
+      setIsExpanded(true);
+    }
+  }, [itemSpecificSupportingInfo.length]);
+
   type RequirementStatus = "satisfied" | "incomplete" | "missing";
 
   const getRequirementStatus = (
@@ -1955,25 +1964,18 @@ function AddSupportingInfoSection({
     return hasValue ? "satisfied" : "incomplete";
   };
 
-  const requirementStatuses = useMemo(
-    () =>
-      requiredRequirements.map((req) => ({
-        req,
-        status: getRequirementStatus(req),
-      })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [requiredRequirements, itemSpecificSupportingInfo]
-  );
+  // No useMemo: form.watch returns the same array reference when nested fields
+  // are mutated in place, so a memo keyed on itemSpecificSupportingInfo would
+  // cache stale statuses even after the user enters a value.
+  const requirementStatuses = requiredRequirements.map((req) => ({
+    req,
+    status: getRequirementStatus(req),
+  }));
 
-  const recommendedStatuses = useMemo(
-    () =>
-      recommendedRequirements.map((req) => ({
-        req,
-        status: getRequirementStatus(req),
-      })),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [recommendedRequirements, itemSpecificSupportingInfo]
-  );
+  const recommendedStatuses = recommendedRequirements.map((req) => ({
+    req,
+    status: getRequirementStatus(req),
+  }));
 
   const unsatisfiedCount = requirementStatuses.filter(
     ({ status }) => status !== "satisfied"

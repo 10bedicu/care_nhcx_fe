@@ -36,51 +36,23 @@ import {
   useController,
   useFieldArray,
 } from "react-hook-form";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
-import { QuestionnaireResponseItemInput } from "./schema";
+
 import { Textarea } from "../ui/textarea";
 import { apis } from "@/apis";
+import { buildInitialItems, extractCoding, itemLabel } from "./questionnaire-helpers";
 import { cn } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
 import { uploadFile } from "@/lib/upload-file";
 import { useGlobalStore } from "@/hooks/use-global-store";
 import { z } from "zod";
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/** PMJAY payloads use `prefix` for the question label; `text` may be absent. */
-function itemLabel(item: QuestionnaireItem): string {
-  return item.prefix ?? item.text ?? item.linkId;
-}
-
-function buildInitialItems(
-  fhirItems: QuestionnaireItem[]
-): QuestionnaireResponseItemInput[] {
-  return fhirItems.map((item) => ({
-    link_id: item.linkId,
-    text: itemLabel(item),
-    answer: item.type !== "group" && item.type !== "display" ? [{}] : undefined,
-    item: item.item ? buildInitialItems(item.item) : undefined,
-  }));
-}
-
-function extractCoding(codeableConcept: {
-  coding?: { system?: string; code?: string; display?: string }[];
-  text?: string;
-}) {
-  const c = codeableConcept.coding?.[0];
-  return {
-    system: c?.system ?? "",
-    code: c?.code ?? "",
-    display: codeableConcept.text ?? c?.display,
-  };
-}
 
 // ─── Quantity input (separate component to avoid conditional hook call) ───────
 
@@ -687,16 +659,18 @@ function QuestionnaireItemRenderer({
 
 // ─── Single questionnaire response card ──────────────────────────────────────
 
-function QuestionnaireResponseCard({
+export function QuestionnaireResponseCard({
   detail,
   qrIdx,
   form,
   encounterId,
+  onRemove,
 }: {
   detail: InsurancePlanQuestionnaireDetail;
   qrIdx: number;
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   encounterId: string;
+  onRemove?: () => void;
 }) {
   const PURPOSE_LABELS: Record<string, string> = {
     STG: "Standard Treatment Guidelines",
@@ -713,6 +687,17 @@ function QuestionnaireResponseCard({
             <Badge variant="outline" className="ml-auto text-xs font-normal">
               {PURPOSE_LABELS[detail.purpose] ?? detail.purpose}
             </Badge>
+          )}
+          {onRemove && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 ml-auto text-destructive hover:text-destructive hover:bg-destructive/10"
+              onClick={onRemove}
+            >
+              <TrashIcon className="w-3.5 h-3.5" />
+            </Button>
           )}
         </div>
       </CardHeader>
@@ -744,6 +729,7 @@ export function AddQuestionnaireSection({
   planId: string | null;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const didAutoExpandRef = useRef(false);
   const { getStore } = useGlobalStore();
   const encounterId = getStore<string>("encounterId");
 
@@ -844,6 +830,23 @@ export function AddQuestionnaireSection({
   };
 
   const watchedQR = form.watch("questionnaire_responses") ?? [];
+
+  // Auto-expand once when pre-filled questionnaire responses exist for this item's plan.
+  const matchedPrefillCount = useMemo(
+    () =>
+      loadedDetails.filter((detail) =>
+        watchedQR.some((r) => r.questionnaire === detail.full_url)
+      ).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [loadedDetails.map((d) => d.full_url).join(), watchedQR]
+  );
+
+  useEffect(() => {
+    if (matchedPrefillCount > 0 && !didAutoExpandRef.current) {
+      didAutoExpandRef.current = true;
+      setIsExpanded(true);
+    }
+  }, [matchedPrefillCount]);
 
   type QStatus = "missing" | "added";
 

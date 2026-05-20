@@ -223,36 +223,57 @@ export const claimQuestionnaireResponseSchema = z.object({
 
 export const claimPaymentSchema = z.object({});
 
-export const createClaimFormSchema = z.object({
-  use: z.enum(CLAIM_USE_CHOICES),
-  status: z.enum(CLAIM_STATUS_CHOICES),
-  priority: z.enum(CLAIM_PRIORITY_CHOICES),
-  type: codingSchema,
-  facility: z.string().uuid(),
-  patient: z.string().uuid(),
-  encounter: z.string().uuid().optional(),
-  billable_period: periodSchema.optional(),
-  related: z.array(claimRelatedSchema).default([]),
-  care_team: z.array(claimCareTeamSchema).default([]),
-  supporting_info: z.array(claimSupportingInfoSchema).default([]),
-  procedure: z.array(claimProcedureSchema).default([]),
-  diagnosis: z.array(claimDiagnosisSchema).min(1).default([]),
-  insurance: z
-    .array(claimInsuranceSchema)
-    .min(1)
-    .default([])
-    .refine(
-      (data) => {
-        return data.some((item) => item.focal);
-      },
-      {
-        message: "At least one focal insurance is required",
-      }
-    ),
-  item: z.array(claimItemSchema).min(1).default([]),
-  accident: claimAccidentSchema.optional(),
-  payment: claimPaymentSchema.optional(),
-  questionnaire_responses: z
-    .array(claimQuestionnaireResponseSchema)
-    .default([]),
-});
+export const createClaimFormSchema = z
+  .object({
+    use: z.enum(CLAIM_USE_CHOICES),
+    status: z.enum(CLAIM_STATUS_CHOICES),
+    priority: z.enum(CLAIM_PRIORITY_CHOICES),
+    type: codingSchema,
+    facility: z.string().uuid(),
+    patient: z.string().uuid(),
+    encounter: z.string().uuid().optional(),
+    billable_period: periodSchema.optional(),
+    related: z.array(claimRelatedSchema).default([]),
+    care_team: z.array(claimCareTeamSchema).default([]),
+    supporting_info: z.array(claimSupportingInfoSchema).default([]),
+    procedure: z.array(claimProcedureSchema).default([]),
+    diagnosis: z.array(claimDiagnosisSchema).min(1).default([]),
+    insurance: z
+      .array(claimInsuranceSchema)
+      .min(1)
+      .default([])
+      .refine(
+        (data) => {
+          return data.some((item) => item.focal);
+        },
+        {
+          message: "At least one focal insurance is required",
+        }
+      ),
+    item: z.array(claimItemSchema).min(1).default([]),
+    accident: claimAccidentSchema.optional(),
+    payment: claimPaymentSchema.optional(),
+    questionnaire_responses: z
+      .array(claimQuestionnaireResponseSchema)
+      .default([]),
+    _mandatory_plan_docs_error: z.string().optional(),
+    _mandatory_plan_questionnaires_error: z.string().optional(),
+  })
+  .refine(
+    (data) => !data._mandatory_plan_docs_error,
+    (data) => ({
+      message:
+        data._mandatory_plan_docs_error ??
+        "All mandatory plan-level documents must be provided",
+      path: ["_mandatory_plan_docs_error"],
+    })
+  )
+  .refine(
+    (data) => !data._mandatory_plan_questionnaires_error,
+    (data) => ({
+      message:
+        data._mandatory_plan_questionnaires_error ??
+        "All mandatory plan-level questionnaires must be completed",
+      path: ["_mandatory_plan_questionnaires_error"],
+    })
+  );
