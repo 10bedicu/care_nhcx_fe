@@ -90,6 +90,8 @@ export const claimSupportingInfoSchema = z
     value_string: z.string().optional(),
     value_attachment: z.string().uuid().optional(),
     value_file: z.instanceof(File).optional(),
+    /** Internal marker: true = belongs to plan level, false/undefined = item level. Stripped before API submission. */
+    _is_plan_level: z.boolean().optional(),
   })
   .refine(
     (data) => {

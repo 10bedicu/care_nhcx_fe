@@ -638,6 +638,82 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
     control: form.control,
   });
 
+  /**
+   * Remove an item and clean up any entries (supporting_info, questionnaire_responses,
+   * care_team, diagnosis, procedure) whose sequences are exclusively referenced by
+   * the removed item and not shared with any remaining item.
+   */
+  const removeItemWithCleanup = (index: number) => {
+    const removedItem = form.getValues(`item.${index}`);
+    const allItems = form.getValues("item");
+    const remainingItems = allItems.filter((_, i) => i !== index);
+
+    const infoSeqs = new Set(removedItem.information_sequence ?? []);
+    const careTeamSeqs = new Set(removedItem.care_team_sequence ?? []);
+    const diagnosisSeqs = new Set(removedItem.diagnosis_sequence ?? []);
+    const procedureSeqs = new Set(removedItem.procedure_sequence ?? []);
+
+    const stillUsedInfoSeqs = new Set<number>();
+    const stillUsedCareTeamSeqs = new Set<number>();
+    const stillUsedDiagnosisSeqs = new Set<number>();
+    const stillUsedProcedureSeqs = new Set<number>();
+
+    for (const item of remainingItems) {
+      for (const seq of item.information_sequence ?? []) stillUsedInfoSeqs.add(seq);
+      for (const seq of item.care_team_sequence ?? []) stillUsedCareTeamSeqs.add(seq);
+      for (const seq of item.diagnosis_sequence ?? []) stillUsedDiagnosisSeqs.add(seq);
+      for (const seq of item.procedure_sequence ?? []) stillUsedProcedureSeqs.add(seq);
+    }
+
+    const orphanedInfoSeqs = [...infoSeqs].filter((seq) => !stillUsedInfoSeqs.has(seq));
+    if (orphanedInfoSeqs.length > 0) {
+      form.setValue(
+        "supporting_info",
+        (form.getValues("supporting_info") ?? []).filter(
+          (info) => !orphanedInfoSeqs.includes(info.sequence)
+        )
+      );
+      form.setValue(
+        "questionnaire_responses",
+        (form.getValues("questionnaire_responses") ?? []).filter(
+          (qr) => !orphanedInfoSeqs.includes(qr.sequence)
+        )
+      );
+    }
+
+    const orphanedCTSeqs = [...careTeamSeqs].filter((seq) => !stillUsedCareTeamSeqs.has(seq));
+    if (orphanedCTSeqs.length > 0) {
+      form.setValue(
+        "care_team",
+        (form.getValues("care_team") ?? []).filter(
+          (ct) => !orphanedCTSeqs.includes(ct.sequence)
+        )
+      );
+    }
+
+    const orphanedDxSeqs = [...diagnosisSeqs].filter((seq) => !stillUsedDiagnosisSeqs.has(seq));
+    if (orphanedDxSeqs.length > 0) {
+      form.setValue(
+        "diagnosis",
+        (form.getValues("diagnosis") ?? []).filter(
+          (dx) => !orphanedDxSeqs.includes(dx.sequence)
+        )
+      );
+    }
+
+    const orphanedProcSeqs = [...procedureSeqs].filter((seq) => !stillUsedProcedureSeqs.has(seq));
+    if (orphanedProcSeqs.length > 0) {
+      form.setValue(
+        "procedure",
+        (form.getValues("procedure") ?? []).filter(
+          (proc) => !orphanedProcSeqs.includes(proc.sequence)
+        )
+      );
+    }
+
+    remove(index);
+  };
+
   // Derive the insurance plan ID from the focal (or first) selected policy
   const selectedInsurances = form.watch("insurance");
   const focalPolicy =
@@ -733,9 +809,7 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
                       type="button"
                       variant="ghost"
                       size="icon"
-                      onClick={() => {
-                        remove(index);
-                      }}
+                      onClick={() => removeItemWithCleanup(index)}
                       className="mt-6"
                     >
                       <CircleMinusIcon className="h-6 w-6 text-danger-500" />
@@ -1059,7 +1133,7 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
                   className="w-full"
                   onClick={() =>
                     append({
-                      sequence: (fields[fields.length - 1]?.sequence ?? 0) + 1,
+                      sequence: Math.max(0, ...fields.map((f) => f.sequence)) + 1,
                       care_team_sequence: [],
                       diagnosis_sequence: [],
                       procedure_sequence: [],
@@ -1219,8 +1293,7 @@ function AddDiagnosisSection({
 
   const addNewDiagnosis = () => {
     const newSequence =
-      (diagnosisArrayFields[diagnosisArrayFields.length - 1]?.sequence ?? 0) +
-      1;
+      Math.max(0, ...diagnosisArrayFields.map((f) => f.sequence)) + 1;
     const newDiagnosis = {
       sequence: newSequence,
       type: [],
@@ -1448,8 +1521,7 @@ function AddProcedureSection({
 
   const addNewProcedure = () => {
     const newSequence =
-      (procedureArrayFields[procedureArrayFields.length - 1]?.sequence ?? 0) +
-      1;
+      Math.max(0, ...procedureArrayFields.map((f) => f.sequence)) + 1;
     const newProcedure = {
       sequence: newSequence,
       type: [],
@@ -1682,7 +1754,7 @@ function AddCareTeamSection({
 
   const addNewCareTeamMember = () => {
     const newSequence =
-      (careTeamArrayFields[careTeamArrayFields.length - 1]?.sequence ?? 0) + 1;
+      Math.max(0, ...careTeamArrayFields.map((f) => f.sequence)) + 1;
     const newCareTeamMember = {
       sequence: newSequence,
       provider: "",
@@ -2010,9 +2082,22 @@ function AddSupportingInfoSection({
         info.code?.code === req.code_code
     );
     if (!alreadyAdded) {
+      const currentQRSeqs = (form.getValues("questionnaire_responses") ?? []).map(
+        (qr) => qr.sequence
+      );
       const newSequence =
-        (supportingInfoArrayFields[supportingInfoArrayFields.length - 1]
-          ?.sequence ?? 0) + 1;
+        Math.max(0, ...supportingInfoArrayFields.map((f) => f.sequence), ...currentQRSeqs) + 1;
+
+      // Update information_sequence BEFORE appending to supporting_info so that
+      // any intermediate render triggered by appendSupportingInfo already sees
+      // the new sequence as item-linked (preventing it from flashing as plan-level).
+      const currentSequences =
+        form.getValues(`item.${index}.information_sequence`) || [];
+      form.setValue(`item.${index}.information_sequence`, [
+        ...currentSequences,
+        newSequence,
+      ]);
+
       appendSupportingInfo({
         sequence: newSequence,
         category: {
@@ -2028,21 +2113,28 @@ function AddSupportingInfoSection({
         timing: undefined,
         value_string: undefined,
         value_attachment: undefined,
+        _is_plan_level: false,
       });
-      const currentSequences =
-        form.getValues(`item.${index}.information_sequence`) || [];
-      form.setValue(`item.${index}.information_sequence`, [
-        ...currentSequences,
-        newSequence,
-      ]);
     }
     if (!isExpanded) setIsExpanded(true);
   };
 
   const addNewSupportingInfo = () => {
+    const currentQRSeqs = (form.getValues("questionnaire_responses") ?? []).map(
+      (qr) => qr.sequence
+    );
     const newSequence =
-      (supportingInfoArrayFields[supportingInfoArrayFields.length - 1]
-        ?.sequence ?? 0) + 1;
+      Math.max(0, ...supportingInfoArrayFields.map((f) => f.sequence), ...currentQRSeqs) + 1;
+
+    // Update information_sequence BEFORE appending to supporting_info (same
+    // ordering rationale as addSupportingInfoForReq above).
+    const currentSequences =
+      form.getValues(`item.${index}.information_sequence`) || [];
+    form.setValue(`item.${index}.information_sequence`, [
+      ...currentSequences,
+      newSequence,
+    ]);
+
     appendSupportingInfo({
       sequence: newSequence,
       category: undefined as unknown as Coding,
@@ -2050,14 +2142,8 @@ function AddSupportingInfoSection({
       timing: undefined,
       value_string: undefined,
       value_attachment: undefined,
+      _is_plan_level: false,
     });
-
-    const currentSequences =
-      form.getValues(`item.${index}.information_sequence`) || [];
-    form.setValue(`item.${index}.information_sequence`, [
-      ...currentSequences,
-      newSequence,
-    ]);
   };
 
   return (

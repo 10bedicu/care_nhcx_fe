@@ -916,6 +916,13 @@ export function AddQuestionnaireSection({
 
   const watchedQR = form.watch("questionnaire_responses") ?? [];
 
+  // Count only QRs that belong to this item's loaded questionnaire details (not all QRs globally).
+  const itemQRCount = useMemo(() => {
+    const detailUrls = new Set(loadedDetails.map((d) => d.full_url));
+    return watchedQR.filter((qr) => detailUrls.has(qr.questionnaire)).length;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedDetails.map((d) => d.full_url).join(), watchedQR]);
+
   // Auto-expand once when pre-filled questionnaire responses exist for this item's plan.
   const matchedPrefillCount = useMemo(
     () =>
@@ -987,12 +994,33 @@ export function AddQuestionnaireSection({
     const currentResponses = form.getValues("questionnaire_responses") ?? [];
     if (currentResponses.find((r) => r.questionnaire === detail.full_url))
       return;
+
+    // Compute a unique sequence that doesn't collide with supporting_info or
+    // any existing questionnaire_response sequences.
+    const currentSupportingInfo = form.getValues("supporting_info") ?? [];
+    const allSeqs = [
+      ...currentSupportingInfo.map((s) => s.sequence),
+      ...currentResponses.map((qr) => qr.sequence),
+    ];
+    const newSequence = Math.max(0, ...allSeqs) + 1;
+
+    // Link the questionnaire sequence to this item's information_sequence FIRST
+    // so that any intermediate render triggered by the questionnaire_responses
+    // update already sees the sequence as item-linked.
+    const currentItemSeqs =
+      form.getValues(`item.${index}.information_sequence`) ?? [];
+    form.setValue(
+      `item.${index}.information_sequence`,
+      [...currentItemSeqs, newSequence],
+      { shouldDirty: true }
+    );
+
     form.setValue(
       "questionnaire_responses",
       [
         ...currentResponses,
         {
-          sequence: 0,
+          sequence: newSequence,
           questionnaire: detail.full_url,
           category: extractCoding(req.category),
           code: extractCoding(req.code),
@@ -1001,7 +1029,35 @@ export function AddQuestionnaireSection({
       ],
       { shouldDirty: true }
     );
+
     if (!isExpanded) setIsExpanded(true);
+  };
+
+  // Remove a questionnaire response and unlink it from this item's
+  // information_sequence.
+  const removeQuestionnaireForDetail = (
+    detail: InsurancePlanQuestionnaireDetail
+  ) => {
+    const currentResponses = form.getValues("questionnaire_responses") ?? [];
+    const qr = currentResponses.find(
+      (r) => r.questionnaire === detail.full_url
+    );
+    if (!qr) return;
+    const removedSeq = qr.sequence;
+
+    form.setValue(
+      "questionnaire_responses",
+      currentResponses.filter((r) => r.questionnaire !== detail.full_url),
+      { shouldDirty: true }
+    );
+
+    const currentItemSeqs =
+      form.getValues(`item.${index}.information_sequence`) ?? [];
+    form.setValue(
+      `item.${index}.information_sequence`,
+      currentItemSeqs.filter((seq) => seq !== removedSeq),
+      { shouldDirty: true }
+    );
   };
 
   if (!productCode || !planId) return null;
@@ -1028,9 +1084,9 @@ export function AddQuestionnaireSection({
             <ChevronRightIcon className="w-4 h-4" />
           )}
           <span className="font-medium">Questionnaires</span>
-          {watchedQR.length > 0 && (
+          {itemQRCount > 0 && (
             <Badge variant="secondary" className="ml-2">
-              {watchedQR.length}
+              {itemQRCount}
             </Badge>
           )}
           {unsatisfiedCount > 0 && (
@@ -1180,6 +1236,7 @@ export function AddQuestionnaireSection({
                     qrIdx={qrIdx}
                     form={form}
                     encounterId={encounterId}
+                    onRemove={() => removeQuestionnaireForDetail(detail)}
                   />
                 );
               })}

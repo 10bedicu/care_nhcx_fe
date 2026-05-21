@@ -274,6 +274,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         timing: undefined,
         value_string: undefined,
         value_attachment: file.id,
+        _is_plan_level: false,
       })) || [];
 
     const informationSequences = supportingInfo.map((info) => info.sequence);
@@ -376,15 +377,23 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
           })) || [],
 
         // supporting info (only ids for attachments; no files here)
-        supporting_info:
-          (previousClaim.supporting_info || []).map((s) => ({
+        // Derive _is_plan_level: sequences that appear in no item's information_sequence are plan-level.
+        supporting_info: (() => {
+          const itemInfoSeqs = new Set(
+            (previousClaim.item || []).flatMap(
+              (it) => it.information_sequence || []
+            )
+          );
+          return (previousClaim.supporting_info || []).map((s) => ({
             sequence: s.sequence,
             category: s.category,
             code: s.code,
             timing: s.timing,
             value_string: s.value_string,
             value_attachment: s.value_attachment as unknown as string,
-          })) || [],
+            _is_plan_level: !itemInfoSeqs.has(s.sequence),
+          }));
+        })(),
 
         // procedures
         procedure:
@@ -513,18 +522,38 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         }
       }
 
-      // Compute globally unique sequences for questionnaire_responses.
-      // They must not collide with supporting_info sequences.
+      // Recompute globally unique sequences for questionnaire_responses so
+      // they never collide with supporting_info sequences, then update each
+      // item's information_sequence to use the new values.
       if (updatedValues.questionnaire_responses?.length) {
         const maxSupportingInfoSeq = Math.max(
           0,
           ...(updatedValues.supporting_info ?? []).map((s) => s.sequence)
         );
+        const seqMap = new Map<number, number>();
         updatedValues.questionnaire_responses =
-          updatedValues.questionnaire_responses.map((qr, idx) => ({
-            ...qr,
-            sequence: maxSupportingInfoSeq + idx + 1,
+          updatedValues.questionnaire_responses.map((qr, idx) => {
+            const newSeq = maxSupportingInfoSeq + idx + 1;
+            seqMap.set(qr.sequence, newSeq);
+            return { ...qr, sequence: newSeq };
+          });
+
+        // Remap item information_sequence entries that referred to old QR seqs.
+        if (seqMap.size > 0 && updatedValues.item) {
+          updatedValues.item = updatedValues.item.map((item) => ({
+            ...item,
+            information_sequence: item.information_sequence.map(
+              (seq) => seqMap.get(seq) ?? seq
+            ),
           }));
+        }
+      }
+
+      // Strip internal _is_plan_level marker before sending to the API.
+      if (updatedValues.supporting_info) {
+        updatedValues.supporting_info.forEach((info) => {
+          delete (info as Record<string, unknown>)._is_plan_level;
+        });
       }
 
       createClaim(updatedValues);

@@ -374,21 +374,17 @@ export function PlanLevelSupportingInfoSection({
     [allRequirements]
   );
 
-  // Identify which supporting_info entries are NOT linked to any item
-  const watchedItems = form.watch("item") ?? [];
-  const allItemInfoSeqs = useMemo(
-    () => watchedItems.flatMap((item) => item.information_sequence ?? []),
-    [watchedItems]
-  );
-
   const { fields: siFields, append: appendSI, remove: removeSI } =
     useFieldArray({ name: "supporting_info", control: form.control });
 
   const allSI = form.watch("supporting_info") ?? [];
 
+  // Plan-level entries are explicitly marked with _is_plan_level: true.
+  // This avoids the race condition where the plan-level section re-renders
+  // after supporting_info changes but before information_sequence is updated.
   const planLevelEntries = useMemo(
-    () => allSI.filter((info) => !allItemInfoSeqs.includes(info.sequence)),
-    [allSI, allItemInfoSeqs]
+    () => allSI.filter((info) => info._is_plan_level === true),
+    [allSI]
   );
 
   // Auto-expand once when there is pre-filled plan-level data.
@@ -454,7 +450,11 @@ export function PlanLevelSupportingInfoSection({
     );
     if (alreadyAdded) return;
 
-    const nextSeq = (siFields[siFields.length - 1]?.sequence ?? 0) + 1;
+    const currentQRSeqs = (form.getValues("questionnaire_responses") ?? []).map(
+      (qr) => qr.sequence
+    );
+    const nextSeq =
+      Math.max(0, ...siFields.map((f) => f.sequence), ...currentQRSeqs) + 1;
     appendSI({
       sequence: nextSeq,
       category: {
@@ -470,8 +470,8 @@ export function PlanLevelSupportingInfoSection({
       timing: undefined,
       value_string: undefined,
       value_attachment: undefined,
+      _is_plan_level: true,
     });
-    // NOT linked to any item's information_sequence
     if (!isExpanded) setIsExpanded(true);
   };
 
@@ -826,12 +826,18 @@ export function PlanLevelQuestionnairesSection({
     const currentQR = form.getValues("questionnaire_responses") ?? [];
     if (currentQR.find((r) => r.questionnaire === detail.full_url)) return;
 
+    const currentSISeqs = (form.getValues("supporting_info") ?? []).map(
+      (s) => s.sequence
+    );
+    const newSequence =
+      Math.max(0, ...currentSISeqs, ...currentQR.map((qr) => qr.sequence)) + 1;
+
     form.setValue(
       "questionnaire_responses",
       [
         ...currentQR,
         {
-          sequence: 0,
+          sequence: newSequence,
           questionnaire: detail.full_url,
           category: extractCoding(req.category),
           code: extractCoding(req.code),

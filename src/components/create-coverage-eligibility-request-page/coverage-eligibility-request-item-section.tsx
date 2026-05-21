@@ -268,7 +268,7 @@ export function CoverageEligibilityRequestItemSection({
                   className="w-full"
                   onClick={() =>
                     append({
-                      sequence: (fields[fields.length - 1]?.sequence ?? 0) + 1,
+                      sequence: Math.max(0, ...fields.map((f) => f.sequence)) + 1,
                       category: undefined as unknown as Coding,
                       product_or_service: undefined,
                       charge_item: undefined,
@@ -543,8 +543,7 @@ function AddSupportingInfoSection({
 
   const addNewSupportingInfo = () => {
     const newSequence =
-      (supportingInfoArrayFields[supportingInfoArrayFields.length - 1]
-        ?.sequence ?? 0) + 1;
+      Math.max(0, ...supportingInfoArrayFields.map((f) => f.sequence)) + 1;
     const newSupportingInfo = {
       sequence: newSequence,
       value_string: undefined,
