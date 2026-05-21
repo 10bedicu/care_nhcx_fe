@@ -159,15 +159,17 @@ export const apis = {
       });
     },
 
-    cancel: async (id: string) => {
-      return await request<Claim>(`/api/nhcx/claim/${id}/cancel/`, {
+    cancel: async (params: { id: string; reason?: string }) => {
+      return await request<Claim>(`/api/nhcx/claim/${params.id}/cancel/`, {
         method: "POST",
+        body: JSON.stringify({ reason: params.reason ?? undefined }),
       });
     },
 
-    reprocess: async (id: string) => {
-      return await request<Claim>(`/api/nhcx/claim/${id}/reprocess/`, {
+    reprocess: async (params: { id: string; reason?: string }) => {
+      return await request<Claim>(`/api/nhcx/claim/${params.id}/reprocess/`, {
         method: "POST",
+        body: JSON.stringify({ reason: params.reason ?? undefined }),
       });
     },
 

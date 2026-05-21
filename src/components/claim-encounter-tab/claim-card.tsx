@@ -19,75 +19,32 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { FC, useMemo, useState } from "react";
+import { FC, ReactNode, useMemo, useState } from "react";
 import {
   cn,
   formatCurrency,
   formatDate,
-  toast,
 } from "@/lib/utils";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Claim } from "@/types/claim";
 import ClaimNotificationSheet from "./claim-notification-sheet";
-import { apis } from "@/apis";
-
-function hasFollowUpClaim(allClaims: Claim[], claimId: string): boolean {
-  return allClaims.some(
-    (c) =>
-      c.id !== claimId &&
-      (c.related ?? []).some((r) => r.claim?.id === claimId)
-  );
-}
 
 interface ClaimCardProps {
   claim: Claim;
-  /** Same encounter’s claims; used to detect follow-up claims that reference this claim. */
-  allClaims?: Claim[];
-  encounterId?: string;
+  /** Extra action buttons rendered in the card footer (before notification + toggle). */
+  footerActions?: ReactNode;
+  /** Optional banner rendered above the card footer (alerts, status callouts, etc). */
+  headerBanner?: ReactNode;
 }
 
 const ClaimCard: FC<ClaimCardProps> = ({
   claim,
-  allClaims = [],
-  encounterId,
+  footerActions,
+  headerBanner,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const queryClient = useQueryClient();
-
-  const { mutate: cancelClaim, isPending: isCancelPending } = useMutation({
-    mutationFn: apis.claim.cancel,
-    onSuccess: () => {
-      toast.success("Preauthorization cancelled");
-      if (encounterId) {
-        queryClient.invalidateQueries({ queryKey: ["claims", encounterId] });
-      }
-    },
-    onError: (error: Error) => {
-      toast.error(error.message || "Failed to cancel preauthorization");
-    },
-  });
-
-  const { mutate: reprocessClaim, isPending: isReprocessPending } =
-    useMutation({
-      mutationFn: apis.claim.reprocess,
-      onSuccess: () => {
-        toast.success("Claim reprocess requested");
-        if (encounterId) {
-          queryClient.invalidateQueries({ queryKey: ["claims", encounterId] });
-        }
-      },
-      onError: (error: Error) => {
-        toast.error(error.message || "Failed to reprocess claim");
-      },
-    });
-
-  const showCancelPreauth =
-    claim.use === "preauthorization" &&
-    claim.status !== "cancelled" &&
-    !hasFollowUpClaim(allClaims, claim.id);
 
   const totalRequestedAmount = useMemo(() => {
     return (
@@ -120,10 +77,6 @@ const ClaimCard: FC<ClaimCardProps> = ({
       return "partially-approved";
     }
   }, [claim.latest_response, totalApprovedAmount, totalRequestedAmount]);
-
-  const showReprocess =
-    claim.use === "claim" &&
-    (status === "partially-approved" || status === "rejected");
 
   const getResponseItemForClaimItem = (claimItemSequence: number) => {
     if (!claim.latest_response?.item) return null;
@@ -355,76 +308,50 @@ const ClaimCard: FC<ClaimCardProps> = ({
           </CardContent>
         </CollapsibleContent>
         <CardFooter
-          className={cn("flex justify-between p-4 pt-4", isOpen && "border-t")}
+          className={cn(
+            "flex flex-col gap-3 p-4 pt-4",
+            isOpen && "border-t"
+          )}
         >
-          <div className="flex space-x-4 text-sm text-gray-500">
-            <div className="flex items-center gap-1.5">
-              <CalendarIcon className="w-4 h-4" />
-              <span>Created on: {formatDate(claim.created_date)}</span>
-            </div>
-            {status !== "pending" && (
+          {headerBanner && <div className="w-full">{headerBanner}</div>}
+          <div className="flex w-full justify-between items-center gap-3">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
               <div className="flex items-center gap-1.5">
-                {status === "approved" && (
-                  <CheckCircleIcon className="w-4 h-4 text-green-500" />
-                )}
-                {status === "partially-approved" && (
-                  <CheckCircleIcon className="w-4 h-4 text-orange-500" />
-                )}
-                {status === "rejected" && (
-                  <XCircleIcon className="w-4 h-4 text-red-500" />
-                )}
-                <span className="capitalize">
-                  {status.replace("-", " ")} On:{" "}
-                  {formatDate(claim.latest_response?.created_date)}
-                </span>
+                <CalendarIcon className="w-4 h-4" />
+                <span>Created on: {formatDate(claim.created_date)}</span>
               </div>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <ClaimNotificationSheet claim={claim} />
-            {showCancelPreauth && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive border-destructive/50 hover:bg-destructive/10"
-                disabled={isCancelPending}
-                onClick={() => {
-                  if (
-                    !window.confirm(
-                      "Cancel this preauthorization? This cannot be undone."
-                    )
-                  ) {
-                    return;
-                  }
-                  cancelClaim(claim.id);
-                }}
-              >
-                {isCancelPending ? "Cancelling…" : "Cancel"}
-              </Button>
-            )}
-            {showReprocess && (
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={isReprocessPending}
-                onClick={() => reprocessClaim(claim.id)}
-              >
-                {isReprocessPending ? "Reprocessing…" : "Reprocess"}
-              </Button>
-            )}
-            <Button asChild variant="secondary" size="sm">
-              <a href={`claims/new?related=${claim.id}`}>Follow up</a>
-            </Button>
-            <CollapsibleTrigger asChild>
-              <Button variant="ghost" size="sm" className="w-9 p-0">
-                {isOpen ? (
-                  <ChevronUpIcon className="h-4 w-4" />
-                ) : (
-                  <ChevronDownIcon className="h-4 w-4" />
-                )}
-                <span className="sr-only">Toggle details</span>
-              </Button>
-            </CollapsibleTrigger>
+              {status !== "pending" && (
+                <div className="flex items-center gap-1.5">
+                  {status === "approved" && (
+                    <CheckCircleIcon className="w-4 h-4 text-green-500" />
+                  )}
+                  {status === "partially-approved" && (
+                    <CheckCircleIcon className="w-4 h-4 text-orange-500" />
+                  )}
+                  {status === "rejected" && (
+                    <XCircleIcon className="w-4 h-4 text-red-500" />
+                  )}
+                  <span className="capitalize">
+                    {status.replace("-", " ")} On:{" "}
+                    {formatDate(claim.latest_response?.created_date)}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {footerActions}
+              <ClaimNotificationSheet claim={claim} />
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="w-9 p-0">
+                  {isOpen ? (
+                    <ChevronUpIcon className="h-4 w-4" />
+                  ) : (
+                    <ChevronDownIcon className="h-4 w-4" />
+                  )}
+                  <span className="sr-only">Toggle details</span>
+                </Button>
+              </CollapsibleTrigger>
+            </div>
           </div>
         </CardFooter>
       </Collapsible>

@@ -1,4 +1,8 @@
-import { CLAIM_PRIORITY_CHOICES, CLAIM_USE_CHOICES } from "@/types/claim";
+import {
+  CLAIM_PRIORITY_CHOICES,
+  CLAIM_USE_CHOICES,
+  ClaimUseChoice,
+} from "@/types/claim";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   FormControl,
@@ -7,6 +11,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { LockIcon, SettingsIcon } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -17,7 +22,6 @@ import {
 
 import { DateTimePicker } from "../ui/date-time-picker";
 import { Input } from "@/components/ui/input";
-import { SettingsIcon } from "lucide-react";
 import { UseFormReturn } from "react-hook-form";
 import ValuesetSelect from "../common/valueset-select";
 import { createClaimFormSchema } from "./schema";
@@ -26,9 +30,23 @@ import { cn } from "@/lib/utils";
 
 interface ClaimOtherSectionProps {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
+  /**
+   * When set, the use field is locked to this value and rendered as
+   * read-only. Used by the guided flow that drives the form via query params.
+   */
+  lockedUse?: ClaimUseChoice | null;
 }
 
-export function ClaimOtherSection({ form }: ClaimOtherSectionProps) {
+const CLAIM_USE_LABELS: Record<ClaimUseChoice, string> = {
+  claim: "Claim",
+  preauthorization: "Pre-Authorization",
+  predetermination: "Predetermination",
+};
+
+export function ClaimOtherSection({
+  form,
+  lockedUse,
+}: ClaimOtherSectionProps) {
   const hasRelated = (form.watch("related") || []).length > 0;
 
   return (
@@ -56,47 +74,63 @@ export function ClaimOtherSection({ form }: ClaimOtherSectionProps) {
               name="use"
               render={({ field }) => (
                 <FormItem className="space-y-1.5">
-                  <FormLabel>
+                  <FormLabel className="flex items-center gap-1.5">
                     Use
-                    <span className="text-red-500 text-sm ml-0.5">*</span>
+                    <span className="text-red-500 text-sm">*</span>
+                    {lockedUse && (
+                      <span className="inline-flex items-center gap-1 text-xs font-normal text-muted-foreground ml-1">
+                        <LockIcon className="h-3 w-3" />
+                        Locked by guided flow
+                      </span>
+                    )}
                   </FormLabel>
                   <FormControl>
-                    <Select
-                      value={field.value}
-                      onValueChange={(value) => {
-                        form.setValue(
-                          "use",
-                          value as
-                            | "claim"
-                            | "preauthorization"
-                            | "predetermination"
-                        );
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select use type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CLAIM_USE_CHOICES.map((choice) => (
-                          <SelectItem
-                            key={choice}
-                            value={choice}
-                            disabled={choice === "claim" && !hasRelated}
-                            title={
-                              choice === "claim" && !hasRelated
-                                ? "Add at least one related claim to select 'claim'"
-                                : undefined
-                            }
-                            className={cn({
-                              "opacity-50 cursor-not-allowed pointer-events-auto":
-                                choice === "claim" && !hasRelated,
-                            })}
-                          >
-                            {choice.charAt(0).toUpperCase() + choice.slice(1)}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {lockedUse ? (
+                      <Input
+                        value={
+                          CLAIM_USE_LABELS[lockedUse] ?? lockedUse
+                        }
+                        disabled
+                        className="bg-muted cursor-not-allowed"
+                      />
+                    ) : (
+                      <Select
+                        value={field.value}
+                        onValueChange={(value) => {
+                          form.setValue(
+                            "use",
+                            value as
+                              | "claim"
+                              | "preauthorization"
+                              | "predetermination"
+                          );
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select use type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CLAIM_USE_CHOICES.map((choice) => (
+                            <SelectItem
+                              key={choice}
+                              value={choice}
+                              disabled={choice === "claim" && !hasRelated}
+                              title={
+                                choice === "claim" && !hasRelated
+                                  ? "Add at least one related claim to select 'claim'"
+                                  : undefined
+                              }
+                              className={cn({
+                                "opacity-50 cursor-not-allowed pointer-events-auto":
+                                  choice === "claim" && !hasRelated,
+                              })}
+                            >
+                              {CLAIM_USE_LABELS[choice] ?? choice}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </FormControl>
                   <FormMessage />
                 </FormItem>

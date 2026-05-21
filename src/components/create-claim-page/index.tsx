@@ -1,5 +1,10 @@
+import {
+  CLAIM_USE_CHOICES,
+  ClaimDiagnosisOnAdmissionChoice,
+  ClaimUseChoice,
+} from "@/types/claim";
 import { Condition, ConditionCategory } from "@/types/condition";
-import { FC, useEffect, useRef } from "react";
+import { FC, useEffect, useMemo, useRef } from "react";
 import {
   PlanLevelQuestionnairesSection,
   PlanLevelSupportingInfoSection,
@@ -11,7 +16,6 @@ import { useNavigate, useQueryParams } from "raviger";
 import { Button } from "@/components/ui/button";
 import { ChargeItem } from "@/types/charge_item";
 import { ClaimAccidentSection } from "./claim-accident-section";
-import { ClaimDiagnosisOnAdmissionChoice } from "@/types/claim";
 import { ClaimInsuranceSection } from "./claim-insurance-section";
 import { ClaimItemSection } from "./claim-item-section";
 import { ClaimOtherSection } from "./claim-other-section";
@@ -29,6 +33,13 @@ import { toast } from "sonner";
 import { uploadFile } from "@/lib/upload-file";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+
+function parseUseQueryParam(value: unknown): ClaimUseChoice | null {
+  if (typeof value !== "string") return null;
+  const lower = value.toLowerCase();
+  const match = CLAIM_USE_CHOICES.find((choice) => choice === lower);
+  return match ?? null;
+}
 
 export type CreateClaimPageProps = {
   facilityId: string;
@@ -57,6 +68,16 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   const queryClient = useQueryClient();
   const [queryParams] = useQueryParams();
 
+  const lockedUse = useMemo(
+    () => parseUseQueryParam(queryParams?.use),
+    [queryParams?.use]
+  );
+
+  const coverageEligibilityId = useMemo(() => {
+    const raw = queryParams?.coverage_eligibility;
+    return typeof raw === "string" && raw.length > 0 ? raw : undefined;
+  }, [queryParams?.coverage_eligibility]);
+
   const form = useForm<z.infer<typeof createClaimFormSchema>>({
     resolver: zodResolver(createClaimFormSchema),
     defaultValues: {
@@ -65,6 +86,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       encounter: encounterId,
       status: "draft",
       priority: "normal",
+      use: lockedUse ?? undefined,
     },
   });
 
@@ -355,8 +377,10 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         patient: current.patient,
         encounter: current.encounter,
 
-        // copy simple fields
-        use: previousClaim.use,
+        // The guided flow may force a specific use via query param; respect it
+        // so we don't accidentally copy the previous claim's use (e.g. when
+        // following up on a preauthorization to file an actual claim).
+        use: lockedUse ?? previousClaim.use,
         status: "draft",
         priority: previousClaim.priority,
         type: previousClaim.type,
@@ -462,7 +486,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
       form.reset(mappedValues, { keepDefaultValues: false });
     }
-  }, [form, previousClaim]);
+  }, [form, previousClaim, lockedUse]);
 
   const { mutate: submitClaim } = useMutation({
     mutationFn: apis.claim.submit,
@@ -577,10 +601,26 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         />
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-medium">Create Claim</h3>
+            <h3 className="text-lg font-medium">
+              {lockedUse === "preauthorization"
+                ? "Submit Pre-Authorization"
+                : lockedUse === "claim"
+                ? "Submit Claim"
+                : "Create Claim"}
+            </h3>
             <p className="text-sm text-muted-foreground">
-              Create a new claim for the patient.
+              {lockedUse === "preauthorization"
+                ? "Request pre-authorisation from the payer for the planned procedures."
+                : lockedUse === "claim"
+                ? "Submit the final claim to the payer."
+                : "Create a new claim for the patient."}
             </p>
+            {coverageEligibilityId && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Linked to coverage eligibility{" "}
+                <span className="font-mono">#{coverageEligibilityId}</span>
+              </p>
+            )}
           </div>
           <Button
             type="button"
@@ -615,7 +655,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                 <Separator />
                 <ClaimAccidentSection form={form} />
                 <Separator />
-                <ClaimOtherSection form={form} />
+                <ClaimOtherSection form={form} lockedUse={lockedUse} />
                 <Separator />
 
                 <Button

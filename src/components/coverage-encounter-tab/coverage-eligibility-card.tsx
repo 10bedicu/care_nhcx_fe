@@ -36,7 +36,7 @@ import {
   EligibilityProcedure,
   InsuranceEntry,
 } from "@/types/coverage_eligibility";
-import { FC, useMemo, useState } from "react";
+import { FC, ReactNode, useMemo, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
@@ -714,10 +714,16 @@ function PurposeResponseContent({
 
 interface CoverageEligibilityCardProps {
   coverageEligibilityRequest: CoverageEligibilityRequest;
+  /** Extra content rendered above the timestamps inside the card footer. */
+  footerActions?: ReactNode;
+  /** Extra content rendered above the card body (alerts, banners, etc.). */
+  headerBanner?: ReactNode;
 }
 
 const CoverageEligibilityCard: FC<CoverageEligibilityCardProps> = ({
   coverageEligibilityRequest,
+  footerActions,
+  headerBanner,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -836,36 +842,46 @@ const CoverageEligibilityCard: FC<CoverageEligibilityCardProps> = ({
 
         <CardFooter
           className={cn(
-            "flex justify-between p-4 pt-3",
+            "flex flex-col gap-3 p-4 pt-3",
             isOpen && "border-t"
           )}
         >
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-            <div className="flex items-center gap-1">
-              <CalendarIcon className="w-3.5 h-3.5" />
-              <span>
-                Created {formatDate(coverageEligibilityRequest.created_date)}
-              </span>
-            </div>
-            {response && (
+          {headerBanner && <div className="w-full">{headerBanner}</div>}
+          <div className="flex w-full justify-between items-center gap-3">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
               <div className="flex items-center gap-1">
-                <StatusIcon status={status} />
-                <span className="capitalize">
-                  {status} {formatDate(response.created_date)}
+                <CalendarIcon className="w-3.5 h-3.5" />
+                <span>
+                  Created {formatDate(coverageEligibilityRequest.created_date)}
                 </span>
               </div>
-            )}
-          </div>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" size="sm" className="w-9 p-0 flex-shrink-0">
-              {isOpen ? (
-                <ChevronUpIcon className="h-4 w-4" />
-              ) : (
-                <ChevronDownIcon className="h-4 w-4" />
+              {response && (
+                <div className="flex items-center gap-1">
+                  <StatusIcon status={status} />
+                  <span className="capitalize">
+                    {status} {formatDate(response.created_date)}
+                  </span>
+                </div>
               )}
-              <span className="sr-only">Toggle details</span>
-            </Button>
-          </CollapsibleTrigger>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {footerActions}
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-9 p-0 flex-shrink-0"
+                >
+                  {isOpen ? (
+                    <ChevronUpIcon className="h-4 w-4" />
+                  ) : (
+                    <ChevronDownIcon className="h-4 w-4" />
+                  )}
+                  <span className="sr-only">Toggle details</span>
+                </Button>
+              </CollapsibleTrigger>
+            </div>
+          </div>
         </CardFooter>
       </Collapsible>
     </Card>

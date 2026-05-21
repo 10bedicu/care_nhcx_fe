@@ -1,7 +1,12 @@
+import {
+  COVERAGE_ELIGIBILITY_REQUEST_PURPOSE_CHOICES,
+  CoverageEligibilityRequestPurposeChoice,
+} from "@/types/coverage_eligibility";
 import { Condition, ConditionCategory } from "@/types/condition";
-import { FC, useEffect, useRef } from "react";
+import { FC, useEffect, useMemo, useRef } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useQueryParams } from "raviger";
 
 import { Button } from "@/components/ui/button";
 import { ChargeItem } from "@/types/charge_item";
@@ -18,9 +23,19 @@ import { apis } from "@/apis";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
 import { toast } from "@/lib/utils";
 import { uploadFile } from "@/lib/upload-file";
-import { useNavigate } from "raviger";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+
+function parsePurposeQueryParam(
+  value: unknown
+): CoverageEligibilityRequestPurposeChoice | null {
+  if (typeof value !== "string") return null;
+  const lower = value.toLowerCase();
+  const match = COVERAGE_ELIGIBILITY_REQUEST_PURPOSE_CHOICES.find(
+    (choice) => choice === lower
+  );
+  return match ?? null;
+}
 
 function chargeItemHasCoding(ci: ChargeItem): boolean {
   return Boolean(ci.code?.system?.trim() && ci.code?.code?.trim());
@@ -45,6 +60,17 @@ const CreateCoverageEligibilityRequestPage: FC<
 > = ({ facilityId, patientId, encounterId }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [queryParams] = useQueryParams();
+
+  const lockedPurpose = useMemo(
+    () => parsePurposeQueryParam(queryParams?.purpose),
+    [queryParams?.purpose]
+  );
+
+  const initialPurpose: CoverageEligibilityRequestPurposeChoice[] = useMemo(
+    () => (lockedPurpose ? [lockedPurpose] : ["validation"]),
+    [lockedPurpose]
+  );
 
   const form = useForm<
     z.infer<typeof createCoverageEligibilityRequestFormSchema>
@@ -56,7 +82,7 @@ const CreateCoverageEligibilityRequestPage: FC<
       encounter: encounterId,
       status: "draft",
       priority: "normal",
-      purpose: ["benefits"],
+      purpose: initialPurpose,
     },
   });
 
@@ -189,7 +215,7 @@ const CreateCoverageEligibilityRequestPage: FC<
     onSuccess: () => {
       toast.success("Coverage check submitted successfully");
       navigate(
-        `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/coverages`
+        `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`
       );
     },
   });
@@ -271,9 +297,23 @@ const CreateCoverageEligibilityRequestPage: FC<
         />
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-medium">Check Coverage Eligibility</h3>
+            <h3 className="text-lg font-medium">
+              {lockedPurpose === "auth-requirements"
+                ? "Check Auth Requirements"
+                : lockedPurpose === "validation"
+                ? "Coverage Validation"
+                : lockedPurpose === "discovery"
+                ? "Coverage Discovery"
+                : lockedPurpose === "benefits"
+                ? "Benefits Check"
+                : "Check Coverage Eligibility"}
+            </h3>
             <p className="text-sm text-muted-foreground">
-              Check the coverage eligibility for the patient.
+              {lockedPurpose === "auth-requirements"
+                ? "Discover what documents and questionnaires are required for pre-authorisation."
+                : lockedPurpose === "validation"
+                ? "Confirm the policy is active and check the available wallet balance."
+                : "Check the coverage eligibility for the patient."}
             </p>
           </div>
           <Button
@@ -281,7 +321,7 @@ const CreateCoverageEligibilityRequestPage: FC<
             variant="outline"
             onClick={() => {
               navigate(
-                `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/coverages`
+                `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`
               );
             }}
           >
@@ -301,7 +341,10 @@ const CreateCoverageEligibilityRequestPage: FC<
                 <Separator />
                 <CoverageEligibilityRequestItemSection form={form} />
                 <Separator />
-                <CoverageEligibilityRequestOtherSection form={form} />
+                <CoverageEligibilityRequestOtherSection
+                  form={form}
+                  lockedPurpose={lockedPurpose}
+                />
                 <Separator />
 
                 <Button

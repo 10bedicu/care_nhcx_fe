@@ -12,8 +12,7 @@ const manifest = {
   },
   navItems: [],
   encounterTabs: {
-    claims: lazy(() => import("./components/claim-encounter-tab/index")),
-    coverages: lazy(() => import("./components/coverage-encounter-tab/index")),
+    claims: lazy(() => import("./components/nhcx-encounter-tab/index")),
   },
 };
 
