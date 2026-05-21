@@ -50,7 +50,6 @@ import { apis } from "@/apis";
 import {
   buildInitialItems,
   countMissingRequiredItems,
-  extractCoding,
   hasAnswerValue,
   itemLabel,
 } from "./questionnaire-helpers";
@@ -1022,8 +1021,19 @@ export function AddQuestionnaireSection({
         {
           sequence: newSequence,
           questionnaire: detail.full_url,
-          category: extractCoding(req.category),
-          code: extractCoding(req.code),
+          category: {
+            system:
+              "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+            code: "STG",
+            display: "Standard Treatment Guidelines",
+          },
+          code: {
+            system:
+              "https://nrces.in/ndhm/fhir/r4/ValueSet/ndhm-supportinginfo-code",
+            code: "ARC",
+            display:
+              "Additional info related to claim (conveying additional situation and condition information.)",
+          },
           item: buildInitialItems(detail.items),
         },
       ],

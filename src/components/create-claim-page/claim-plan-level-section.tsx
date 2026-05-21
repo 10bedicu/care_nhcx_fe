@@ -31,10 +31,7 @@ import { cn } from "@/lib/utils";
 import { useGlobalStore } from "@/hooks/use-global-store";
 import { createClaimFormSchema } from "./schema";
 import { z } from "zod";
-import {
-  buildInitialItems,
-  extractCoding,
-} from "./questionnaire-helpers";
+import { buildInitialItems } from "./questionnaire-helpers";
 import { QuestionnaireResponseCard } from "./claim-questionnaire-section";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -839,8 +836,19 @@ export function PlanLevelQuestionnairesSection({
         {
           sequence: newSequence,
           questionnaire: detail.full_url,
-          category: extractCoding(req.category),
-          code: extractCoding(req.code),
+          category: {
+            system:
+              "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
+            code: "INF",
+            display:
+              "Additional info related to claim ( conveying additional situation and condition information.)",
+          },
+          code: {
+            system:
+              "https://nrces.in/ndhm/fhir/r4/ValueSet/ndhm-supportinginfo-code",
+            code: "ODN",
+            display: "Other document",
+          },
           item: buildInitialItems(detail.items),
         },
       ],
