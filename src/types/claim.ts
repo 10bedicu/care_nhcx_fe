@@ -138,14 +138,38 @@ export type ClaimQuestionnaireResponse = {
 
 export type ClaimPayee = unknown;
 
+export type ClaimResponseErrorEntry = ClaimResponseError & {
+  expression?: string[];
+};
+
+export type ClaimResponseAdjudication = {
+  category: { coding: Coding[] };
+  amount?: { value: number; currency?: string };
+  value?: number;
+  reason?: { coding: Coding[] };
+};
+
+export type ClaimResponseIdentifier = {
+  type: { coding: Coding[] };
+  value: string;
+  system?: string;
+};
+
 export type ClaimResponse = {
+  id?: string;
+  request: string; // uuid
+  use?: "preauthorization" | "claim" | "predetermination" | null;
+  status?: "active" | "cancelled" | null;
+  pre_auth_ref?: string | null;
+  adjudication?: ClaimResponseAdjudication[] | null;
+  identifier?: ClaimResponseIdentifier[] | null;
+  type?: { coding: Coding[] } | null;
   outcome: string;
-  disposition?: string;
+  disposition?: string | null;
   item?: ClaimResponseItem[];
   add_item?: ClaimResponseAddItem[];
   total?: ClaimResponseTotal[];
-  error?: ClaimResponseError[];
-  request: string; // uuid
+  error?: ClaimResponseErrorEntry[];
   created_date: string;
   modified_date?: string;
 };

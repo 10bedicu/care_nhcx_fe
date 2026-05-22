@@ -86,8 +86,19 @@ export function deriveClaimOutcome(claim: Claim): ClaimOutcome {
   const response = claim.latest_response;
   if (!response) return "pending";
 
+  // Adjudication-based status (preferred when present)
+  const statusEntry = response.adjudication?.find(
+    (a) => a.category?.coding?.[0]?.code === "status"
+  );
+  const adjCode = statusEntry?.reason?.coding?.[0]?.code?.toLowerCase();
+  if (adjCode === "approved") return "approved";
+  if (adjCode === "queried") return "queried";
+  if (adjCode === "rejected") return "rejected";
+
+  // Outcome fallback
   if (response.outcome === "queued") return "queried";
 
+  // Amount-based fallback
   const totalRequested =
     claim.item?.reduce(
       (sum, item) => sum + item.unit_price * item.quantity.value,
