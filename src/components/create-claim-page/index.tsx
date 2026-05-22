@@ -23,6 +23,8 @@ import { useForm, useWatch } from "react-hook-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useQueryParams } from "raviger";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChargeItem } from "@/types/charge_item";
 import { ClaimAccidentSection } from "./claim-accident-section";
@@ -148,6 +150,23 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     queryFn: () =>
       apis.coverageEligibilityRequest.get(coverageEligibilityId as string),
     enabled: !!coverageEligibilityId,
+  });
+
+  // CE:validation latest — used to enforce total wallet balance cap
+  const { data: ceValidation } = useQuery({
+    queryKey: [
+      "coverage-eligibility-request",
+      "latest",
+      "validation",
+      encounterId,
+    ],
+    queryFn: () =>
+      apis.coverageEligibilityRequest.latest({
+        encounter: encounterId,
+        purpose: "validation",
+      }),
+    enabled: !!encounterId,
+    staleTime: 5 * 60 * 1000,
   });
 
   const didPrefillEncounterRef = useRef(false);
@@ -627,6 +646,42 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     setPrefillNonce((n) => n + 1);
   }, [flowKind, coverageEligibilityRequest, form, lockedUse]);
 
+  // ─── Total wallet-balance cap from CE:validation ───────────────────────────
+  const validationBalance = useMemo(() => {
+    const insurances = ceValidation?.latest_response?.insurances;
+    if (!insurances?.length) return null;
+    const primary =
+      insurances.find((i) => i.is_primary) ?? insurances[0];
+    if (!primary?.balance) return null;
+    const available =
+      primary.balance.allowed.value - primary.balance.used.value;
+    return available >= 0 ? available : 0;
+  }, [ceValidation]);
+
+  const watchedItemsForTotal = form.watch("item");
+  useEffect(() => {
+    if (validationBalance === null) {
+      form.setValue("_total_amount_cap_error", undefined);
+      return;
+    }
+    const total = (watchedItemsForTotal ?? []).reduce((sum, item) => {
+      return (
+        sum +
+        (item.unit_price || 0) *
+          (item.quantity?.value || 1) *
+          (item.factor || 1)
+      );
+    }, 0);
+    if (total > validationBalance) {
+      form.setValue(
+        "_total_amount_cap_error",
+        `Total claim amount ₹${total.toFixed(2)} exceeds available wallet balance of ₹${validationBalance.toFixed(2)}`
+      );
+    } else {
+      form.setValue("_total_amount_cap_error", undefined);
+    }
+  }, [watchedItemsForTotal, validationBalance, form]);
+
   const { mutate: submitClaim } = useMutation({
     mutationFn: apis.claim.submit,
     onSuccess: () => {
@@ -828,12 +883,22 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                   key={`items-${prefillNonce}`}
                   form={form}
                   coverageEligibilityRequest={coverageEligibilityRequest}
+                  previousClaim={previousClaim}
                 />
                 <Separator />
                 <ClaimAccidentSection form={form} />
                 <Separator />
                 <ClaimOtherSection form={form} lockedUse={lockedUse} />
                 <Separator />
+
+                {form.watch("_total_amount_cap_error") && (
+                  <Alert variant="destructive">
+                    <AlertCircleIcon className="h-4 w-4" />
+                    <AlertDescription>
+                      {form.watch("_total_amount_cap_error")}
+                    </AlertDescription>
+                  </Alert>
+                )}
 
                 <Button
                   className="w-full"

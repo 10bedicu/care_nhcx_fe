@@ -37,7 +37,11 @@ import { apis } from "@/apis";
 import { cn } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
 import { AddQuestionnaireSection } from "./claim-questionnaire-section";
-import { ClaimUseChoice } from "@/types/claim";
+import { Claim, ClaimUseChoice } from "@/types/claim";
+import {
+  BenefitCostQualifierType,
+  InsurancePlanBenefitDetail,
+} from "@/types/insurance_plan";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -46,6 +50,7 @@ import { z } from "zod";
 interface ClaimItemSectionProps {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   coverageEligibilityRequest?: CoverageEligibilityRequest;
+  previousClaim?: Claim;
 }
 
 const PROGRAM_CODES = [
@@ -639,6 +644,7 @@ const AB_PMJAY_CODE = PROGRAM_CODES.find((c) => c.code === "AB-PMJAY")!;
 export function ClaimItemSection({
   form,
   coverageEligibilityRequest,
+  previousClaim,
 }: ClaimItemSectionProps) {
   const { fields, remove } = useFieldArray({
     name: "item",
@@ -772,10 +778,13 @@ export function ClaimItemSection({
         {fields.map((field, index) => {
           const mandatoryDocsError =
             watchedItems?.[index]?._mandatory_docs_error;
+          const amountCapError = watchedItems?.[index]?._amount_cap_error;
+          const conditionErrors = watchedItems?.[index]?._condition_errors;
+          const hasAnyError = mandatoryDocsError || amountCapError || conditionErrors;
           return (
           <Card
             className={cn(
-              mandatoryDocsError &&
+              hasAnyError &&
                 (hasSubmitted
                   ? "border-destructive ring-1 ring-destructive"
                   : "border-amber-400 ring-1 ring-amber-400")
@@ -989,6 +998,14 @@ export function ClaimItemSection({
                 claimUse={claimUse}
               />
 
+              <ItemValidationEffects
+                form={form}
+                index={index}
+                planId={planId}
+                coverageEligibilityRequest={coverageEligibilityRequest}
+                previousClaim={previousClaim}
+              />
+
               <div className="grid grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
@@ -1150,24 +1167,41 @@ export function ClaimItemSection({
                 />
               </div>
             </CardContent>
-            {mandatoryDocsError && (
+            {hasAnyError && (
               <CardFooter
                 className={cn(
-                  "px-6 py-3 border-t",
+                  "px-6 py-3 border-t flex-col items-start gap-2",
                   hasSubmitted
                     ? "border-destructive/30 bg-destructive/5"
                     : "border-amber-300 bg-amber-50"
                 )}
               >
-                <div
-                  className={cn(
-                    "flex items-center gap-2 text-sm font-medium",
-                    hasSubmitted ? "text-destructive" : "text-amber-700"
-                  )}
-                >
-                  <AlertCircleIcon className="h-4 w-4 flex-shrink-0" />
-                  {mandatoryDocsError}
-                </div>
+                {mandatoryDocsError && (
+                  <div
+                    className={cn(
+                      "flex items-center gap-2 text-sm font-medium",
+                      hasSubmitted ? "text-destructive" : "text-amber-700"
+                    )}
+                  >
+                    <AlertCircleIcon className="h-4 w-4 flex-shrink-0" />
+                    {mandatoryDocsError}
+                  </div>
+                )}
+                {amountCapError && (
+                  <div className="flex items-center gap-2 text-sm font-medium text-destructive">
+                    <AlertCircleIcon className="h-4 w-4 flex-shrink-0" />
+                    {amountCapError}
+                  </div>
+                )}
+                {conditionErrors && conditionErrors.split(" • ").map((err, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 text-sm font-medium text-destructive"
+                  >
+                    <AlertCircleIcon className="h-4 w-4 flex-shrink-0" />
+                    {err}
+                  </div>
+                ))}
               </CardFooter>
             )}
           </Card>
@@ -1314,6 +1348,229 @@ function ModifierField({
       )}
     />
   );
+}
+
+/**
+ * Given a loaded benefit detail, compute the cap amount considering selected modifiers.
+ * Finds costs whose qualifiers are a subset of the selected modifiers. Among those,
+ * returns the highest value. Falls back to limits[] and then max_limit_amount.
+ */
+function computeIpbCap(
+  benefitDetail: InsurancePlanBenefitDetail,
+  selectedModifierCodes: string[]
+): number | null {
+  const costs = benefitDetail.costs ?? [];
+  if (costs.length > 0) {
+    const matchingCosts = costs.filter((cost) => {
+      if (cost.qualifiers.length === 0) return true;
+      return cost.qualifiers.every((q) =>
+        selectedModifierCodes.includes(q.qualifier_code)
+      );
+    });
+    if (matchingCosts.length > 0) {
+      const maxValue = Math.max(
+        ...matchingCosts.map((c) => parseFloat(c.value_amount) || 0)
+      );
+      if (maxValue > 0) return maxValue;
+    }
+  }
+
+  if (benefitDetail.limits?.length > 0) {
+    const maxLimit = Math.max(
+      ...benefitDetail.limits.map((l) => parseFloat(l.value_amount) || 0)
+    );
+    if (maxLimit > 0) return maxLimit;
+  }
+
+  const maxLimitAmount = parseFloat(benefitDetail.max_limit_amount);
+  if (maxLimitAmount > 0) return maxLimitAmount;
+
+  return null;
+}
+
+/**
+ * Pure-side-effect component: watches item fields and sets virtual error fields
+ * `_amount_cap_error` and `_condition_errors` in real time so errors are visible
+ * before the user clicks submit.
+ */
+function ItemValidationEffects({
+  form,
+  index,
+  planId,
+  coverageEligibilityRequest,
+  previousClaim,
+}: {
+  form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
+  index: number;
+  planId: string | null;
+  coverageEligibilityRequest?: CoverageEligibilityRequest;
+  previousClaim?: Claim;
+}) {
+  const productCode = form.watch(`item.${index}.product_or_service`)?.code;
+  const unitPrice = form.watch(`item.${index}.unit_price`);
+  const quantityValue = form.watch(`item.${index}.quantity.value`);
+  const modifiers = form.watch(`item.${index}.modifier`) ?? [];
+  const itemSequence = form.watch(`item.${index}.sequence`);
+  const claimUse = form.watch("use");
+
+  // Loads benefit (same query key as ModifierField → cached, no extra request)
+  const { data: benefitDetail } = useQuery({
+    queryKey: ["insurancePlanBenefit", "lookup", planId, productCode],
+    queryFn: () =>
+      apis.insurancePlanBenefit.lookup({
+        insurance_plan: planId!,
+        type_code: productCode!,
+      }),
+    enabled: Boolean(planId && productCode),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Compute the effective amount cap for this item based on the current stage
+  const amountCap = useMemo(() => {
+    if (claimUse === "preauthorization") {
+      // Pre-auth: cap at CE:AR response procedure allowed_amount
+      const insurances =
+        coverageEligibilityRequest?.latest_response?.insurances;
+      if (insurances) {
+        const matched =
+          insurances.find((ins) => ins.procedure?.code === productCode) ??
+          (insurances.length === 1 ? insurances[0] : undefined);
+        if (matched?.procedure?.allowed_amount?.value != null) {
+          return matched.procedure.allowed_amount.value;
+        }
+      }
+    } else if (claimUse === "claim") {
+      // Claim: cap at pre-auth response item adjudication approved amount
+      const responseItems = previousClaim?.latest_response?.item;
+      if (responseItems && itemSequence) {
+        const matched = responseItems.find(
+          (ri) => ri.itemSequence === itemSequence
+        );
+        if (matched?.adjudication) {
+          const benefitAdj = matched.adjudication.find((adj) =>
+            adj.category?.coding?.some((c) =>
+              ["benefit", "approved", "eligible"].includes(c.code ?? "")
+            )
+          );
+          if (benefitAdj?.amount?.value != null) {
+            return benefitAdj.amount.value;
+          }
+        }
+      }
+    }
+
+    // Fallback: derive cap from IPB benefit detail (used for CE:AR stage too)
+    if (benefitDetail) {
+      return computeIpbCap(
+        benefitDetail,
+        modifiers.map((m) => m.code)
+      );
+    }
+    return null;
+  }, [
+    claimUse,
+    coverageEligibilityRequest,
+    previousClaim,
+    benefitDetail,
+    productCode,
+    itemSequence,
+    modifiers,
+  ]);
+
+  // Effect: set amount cap error whenever unit_price or cap changes
+  useEffect(() => {
+    if (amountCap != null && unitPrice > amountCap) {
+      form.setValue(
+        `item.${index}._amount_cap_error`,
+        `Unit price ₹${unitPrice.toFixed(2)} exceeds the allowed limit of ₹${amountCap.toFixed(2)}`
+      );
+    } else {
+      form.setValue(`item.${index}._amount_cap_error`, undefined);
+    }
+  }, [unitPrice, amountCap, form, index]);
+
+  // Effect: set condition errors whenever quantity or modifiers change
+  useEffect(() => {
+    if (!benefitDetail?.conditions?.length) {
+      form.setValue(`item.${index}._condition_errors`, undefined);
+      return;
+    }
+
+    // Build a map of qualifier_code → qualifier_type for fast lookup
+    const qualifierTypeMap = new Map<string, BenefitCostQualifierType>();
+    for (const cost of benefitDetail.costs ?? []) {
+      for (const q of cost.qualifiers) {
+        qualifierTypeMap.set(q.qualifier_code, q.qualifier_type);
+      }
+    }
+
+    const stratificationModifiers = modifiers.filter(
+      (m) => qualifierTypeMap.get(m.code) === "stratification"
+    );
+    const implantModifiers = modifiers.filter(
+      (m) => qualifierTypeMap.get(m.code) === "implant"
+    );
+
+    const errors: string[] = [];
+
+    for (const cond of benefitDetail.conditions) {
+      // Quantity
+      if (cond.quantity_allowed > 0 && quantityValue > cond.quantity_allowed) {
+        errors.push(
+          `Quantity ${quantityValue} exceeds the allowed maximum of ${cond.quantity_allowed}`
+        );
+      }
+
+      // Stratifications
+      if (stratificationModifiers.length > 0) {
+        if (!cond.stratification_allowed) {
+          errors.push("Stratification is not allowed for this benefit");
+        } else {
+          if (
+            !cond.multiple_stratification_allowed &&
+            stratificationModifiers.length > 1
+          ) {
+            errors.push("Only one stratification is allowed");
+          } else if (
+            cond.maximum_stratification_allowed > 0 &&
+            stratificationModifiers.length > cond.maximum_stratification_allowed
+          ) {
+            errors.push(
+              `Maximum ${cond.maximum_stratification_allowed} stratification(s) allowed, ${stratificationModifiers.length} selected`
+            );
+          }
+        }
+      }
+
+      // Implants
+      if (implantModifiers.length > 0) {
+        if (!cond.implant_applicable) {
+          errors.push("Implants are not applicable for this benefit");
+        } else {
+          if (
+            !cond.multiple_implants_allowed &&
+            implantModifiers.length > 1
+          ) {
+            errors.push("Only one implant is allowed");
+          } else if (
+            cond.maximum_implants_allowed > 0 &&
+            implantModifiers.length > cond.maximum_implants_allowed
+          ) {
+            errors.push(
+              `Maximum ${cond.maximum_implants_allowed} implant(s) allowed, ${implantModifiers.length} selected`
+            );
+          }
+        }
+      }
+    }
+
+    form.setValue(
+      `item.${index}._condition_errors`,
+      errors.length > 0 ? errors.join(" • ") : undefined
+    );
+  }, [benefitDetail, quantityValue, modifiers, form, index]);
+
+  return null;
 }
 
 function AddDiagnosisSection({

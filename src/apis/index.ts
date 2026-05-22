@@ -100,6 +100,12 @@ export const apis = {
       );
     },
 
+    latest: async (query?: { encounter?: string; purpose?: string }) => {
+      return await request<CoverageEligibilityRequest>(
+        `/api/nhcx/coverage-eligibility-request/latest` + queryString(query)
+      );
+    },
+
     create: async (
       body: z.infer<typeof createCoverageEligibilityRequestFormSchema>
     ) => {

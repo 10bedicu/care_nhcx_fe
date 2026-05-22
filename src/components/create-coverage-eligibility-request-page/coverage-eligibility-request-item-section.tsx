@@ -1,6 +1,7 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import {
+  AlertCircleIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   CircleMinusIcon,
@@ -20,7 +21,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { UseFormReturn, useFieldArray } from "react-hook-form";
-import { useMemo, useState } from "react";
 
 import Autocomplete from "../ui/autocomplete";
 import { Badge } from "../ui/badge";
@@ -32,9 +32,15 @@ import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import ValuesetSelect from "../common/valueset-select";
 import { apis } from "@/apis";
+import {
+  BenefitCostQualifierType,
+  InsurancePlanBenefitDetail,
+} from "@/types/insurance_plan";
 import { chargeItemLabel } from "@/lib/prefill";
+import { cn } from "@/lib/utils";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
 interface CoverageEligibilityRequestItemSectionProps {
@@ -128,8 +134,18 @@ export function CoverageEligibilityRequestItemSection({
       )}
 
       <div className="space-y-4">
-        {fields.map((field, index) => (
-          <Card key={field.id}>
+        {fields.map((field, index) => {
+          const watchedItem = form.watch(`item.${index}`);
+          const amountCapError = watchedItem?._amount_cap_error;
+          const conditionErrors = watchedItem?._condition_errors;
+          const hasAnyError = amountCapError || conditionErrors;
+          return (
+          <Card
+            key={field.id}
+            className={cn(
+              hasAnyError && "border-destructive ring-1 ring-destructive"
+            )}
+          >
             <CardHeader>
               <FormField
                 control={form.control}
@@ -301,9 +317,36 @@ export function CoverageEligibilityRequestItemSection({
                   </FormItem>
                 )}
               />
+
+              <CEItemValidationEffects
+                form={form}
+                index={index}
+                planId={planId}
+              />
             </CardContent>
+            {hasAnyError && (
+              <CardFooter className="px-6 py-3 border-t border-destructive/30 bg-destructive/5 flex-col items-start gap-2">
+                {amountCapError && (
+                  <div className="flex items-center gap-2 text-sm font-medium text-destructive">
+                    <AlertCircleIcon className="h-4 w-4 flex-shrink-0" />
+                    {amountCapError}
+                  </div>
+                )}
+                {conditionErrors &&
+                  conditionErrors.split(" • ").map((err, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 text-sm font-medium text-destructive"
+                    >
+                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0" />
+                      {err}
+                    </div>
+                  ))}
+              </CardFooter>
+            )}
           </Card>
-        ))}
+          );
+        })}
 
         <FormField
           control={form.control}
@@ -453,6 +496,163 @@ function ModifierField({
       )}
     />
   );
+}
+
+function computeIpbCap(
+  benefitDetail: InsurancePlanBenefitDetail,
+  selectedModifierCodes: string[]
+): number | null {
+  const costs = benefitDetail.costs ?? [];
+  if (costs.length > 0) {
+    const matchingCosts = costs.filter((cost) => {
+      if (cost.qualifiers.length === 0) return true;
+      return cost.qualifiers.every((q) =>
+        selectedModifierCodes.includes(q.qualifier_code)
+      );
+    });
+    if (matchingCosts.length > 0) {
+      const maxValue = Math.max(
+        ...matchingCosts.map((c) => parseFloat(c.value_amount) || 0)
+      );
+      if (maxValue > 0) return maxValue;
+    }
+  }
+
+  if (benefitDetail.limits?.length > 0) {
+    const maxLimit = Math.max(
+      ...benefitDetail.limits.map((l) => parseFloat(l.value_amount) || 0)
+    );
+    if (maxLimit > 0) return maxLimit;
+  }
+
+  const maxLimitAmount = parseFloat(benefitDetail.max_limit_amount);
+  if (maxLimitAmount > 0) return maxLimitAmount;
+
+  return null;
+}
+
+/**
+ * For CE:AR items — validates amount cap (IPB limit with modifier consideration)
+ * and condition rules (quantity, stratification, implant).
+ */
+function CEItemValidationEffects({
+  form,
+  index,
+  planId,
+}: {
+  form: UseFormReturn<z.infer<typeof createCoverageEligibilityRequestFormSchema>>;
+  index: number;
+  planId: string | null;
+}) {
+  const productCode = form.watch(`item.${index}.product_or_service`)?.code;
+  const unitPrice = form.watch(`item.${index}.unit_price`);
+  const quantityValue = form.watch(`item.${index}.quantity.value`);
+  const modifiers = form.watch(`item.${index}.modifier`) ?? [];
+
+  const { data: benefitDetail } = useQuery({
+    queryKey: ["insurancePlanBenefit", "lookup", planId, productCode],
+    queryFn: () =>
+      apis.insurancePlanBenefit.lookup({
+        insurance_plan: planId!,
+        type_code: productCode!,
+      }),
+    enabled: Boolean(planId && productCode),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const amountCap = useMemo(() => {
+    if (!benefitDetail) return null;
+    return computeIpbCap(
+      benefitDetail,
+      modifiers.map((m) => m.code)
+    );
+  }, [benefitDetail, modifiers]);
+
+  useEffect(() => {
+    if (amountCap != null && unitPrice > amountCap) {
+      form.setValue(
+        `item.${index}._amount_cap_error`,
+        `Unit price ₹${unitPrice.toFixed(2)} exceeds the allowed limit of ₹${amountCap.toFixed(2)}`
+      );
+    } else {
+      form.setValue(`item.${index}._amount_cap_error`, undefined);
+    }
+  }, [unitPrice, amountCap, form, index]);
+
+  useEffect(() => {
+    if (!benefitDetail?.conditions?.length) {
+      form.setValue(`item.${index}._condition_errors`, undefined);
+      return;
+    }
+
+    const qualifierTypeMap = new Map<string, BenefitCostQualifierType>();
+    for (const cost of benefitDetail.costs ?? []) {
+      for (const q of cost.qualifiers) {
+        qualifierTypeMap.set(q.qualifier_code, q.qualifier_type);
+      }
+    }
+
+    const stratificationModifiers = modifiers.filter(
+      (m) => qualifierTypeMap.get(m.code) === "stratification"
+    );
+    const implantModifiers = modifiers.filter(
+      (m) => qualifierTypeMap.get(m.code) === "implant"
+    );
+
+    const errors: string[] = [];
+
+    for (const cond of benefitDetail.conditions) {
+      if (cond.quantity_allowed > 0 && quantityValue > cond.quantity_allowed) {
+        errors.push(
+          `Quantity ${quantityValue} exceeds the allowed maximum of ${cond.quantity_allowed}`
+        );
+      }
+
+      if (stratificationModifiers.length > 0) {
+        if (!cond.stratification_allowed) {
+          errors.push("Stratification is not allowed for this benefit");
+        } else {
+          if (
+            !cond.multiple_stratification_allowed &&
+            stratificationModifiers.length > 1
+          ) {
+            errors.push("Only one stratification is allowed");
+          } else if (
+            cond.maximum_stratification_allowed > 0 &&
+            stratificationModifiers.length > cond.maximum_stratification_allowed
+          ) {
+            errors.push(
+              `Maximum ${cond.maximum_stratification_allowed} stratification(s) allowed, ${stratificationModifiers.length} selected`
+            );
+          }
+        }
+      }
+
+      if (implantModifiers.length > 0) {
+        if (!cond.implant_applicable) {
+          errors.push("Implants are not applicable for this benefit");
+        } else {
+          if (!cond.multiple_implants_allowed && implantModifiers.length > 1) {
+            errors.push("Only one implant is allowed");
+          } else if (
+            cond.maximum_implants_allowed > 0 &&
+            implantModifiers.length > cond.maximum_implants_allowed
+          ) {
+            errors.push(
+              `Maximum ${cond.maximum_implants_allowed} implant(s) allowed, ${implantModifiers.length} selected`
+            );
+          }
+        }
+      }
+    }
+
+    form.setValue(
+      `item.${index}._condition_errors`,
+      errors.length > 0 ? errors.join(" • ") : undefined
+    );
+  }, [benefitDetail, quantityValue, modifiers, form, index]);
+
+  return null;
 }
 
 function AddDiagnosisSection({

@@ -92,6 +92,8 @@ export const coverageEligibilityRequestItemSchema = z
     quantity: quantitySchema,
     unit_price: z.number().gt(0),
     diagnosis: z.array(coverageEligibilityRequestDiagnosisSchema).default([]),
+    _amount_cap_error: z.string().optional(),
+    _condition_errors: z.string().optional(),
   })
   .refine(
     (data) => {
@@ -105,6 +107,20 @@ export const coverageEligibilityRequestItemSchema = z
         "Either product_or_service or charge_item must be provided, but not both",
       path: ["product_or_service", "charge_item"],
     }
+  )
+  .refine(
+    (data) => !data._amount_cap_error,
+    (data) => ({
+      message: data._amount_cap_error ?? "Amount exceeds the allowed limit",
+      path: ["_amount_cap_error"],
+    })
+  )
+  .refine(
+    (data) => !data._condition_errors,
+    (data) => ({
+      message: data._condition_errors ?? "Condition validation failed",
+      path: ["_condition_errors"],
+    })
   );
 
 export const createCoverageEligibilityRequestFormSchema = z.object({

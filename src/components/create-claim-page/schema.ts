@@ -154,6 +154,8 @@ export const claimItemSchema = z
     factor: z.number().optional(),
     _mandatory_docs_error: z.string().optional(),
     _mandatory_questionnaires_error: z.string().optional(),
+    _amount_cap_error: z.string().optional(),
+    _condition_errors: z.string().optional(),
   })
   .refine(
     (data) => {
@@ -191,6 +193,20 @@ export const claimItemSchema = z
         data._mandatory_questionnaires_error ??
         "All mandatory questionnaires must be completed",
       path: ["_mandatory_questionnaires_error"],
+    })
+  )
+  .refine(
+    (data) => !data._amount_cap_error,
+    (data) => ({
+      message: data._amount_cap_error ?? "Amount exceeds the allowed limit",
+      path: ["_amount_cap_error"],
+    })
+  )
+  .refine(
+    (data) => !data._condition_errors,
+    (data) => ({
+      message: data._condition_errors ?? "Condition validation failed",
+      path: ["_condition_errors"],
     })
   );
 
@@ -289,6 +305,7 @@ export const createClaimFormSchema = z
       .default([]),
     _mandatory_plan_docs_error: z.string().optional(),
     _mandatory_plan_questionnaires_error: z.string().optional(),
+    _total_amount_cap_error: z.string().optional(),
   })
   .refine(
     (data) => !data._mandatory_plan_docs_error,
@@ -306,5 +323,14 @@ export const createClaimFormSchema = z
         data._mandatory_plan_questionnaires_error ??
         "All mandatory plan-level questionnaires must be completed",
       path: ["_mandatory_plan_questionnaires_error"],
+    })
+  )
+  .refine(
+    (data) => !data._total_amount_cap_error,
+    (data) => ({
+      message:
+        data._total_amount_cap_error ??
+        "Total claim amount exceeds available wallet balance",
+      path: ["_total_amount_cap_error"],
     })
   );
