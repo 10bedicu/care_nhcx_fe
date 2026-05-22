@@ -24,7 +24,6 @@ import { DateTimePicker } from "../ui/date-time-picker";
 import { Input } from "@/components/ui/input";
 import { UseFormReturn } from "react-hook-form";
 import ValuesetSelect from "@/components/common/valueset-select";
-import { cn } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
 import { z } from "zod";
 
@@ -45,8 +44,6 @@ const CLAIM_USE_LABELS: Record<ClaimUseChoice, string> = {
 
 
 export function ClaimOtherSection({ form, lockedUse }: ClaimOtherSectionProps) {
-  const hasRelated = (form.watch("related") || []).length > 0;
-
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3 mb-6">
@@ -110,16 +107,6 @@ export function ClaimOtherSection({ form, lockedUse }: ClaimOtherSectionProps) {
                             <SelectItem
                               key={choice}
                               value={choice}
-                              disabled={choice === "claim" && !hasRelated}
-                              title={
-                                choice === "claim" && !hasRelated
-                                  ? "Add at least one related claim to select 'claim'"
-                                  : undefined
-                              }
-                              className={cn({
-                                "opacity-50 cursor-not-allowed pointer-events-auto":
-                                  choice === "claim" && !hasRelated,
-                              })}
                             >
                               {CLAIM_USE_LABELS[choice] ?? choice}
                             </SelectItem>

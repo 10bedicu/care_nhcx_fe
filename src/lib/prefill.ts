@@ -35,6 +35,13 @@ export const DEFAULT_SUPPORTING_INFO_CODE: Coding = {
   display: "Attachment",
 };
 
+export const DEFAULT_RELATED_RELATIONSHIP: Coding = {
+  system:
+    "http://terminology.hl7.org/CodeSystem/ex-relatedclaimrelationship",
+  code: "prior",
+  display: "Prior Claim",
+};
+
 export const DEFAULT_ITEM_CATEGORY: Coding = {
   code: "1586771000168103",
   system: SNOMED_SYSTEM,

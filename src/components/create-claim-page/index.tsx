@@ -8,6 +8,7 @@ import {
   DEFAULT_DIAGNOSIS_TYPE,
   DEFAULT_ITEM_CATEGORY,
   DEFAULT_PROGRAM_CODE,
+  DEFAULT_RELATED_RELATIONSHIP,
   DEFAULT_SUPPORTING_INFO_CATEGORY,
   DEFAULT_SUPPORTING_INFO_CODE,
   chargeItemHasCoding,
@@ -26,9 +27,9 @@ import { Button } from "@/components/ui/button";
 import { ChargeItem } from "@/types/charge_item";
 import { ClaimAccidentSection } from "./claim-accident-section";
 import { ClaimInsuranceSection } from "./claim-insurance-section";
+import { ClaimRelatedSection } from "./claim-related-section";
 import { ClaimItemSection } from "./claim-item-section";
 import { ClaimOtherSection } from "./claim-other-section";
-import { ClaimRelatedSection } from "./claim-related-section";
 import { EncounterClass } from "@/types/encounter";
 import { FileUploadModel } from "@/types/file_upload";
 import { Form } from "@/components/ui/form";
@@ -114,7 +115,11 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       const existingRelated = form.getValues("related") || [];
       if (!existingRelated.find((r) => r.claim === relatedClaimId)) {
         form.setValue("related", [
-          { claim: relatedClaimId, relationship: undefined, reference: "" },
+          {
+            claim: relatedClaimId,
+            relationship: DEFAULT_RELATED_RELATIONSHIP,
+            reference: "",
+          },
           ...existingRelated,
         ]);
       }
@@ -399,7 +404,18 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       priority: previousClaim.priority,
       type: previousClaim.type,
       billable_period: previousClaim.billable_period,
-      related: current.related || [],
+      related: (current.related || []).map((r) =>
+        r.claim === relatedClaimId
+          ? {
+              ...r,
+              relationship: r.relationship ?? DEFAULT_RELATED_RELATIONSHIP,
+              reference:
+                r.reference ||
+                previousClaim.latest_response?.pre_auth_ref ||
+                "",
+            }
+          : r
+      ),
       care_team:
         (previousClaim.care_team || []).map((m) => ({
           sequence: m.sequence,
@@ -495,7 +511,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
     form.reset(mappedValues, { keepDefaultValues: false });
     setPrefillNonce((n) => n + 1);
-  }, [form, previousClaim, lockedUse, flowKind]);
+  }, [form, previousClaim, lockedUse, flowKind, relatedClaimId]);
 
   // ─── CE:AR prefill (PA via CE:AR) ─────────────────────────────────────────
   //
@@ -782,8 +798,15 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                 onSubmit={form.handleSubmit(onSubmit)}
                 className="space-y-8"
               >
-                <ClaimRelatedSection form={form} />
-                <Separator />
+                {flowKind === "via-related" && (
+                  <>
+                    <ClaimRelatedSection
+                      form={form}
+                      lockedClaimId={relatedClaimId}
+                    />
+                    <Separator />
+                  </>
+                )}
                 <ClaimInsuranceSection
                   form={form}
                   readOnly={flowKind !== "fresh"}
