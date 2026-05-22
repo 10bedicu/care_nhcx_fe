@@ -4,7 +4,16 @@ import {
   ClaimUseChoice,
 } from "@/types/claim";
 import { Condition, ConditionCategory } from "@/types/condition";
-import { FC, useEffect, useMemo, useRef } from "react";
+import {
+  DEFAULT_DIAGNOSIS_TYPE,
+  DEFAULT_ITEM_CATEGORY,
+  DEFAULT_PROGRAM_CODE,
+  DEFAULT_SUPPORTING_INFO_CATEGORY,
+  DEFAULT_SUPPORTING_INFO_CODE,
+  chargeItemHasCoding,
+  parsePositiveNumber,
+} from "@/lib/prefill";
+import { FC, useEffect, useMemo, useRef, useState } from "react";
 import {
   PlanLevelQuestionnairesSection,
   PlanLevelSupportingInfoSection,
@@ -25,6 +34,7 @@ import { FileUploadModel } from "@/types/file_upload";
 import { Form } from "@/components/ui/form";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
 import { InsurancePlanDetailsPanel } from "../insurance-plan-details-panel";
+import PayerQueryBanner from "@/components/common/payer-query-banner";
 import { PmjayBiometricVerificationGate } from "@/components/common/pmjay-biometric-verification-gate";
 import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
@@ -41,23 +51,15 @@ function parseUseQueryParam(value: unknown): ClaimUseChoice | null {
   return match ?? null;
 }
 
+function parseStringParam(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 export type CreateClaimPageProps = {
   facilityId: string;
   patientId: string;
   encounterId: string;
 };
-
-function chargeItemHasCoding(ci: ChargeItem): boolean {
-  return Boolean(ci.code?.system?.trim() && ci.code?.code?.trim());
-}
-
-function parsePositiveNumber(
-  value: string | undefined,
-  fallback: number
-): number {
-  const n = parseFloat(value ?? "");
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}
 
 const CreateClaimPage: FC<CreateClaimPageProps> = ({
   facilityId,
@@ -73,10 +75,27 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     [queryParams?.use]
   );
 
-  const coverageEligibilityId = useMemo(() => {
-    const raw = queryParams?.coverage_eligibility;
-    return typeof raw === "string" && raw.length > 0 ? raw : undefined;
-  }, [queryParams?.coverage_eligibility]);
+  const coverageEligibilityId = useMemo(
+    () => parseStringParam(queryParams?.coverage_eligibility),
+    [queryParams?.coverage_eligibility]
+  );
+
+  const relatedClaimId = useMemo(
+    () => parseStringParam(queryParams?.related),
+    [queryParams?.related]
+  );
+
+  // The guided flow drives the form via two mutually-exclusive prefill sources:
+  //   `related`              → seed from a previous claim (PA→PA, PA→Claim,
+  //                            Claim→Claim) and treat its `latest_response` as
+  //                            the payer query to surface.
+  //   `coverage_eligibility` → seed from a CE:AR request when there is no
+  //                            previous claim attached (PA via CE:AR).
+  const flowKind: "via-related" | "via-ce-ar" | "fresh" = relatedClaimId
+    ? "via-related"
+    : coverageEligibilityId
+    ? "via-ce-ar"
+    : "fresh";
 
   const form = useForm<z.infer<typeof createClaimFormSchema>>({
     resolver: zodResolver(createClaimFormSchema),
@@ -91,13 +110,11 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   });
 
   useEffect(() => {
-    const related = queryParams?.related as string | undefined;
-
-    if (related) {
+    if (relatedClaimId) {
       const existingRelated = form.getValues("related") || [];
-      if (!existingRelated.find((r) => r.claim === related)) {
+      if (!existingRelated.find((r) => r.claim === relatedClaimId)) {
         form.setValue("related", [
-          { claim: related, relationship: undefined, reference: "" },
+          { claim: relatedClaimId, relationship: undefined, reference: "" },
           ...existingRelated,
         ]);
       }
@@ -121,7 +138,21 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     enabled: !!previousClaimId,
   });
 
+  const { data: coverageEligibilityRequest } = useQuery({
+    queryKey: ["coverage-eligibility-request", coverageEligibilityId],
+    queryFn: () =>
+      apis.coverageEligibilityRequest.get(coverageEligibilityId as string),
+    enabled: !!coverageEligibilityId,
+  });
+
   const didPrefillEncounterRef = useRef(false);
+  const didPrefillCeRef = useRef(false);
+  // Bumped whenever the form is bulk-prefilled (CE:AR or previous-claim).
+  // Used as a `key` on dynamic-array sections so their `useFieldArray` hooks
+  // are forced to re-read from the fresh form state — works around the known
+  // case where `form.reset`/`setValue` do not always propagate to nested
+  // field arrays in react-hook-form v7.
+  const [prefillNonce, setPrefillNonce] = useState(0);
 
   const { data: encounterDiagnoses, isFetched: encounterDiagnosesFetched } =
     useQuery({
@@ -134,7 +165,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         });
         return res.results || [];
       },
-      enabled: !!patientId && !!encounterId,
+      enabled: !!patientId && !!encounterId && flowKind === "fresh",
       staleTime: 60 * 1000,
     });
 
@@ -148,7 +179,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       });
       return (res.results || []).filter((file) => !!file.id);
     },
-    enabled: !!encounterId,
+    enabled: !!encounterId && flowKind === "fresh",
     staleTime: 60 * 1000,
   });
 
@@ -162,7 +193,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         });
         return res.results || [];
       },
-      enabled: !!facilityId && !!encounterId,
+      enabled: !!facilityId && !!encounterId && flowKind === "fresh",
       staleTime: 60 * 1000,
     });
 
@@ -181,14 +212,14 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     switch (encounter.encounter_class) {
       case EncounterClass.inpatient:
         form.setValue("type", {
-          code: "1586771000168103",
+          code: "737481003",
           system: "http://snomed.info/sct",
           display: "Inpatient care management",
         });
         break;
       case EncounterClass.outpatient:
         form.setValue("type", {
-          code: "737850002",
+          code: "737492002",
           system: "http://snomed.info/sct",
           display: "Outpatient care management",
         });
@@ -231,9 +262,15 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     }
   }, [encounter, form]);
 
+  // ─── Fresh encounter-based prefill ─────────────────────────────────────────
+  //
+  // Only used when the form is not seeded from either a previous claim or a
+  // coverage-eligibility request. New items are now expected to flow through
+  // CE:AR; this branch is preserved as a defensive fallback so the form is not
+  // empty if the user navigates here directly.
   useEffect(() => {
+    if (flowKind !== "fresh") return;
     if (didPrefillEncounterRef.current) return;
-    if (previousClaimId) return;
     if (
       !encounterDiagnosesFetched ||
       !encounterFilesFetched ||
@@ -259,46 +296,25 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
     didPrefillEncounterRef.current = true;
 
-    const diagnosis =
-      (encounterDiagnoses || []).map((c, idx) => ({
-        sequence: idx + 1,
-        type: [
-          {
-            code: "89100005", // TODO: Map this based on the verification status
-            system: "http://snomed.info/sct",
-            display:
-              "Final diagnosis (discharge) (contextual qualifier) (qualifier value)",
-          },
-        ],
-        diagnosis_reference: undefined,
-        diagnosis_code: c.code,
-        on_admission: "unknown" as ClaimDiagnosisOnAdmissionChoice,
-      })) || [];
-
+    const diagnosis = (encounterDiagnoses || []).map((c, idx) => ({
+      sequence: idx + 1,
+      type: [DEFAULT_DIAGNOSIS_TYPE],
+      diagnosis_reference: undefined,
+      diagnosis_code: c.code,
+      on_admission: "unknown" as ClaimDiagnosisOnAdmissionChoice,
+    }));
     const diagnosisSequences = diagnosis.map((d) => d.sequence);
     form.setValue("diagnosis", diagnosis);
 
-    const supportingInfo =
-      (encounterFiles || []).map((file, idx) => ({
-        sequence: idx + 1,
-        category: {
-          code: "DIA",
-          system:
-            "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-category",
-          display: "Diagnostic report",
-        },
-        code: {
-          code: "AT",
-          system:
-            "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
-          display: "Attachment",
-        },
-        timing: undefined,
-        value_string: undefined,
-        value_attachment: file.id,
-        _is_plan_level: false,
-      })) || [];
-
+    const supportingInfo = (encounterFiles || []).map((file, idx) => ({
+      sequence: idx + 1,
+      category: DEFAULT_SUPPORTING_INFO_CATEGORY,
+      code: DEFAULT_SUPPORTING_INFO_CODE,
+      timing: undefined,
+      value_string: undefined,
+      value_attachment: file.id,
+      _is_plan_level: false,
+    }));
     const informationSequences = supportingInfo.map((info) => info.sequence);
     form.setValue("supporting_info", supportingInfo);
 
@@ -321,12 +337,8 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     const emptyItemTemplate = {
       care_team_sequence: [...careTeamSequences],
       procedure_sequence: [] as number[],
-      category: {
-        display: "Primary healthcare service",
-        system: "http://snomed.info/sct",
-        code: "1586771000168103",
-      },
-      program_code: [] as z.infer<
+      category: DEFAULT_ITEM_CATEGORY,
+      program_code: [DEFAULT_PROGRAM_CODE] as z.infer<
         typeof createClaimFormSchema
       >["item"][number]["program_code"],
       serviced_period: undefined,
@@ -354,7 +366,9 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         }))
       );
     }
+    setPrefillNonce((n) => n + 1);
   }, [
+    flowKind,
     encounter,
     encounterChargeItems,
     encounterChargeItemsFetched,
@@ -364,129 +378,238 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     encounterFiles,
     encounterFilesFetched,
     form,
-    previousClaimId,
   ]);
 
+  // ─── Previous-claim prefill (PA via PA, Claim via PA, Claim via Claim) ────
   useEffect(() => {
-    if (previousClaim) {
-      const current = form.getValues();
+    if (!previousClaim) return;
+    if (flowKind !== "via-related") return;
 
-      const mappedValues: z.infer<typeof createClaimFormSchema> = {
-        // keep current associations
-        facility: current.facility,
-        patient: current.patient,
-        encounter: current.encounter,
+    const current = form.getValues();
 
-        // The guided flow may force a specific use via query param; respect it
-        // so we don't accidentally copy the previous claim's use (e.g. when
-        // following up on a preauthorization to file an actual claim).
-        use: lockedUse ?? previousClaim.use,
-        status: "draft",
-        priority: previousClaim.priority,
-        type: previousClaim.type,
+    const mappedValues: z.infer<typeof createClaimFormSchema> = {
+      facility: current.facility,
+      patient: current.patient,
+      encounter: current.encounter,
+      // The guided flow may force a specific use via query param; respect it so
+      // we don't accidentally copy the previous claim's use (e.g. when
+      // following up on a preauthorization to file an actual claim).
+      use: lockedUse ?? previousClaim.use,
+      status: "draft",
+      priority: previousClaim.priority,
+      type: previousClaim.type,
+      billable_period: previousClaim.billable_period,
+      related: current.related || [],
+      care_team:
+        (previousClaim.care_team || []).map((m) => ({
+          sequence: m.sequence,
+          provider: m.provider?.id,
+          responsible: m.responsible ?? false,
+          role: m.role,
+        })) || [],
 
-        // optional period
-        billable_period: previousClaim.billable_period,
+      // Derive _is_plan_level: sequences that appear in no item's
+      // information_sequence are plan-level.
+      supporting_info: (() => {
+        const itemInfoSeqs = new Set(
+          (previousClaim.item || []).flatMap(
+            (it) => it.information_sequence || []
+          )
+        );
+        return (previousClaim.supporting_info || []).map((s) => ({
+          sequence: s.sequence,
+          category: s.category,
+          code: s.code,
+          timing: s.timing,
+          value_string: s.value_string,
+          value_attachment: s.value_attachment as unknown as string,
+          _is_plan_level: !itemInfoSeqs.has(s.sequence),
+        }));
+      })(),
 
-        // carry over linked claim (already selected), keep as-is
-        related: current.related || [],
+      procedure: (previousClaim.procedure || []).map((p) => ({
+        sequence: p.sequence,
+        type: p.type || [],
+        date: p.date,
+        procedure_reference: undefined,
+        procedure_code: p.procedure_code,
+      })),
 
-        // map care team to provider ids
-        care_team:
-          (previousClaim.care_team || []).map((m) => ({
-            sequence: m.sequence,
-            provider: m.provider?.id,
-            responsible: m.responsible ?? false,
-            role: m.role,
-          })) || [],
+      diagnosis: (previousClaim.diagnosis || []).map((d) => ({
+        sequence: d.sequence,
+        type: d.type || [],
+        diagnosis_reference: undefined,
+        diagnosis_code: d.diagnosis_code,
+        on_admission: d.on_admission,
+      })),
 
-        // supporting info (only ids for attachments; no files here)
-        // Derive _is_plan_level: sequences that appear in no item's information_sequence are plan-level.
-        supporting_info: (() => {
-          const itemInfoSeqs = new Set(
-            (previousClaim.item || []).flatMap(
-              (it) => it.information_sequence || []
-            )
-          );
-          return (previousClaim.supporting_info || []).map((s) => ({
-            sequence: s.sequence,
-            category: s.category,
-            code: s.code,
-            timing: s.timing,
-            value_string: s.value_string,
-            value_attachment: s.value_attachment as unknown as string,
-            _is_plan_level: !itemInfoSeqs.has(s.sequence),
-          }));
-        })(),
+      insurance: (() => {
+        const mapped = (previousClaim.insurance || []).map((ins, idx) => ({
+          sequence:
+            typeof ins.sequence === "number" && ins.sequence > 0
+              ? ins.sequence
+              : idx + 1,
+          focal: !!ins.focal,
+          policy: ins.policy,
+        }));
+        if (mapped.length > 0 && !mapped.some((i) => i.focal)) {
+          mapped[0].focal = true;
+        }
+        return mapped;
+      })(),
 
-        // procedures
-        procedure:
-          (previousClaim.procedure || []).map((p) => ({
-            sequence: p.sequence,
-            type: p.type || [],
-            date: p.date,
-            procedure_reference: undefined,
-            procedure_code: p.procedure_code,
-          })) || [],
+      item: (previousClaim.item || []).map((it) => ({
+        sequence: it.sequence,
+        care_team_sequence: it.care_team_sequence || [],
+        diagnosis_sequence: it.diagnosis_sequence || [],
+        procedure_sequence: it.procedure_sequence || [],
+        information_sequence: it.information_sequence || [],
+        category: it.category,
+        product_or_service: it.product_or_service,
+        modifier: it.modifier ?? [],
+        charge_item: undefined,
+        program_code:
+          it.program_code && it.program_code.length > 0
+            ? it.program_code
+            : [DEFAULT_PROGRAM_CODE],
+        serviced_period: it.serviced_period,
+        quantity: it.quantity,
+        unit_price: it.unit_price,
+        factor: it.factor,
+      })),
 
-        // diagnoses
-        diagnosis:
-          (previousClaim.diagnosis || []).map((d) => ({
-            sequence: d.sequence,
-            type: d.type || [],
-            diagnosis_reference: undefined,
-            diagnosis_code: d.diagnosis_code,
-            on_admission: d.on_admission,
-          })) || [],
+      accident: previousClaim.accident ?? undefined,
+      payment: undefined,
 
-        // insurances
-        insurance:
-          (previousClaim.insurance || []).map((ins) => ({
-            sequence: ins.sequence,
-            focal: !!ins.focal,
-            policy: ins.policy,
-          })) || [],
+      // Sequences are recomputed on submit to stay unique across the response.
+      questionnaire_responses: (
+        previousClaim.questionnaire_responses ?? []
+      ).map((qr) => ({
+        sequence: 0,
+        questionnaire: qr.questionnaire,
+        category: qr.category,
+        code: qr.code,
+        item: qr.item,
+      })),
+    };
 
-        // items
-        item:
-          (previousClaim.item || []).map((it) => ({
-            sequence: it.sequence,
-            care_team_sequence: it.care_team_sequence || [],
-            diagnosis_sequence: it.diagnosis_sequence || [],
-            procedure_sequence: it.procedure_sequence || [],
-            information_sequence: it.information_sequence || [],
-            category: it.category,
-            product_or_service: it.product_or_service,
-            modifier: it.modifier ?? [],
-            charge_item: undefined,
-            program_code: it.program_code || [],
-            serviced_period: it.serviced_period,
-            quantity: it.quantity,
-            unit_price: it.unit_price,
-            factor: it.factor,
-          })) || [],
+    form.reset(mappedValues, { keepDefaultValues: false });
+    setPrefillNonce((n) => n + 1);
+  }, [form, previousClaim, lockedUse, flowKind]);
 
-        // accident
-        accident: previousClaim.accident ?? undefined,
+  // ─── CE:AR prefill (PA via CE:AR) ─────────────────────────────────────────
+  //
+  // Seeds the form from the CE request's insurance, items, diagnoses, and
+  // supporting documents. Item ↔ supporting-info linkages from the CE request
+  // are preserved so the resulting pre-authorisation lists supporting info at
+  // item level, matching how validation is sourced from the CE response.
+  useEffect(() => {
+    if (flowKind !== "via-ce-ar") return;
+    if (!coverageEligibilityRequest) return;
+    if (didPrefillCeRef.current) return;
 
-        // payment is not part of creation typically; omit/undefined
-        payment: undefined,
+    didPrefillCeRef.current = true;
 
-        // Prefill questionnaire responses — sequence will be recomputed on submit
-        questionnaire_responses: (
-          previousClaim.questionnaire_responses ?? []
-        ).map((qr) => ({
-          sequence: 0, // recomputed on submit
-          questionnaire: qr.questionnaire,
-          category: qr.category,
-          code: qr.code,
-          item: qr.item,
-        })),
-      };
+    const ceItems = coverageEligibilityRequest.item ?? [];
+    const ceSupportingInfo = coverageEligibilityRequest.supporting_info ?? [];
+    const ceInsurance = coverageEligibilityRequest.insurance ?? [];
 
-      form.reset(mappedValues, { keepDefaultValues: false });
+    const seenDiagnoses = new Map<string, number>();
+    const diagnoses: z.infer<typeof createClaimFormSchema>["diagnosis"] = [];
+    let diagnosisSeq = 1;
+    for (const it of ceItems) {
+      for (const d of it.diagnosis ?? []) {
+        const codeKey = d.diagnosis_code?.code;
+        if (!codeKey || seenDiagnoses.has(codeKey)) continue;
+        seenDiagnoses.set(codeKey, diagnosisSeq);
+        diagnoses.push({
+          sequence: diagnosisSeq++,
+          type: [DEFAULT_DIAGNOSIS_TYPE],
+          diagnosis_reference: undefined,
+          diagnosis_code: d.diagnosis_code,
+          on_admission: "unknown",
+        });
+      }
     }
-  }, [form, previousClaim, lockedUse]);
+
+    const supportingInfo: z.infer<
+      typeof createClaimFormSchema
+    >["supporting_info"] = ceSupportingInfo
+      .filter((s) => s.value_string || s.value_attachment)
+      .map((s) => ({
+        sequence: s.sequence,
+        category: DEFAULT_SUPPORTING_INFO_CATEGORY,
+        code: DEFAULT_SUPPORTING_INFO_CODE,
+        timing: undefined,
+        value_string: s.value_string,
+        value_attachment: s.value_attachment as unknown as string | undefined,
+        _is_plan_level: false,
+      }));
+    const validSiSeqs = new Set(supportingInfo.map((s) => s.sequence));
+
+    const items: z.infer<typeof createClaimFormSchema>["item"] = ceItems.map(
+      (it, idx) => {
+        const dxSeqs = (it.diagnosis ?? [])
+          .map((d) => seenDiagnoses.get(d.diagnosis_code?.code ?? ""))
+          .filter((s): s is number => typeof s === "number");
+        const infoSeqs = (it.supporting_info_sequence ?? []).filter((s) =>
+          validSiSeqs.has(s)
+        );
+        return {
+          sequence: idx + 1,
+          care_team_sequence: [],
+          diagnosis_sequence: dxSeqs,
+          procedure_sequence: [],
+          information_sequence: infoSeqs,
+          category: it.category ?? DEFAULT_ITEM_CATEGORY,
+          product_or_service: it.product_or_service,
+          modifier: it.modifier ?? [],
+          charge_item: undefined,
+          program_code: [DEFAULT_PROGRAM_CODE],
+          serviced_period: undefined,
+          quantity: {
+            value: it.quantity?.value > 0 ? it.quantity.value : 1,
+            unit: it.quantity?.unit,
+          },
+          unit_price: it.unit_price > 0 ? it.unit_price : 1,
+          factor: undefined,
+        };
+      }
+    );
+
+    const current = form.getValues();
+
+    // Ensure sequences are always valid positive integers and at least one is focal.
+    const mappedInsurance = ceInsurance.map((ins, idx) => ({
+      sequence:
+        typeof ins.sequence === "number" && ins.sequence > 0
+          ? ins.sequence
+          : idx + 1,
+      focal: !!ins.focal,
+      policy: ins.policy,
+    }));
+    if (mappedInsurance.length > 0 && !mappedInsurance.some((i) => i.focal)) {
+      mappedInsurance[0].focal = true;
+    }
+
+    form.reset(
+      {
+        ...current,
+        use: lockedUse ?? current.use,
+        priority: current.priority ?? "normal",
+        related: current.related ?? [],
+        care_team: [],
+        procedure: [],
+        diagnosis: diagnoses,
+        supporting_info: supportingInfo,
+        insurance: mappedInsurance,
+        item: items,
+        questionnaire_responses: [],
+      },
+      { keepDefaultValues: false }
+    );
+    setPrefillNonce((n) => n + 1);
+  }, [flowKind, coverageEligibilityRequest, form, lockedUse]);
 
   const { mutate: submitClaim } = useMutation({
     mutationFn: apis.claim.submit,
@@ -562,7 +685,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             return { ...qr, sequence: newSeq };
           });
 
-        // Remap item information_sequence entries that referred to old QR seqs.
         if (seqMap.size > 0 && updatedValues.item) {
           updatedValues.item = updatedValues.item.map((item) => ({
             ...item,
@@ -573,7 +695,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         }
       }
 
-      // Strip internal _is_plan_level marker before sending to the API.
       if (updatedValues.supporting_info) {
         updatedValues.supporting_info.forEach((info) => {
           delete (info as Record<string, unknown>)._is_plan_level;
@@ -585,6 +706,16 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       console.error("Error in onSubmit:", error);
     }
   }
+
+  const previousClaimResponse = previousClaim?.latest_response;
+  const showPayerQuery =
+    flowKind === "via-related" &&
+    !!previousClaimResponse &&
+    previousClaimResponse.outcome === "queued";
+  const payerQueryContext: "preauthorization" | "claim" =
+    previousClaim?.use === "claim" ? "claim" : "preauthorization";
+
+  const formUse = form.watch("use");
 
   return (
     <GlobalStoreProvider
@@ -636,6 +767,14 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         </div>
         <Separator />
 
+        {showPayerQuery && (
+          <PayerQueryBanner
+            message={previousClaimResponse?.disposition ?? undefined}
+            createdAt={previousClaimResponse?.created_date}
+            context={payerQueryContext}
+          />
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             <Form {...form}>
@@ -645,13 +784,28 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
               >
                 <ClaimRelatedSection form={form} />
                 <Separator />
-                <ClaimInsuranceSection form={form} />
+                <ClaimInsuranceSection
+                  form={form}
+                  readOnly={flowKind !== "fresh"}
+                />
                 <Separator />
-                <PlanLevelSupportingInfoSection form={form} />
+                <PlanLevelSupportingInfoSection
+                  form={form}
+                  coverageEligibilityRequest={coverageEligibilityRequest}
+                  claimUse={formUse}
+                />
                 <Separator />
-                <PlanLevelQuestionnairesSection form={form} />
+                <PlanLevelQuestionnairesSection
+                  form={form}
+                  coverageEligibilityRequest={coverageEligibilityRequest}
+                  claimUse={formUse}
+                />
                 <Separator />
-                <ClaimItemSection form={form} />
+                <ClaimItemSection
+                  key={`items-${prefillNonce}`}
+                  form={form}
+                  coverageEligibilityRequest={coverageEligibilityRequest}
+                />
                 <Separator />
                 <ClaimAccidentSection form={form} />
                 <Separator />

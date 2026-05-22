@@ -1,13 +1,16 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   ChevronDownIcon,
   ChevronRightIcon,
   CircleMinusIcon,
+  InfoIcon,
   PaperclipIcon,
   PlusIcon,
   ShoppingBasketIcon,
   XIcon,
 } from "lucide-react";
+import { ChargeItem } from "@/types/charge_item";
 import { FileIcon, TrashIcon } from "lucide-react";
 import {
   FormControl,
@@ -29,6 +32,7 @@ import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import ValuesetSelect from "../common/valueset-select";
 import { apis } from "@/apis";
+import { chargeItemLabel } from "@/lib/prefill";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
@@ -37,6 +41,12 @@ interface CoverageEligibilityRequestItemSectionProps {
   form: UseFormReturn<
     z.infer<typeof createCoverageEligibilityRequestFormSchema>
   >;
+  /**
+   * Charge items associated with this encounter that could not be matched to
+   * any insurance-plan-benefit. Surfaced as a non-intrusive info banner so the
+   * provider knows they were intentionally skipped from the prefill.
+   */
+  uncoveredChargeItems?: ChargeItem[];
 }
 
 const BENEFIT_CATEGORY_SYSTEM =
@@ -46,6 +56,7 @@ const PROCEDURE_CODE_SYSTEM =
 
 export function CoverageEligibilityRequestItemSection({
   form,
+  uncoveredChargeItems = [],
 }: CoverageEligibilityRequestItemSectionProps) {
   const { fields, append, remove } = useFieldArray({
     name: "item",
@@ -86,6 +97,36 @@ export function CoverageEligibilityRequestItemSection({
         </div>
       </div>
 
+      {uncoveredChargeItems.length > 0 && (
+        <Alert variant="info" className="bg-blue-50 border-blue-200">
+          <InfoIcon className="h-4 w-4 text-blue-600" />
+          <AlertTitle className="text-blue-900">
+            {uncoveredChargeItems.length === 1
+              ? "1 charge item is not covered by this insurance plan"
+              : `${uncoveredChargeItems.length} charge items are not covered by this insurance plan`}
+          </AlertTitle>
+          <AlertDescription className="text-blue-800">
+            <p className="mb-2">
+              The following were skipped from the prefill. You can still add
+              them manually if needed.
+            </p>
+            <ul className="space-y-0.5 text-xs">
+              {uncoveredChargeItems.map((ci) => (
+                <li key={ci.id} className="flex items-center gap-1.5">
+                  <span className="inline-block w-1 h-1 rounded-full bg-blue-400" />
+                  <span>{chargeItemLabel(ci)}</span>
+                  {ci.code?.code && (
+                    <span className="opacity-60 font-mono">
+                      ({ci.code.code})
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="space-y-4">
         {fields.map((field, index) => (
           <Card key={field.id}>
@@ -93,46 +134,55 @@ export function CoverageEligibilityRequestItemSection({
               <FormField
                 control={form.control}
                 name={`item.${index}.product_or_service`}
-                render={({ field }) => (
-                  <div className="flex justify-between items-center gap-2">
-                    <FormItem className="space-y-1.5 w-full">
-                      <FormLabel>
-                        Product or Service
-                        <span className="text-red-500 text-sm ml-0.5">*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <BenefitSearchSelect
-                          insurancePlanId={planId}
-                          value={field.value}
-                          onSelect={(benefit) => {
-                            form.setValue(`item.${index}.product_or_service`, {
-                              system: PROCEDURE_CODE_SYSTEM,
-                              code: benefit.type_code,
-                              display: benefit.type_display,
-                            });
-                            form.setValue(`item.${index}.category`, {
-                              system: BENEFIT_CATEGORY_SYSTEM,
-                              code: benefit.coverage_type_code,
-                              display: benefit.coverage_type_display,
-                            });
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        remove(index);
-                      }}
-                      className="mt-6"
-                    >
-                      <CircleMinusIcon className="h-6 w-6 text-danger-500" />
-                    </Button>
-                  </div>
-                )}
+                render={({ field }) => {
+                  const isProductLocked = !!field.value?.code;
+                  return (
+                    <div className="flex justify-between items-center gap-2">
+                      <FormItem className="space-y-1.5 w-full">
+                        <FormLabel>
+                          Product or Service
+                          <span className="text-red-500 text-sm ml-0.5">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <BenefitSearchSelect
+                            insurancePlanId={planId}
+                            value={field.value}
+                            onSelect={(benefit) => {
+                              form.setValue(`item.${index}.product_or_service`, {
+                                system: PROCEDURE_CODE_SYSTEM,
+                                code: benefit.type_code,
+                                display: benefit.type_display,
+                              });
+                              form.setValue(`item.${index}.category`, {
+                                system: BENEFIT_CATEGORY_SYSTEM,
+                                code: benefit.coverage_type_code,
+                                display: benefit.coverage_type_display,
+                              });
+                            }}
+                            disabled={isProductLocked}
+                          />
+                        </FormControl>
+                        {isProductLocked && (
+                          <p className="text-xs text-muted-foreground">
+                            Product is locked. Remove this item and add a new one to change it.
+                          </p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          remove(index);
+                        }}
+                        className="mt-6"
+                      >
+                        <CircleMinusIcon className="h-6 w-6 text-danger-500" />
+                      </Button>
+                    </div>
+                  );
+                }}
               />
             </CardHeader>
             <CardContent className="space-y-4">

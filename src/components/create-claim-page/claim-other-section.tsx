@@ -23,10 +23,10 @@ import {
 import { DateTimePicker } from "../ui/date-time-picker";
 import { Input } from "@/components/ui/input";
 import { UseFormReturn } from "react-hook-form";
-import ValuesetSelect from "../common/valueset-select";
+import ValuesetSelect from "@/components/common/valueset-select";
+import { cn } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
 import { z } from "zod";
-import { cn } from "@/lib/utils";
 
 interface ClaimOtherSectionProps {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
@@ -43,10 +43,8 @@ const CLAIM_USE_LABELS: Record<ClaimUseChoice, string> = {
   predetermination: "Predetermination",
 };
 
-export function ClaimOtherSection({
-  form,
-  lockedUse,
-}: ClaimOtherSectionProps) {
+
+export function ClaimOtherSection({ form, lockedUse }: ClaimOtherSectionProps) {
   const hasRelated = (form.watch("related") || []).length > 0;
 
   return (
@@ -87,9 +85,7 @@ export function ClaimOtherSection({
                   <FormControl>
                     {lockedUse ? (
                       <Input
-                        value={
-                          CLAIM_USE_LABELS[lockedUse] ?? lockedUse
-                        }
+                        value={CLAIM_USE_LABELS[lockedUse] ?? lockedUse}
                         disabled
                         className="bg-muted cursor-not-allowed"
                       />
@@ -213,6 +209,7 @@ export function ClaimOtherSection({
                       onSelect={(value) => {
                         form.setValue("type", value);
                       }}
+                      disabled={true}
                     />
                   </FormControl>
                   <FormMessage />

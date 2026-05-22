@@ -4,8 +4,18 @@ import {
 } from "@/types/coverage_eligibility";
 import { Condition, ConditionCategory } from "@/types/condition";
 import { FC, useEffect, useMemo, useRef } from "react";
+import {
+  chargeItemHasCoding,
+  modifiersFromBenefit,
+  parsePositiveNumber,
+} from "@/lib/prefill";
 import { useForm, useWatch } from "react-hook-form";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useNavigate, useQueryParams } from "raviger";
 
 import { Button } from "@/components/ui/button";
@@ -21,6 +31,7 @@ import { PmjayBiometricVerificationGate } from "@/components/common/pmjay-biomet
 import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
+import { pickFocalPolicy, useFocalPlanId } from "@/hooks/use-plan-id";
 import { toast } from "@/lib/utils";
 import { uploadFile } from "@/lib/upload-file";
 import { z } from "zod";
@@ -35,18 +46,6 @@ function parsePurposeQueryParam(
     (choice) => choice === lower
   );
   return match ?? null;
-}
-
-function chargeItemHasCoding(ci: ChargeItem): boolean {
-  return Boolean(ci.code?.system?.trim() && ci.code?.code?.trim());
-}
-
-function parsePositiveNumber(
-  value: string | undefined,
-  fallback: number
-): number {
-  const n = parseFloat(value ?? "");
-  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 export type CreateCoverageEligibilityRequestPageProps = {
@@ -91,7 +90,13 @@ const CreateCoverageEligibilityRequestPage: FC<
     name: "insurance",
   });
 
-  const didPrefillEncounterRef = useRef(false);
+  const focalPolicy = pickFocalPolicy(insuranceSelection);
+  const { planId, isLoading: isPlanIdLoading } = useFocalPlanId(focalPolicy);
+
+  const isAuthRequirements = lockedPurpose === "auth-requirements";
+  const isValidation = lockedPurpose === "validation";
+
+  const didPrefillRef = useRef(false);
 
   const { data: encounterDiagnoses, isFetched: encounterDiagnosesFetched } =
     useQuery({
@@ -104,7 +109,7 @@ const CreateCoverageEligibilityRequestPage: FC<
         });
         return res.results || [];
       },
-      enabled: !!patientId && !!encounterId,
+      enabled: !!patientId && !!encounterId && isAuthRequirements,
       staleTime: 60 * 1000,
     });
 
@@ -118,7 +123,7 @@ const CreateCoverageEligibilityRequestPage: FC<
       });
       return (res.results || []).filter((file) => !!file.id);
     },
-    enabled: !!encounterId,
+    enabled: !!encounterId && isAuthRequirements,
     staleTime: 60 * 1000,
   });
 
@@ -132,12 +137,67 @@ const CreateCoverageEligibilityRequestPage: FC<
         });
         return res.results || [];
       },
-      enabled: !!facilityId && !!encounterId,
+      enabled: !!facilityId && !!encounterId && isAuthRequirements,
       staleTime: 60 * 1000,
     });
 
+  const codedChargeItems = useMemo(
+    () => (encounterChargeItems ?? []).filter(chargeItemHasCoding),
+    [encounterChargeItems]
+  );
+
+  const benefitQueries = useQueries({
+    queries: codedChargeItems.map((ci) => ({
+      queryKey: ["insurancePlanBenefit", "lookup", planId, ci.code.code],
+      queryFn: () =>
+        apis.insurancePlanBenefit.lookup({
+          insurance_plan: planId!,
+          type_code: ci.code.code,
+        }),
+      enabled: Boolean(isAuthRequirements && planId && ci.code.code),
+      staleTime: 5 * 60 * 1000,
+      retry: false,
+    })),
+  });
+
+  const allBenefitsResolved = benefitQueries.every((q) => !q.isFetching);
+  const benefitsFingerprint = benefitQueries
+    .map((q) => q.dataUpdatedAt)
+    .join(",");
+
+  const coveredItems = useMemo(() => {
+    if (!isAuthRequirements || !planId) return [];
+    return codedChargeItems
+      .map((ci, idx) => ({ ci, benefit: benefitQueries[idx]?.data }))
+      .filter(
+        (entry): entry is { ci: ChargeItem; benefit: NonNullable<typeof entry.benefit> } =>
+          !!entry.benefit
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthRequirements, planId, codedChargeItems, benefitsFingerprint]);
+
+  const uncoveredChargeItems = useMemo(() => {
+    if (!isAuthRequirements || !planId || !allBenefitsResolved) return [];
+    return codedChargeItems.filter((_, idx) => {
+      const q = benefitQueries[idx];
+      return !!q && !q.isFetching && !q.data;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isAuthRequirements,
+    planId,
+    allBenefitsResolved,
+    codedChargeItems,
+    benefitsFingerprint,
+  ]);
+
   useEffect(() => {
-    if (didPrefillEncounterRef.current) return;
+    if (didPrefillRef.current) return;
+    if (isValidation) {
+      didPrefillRef.current = true;
+      return;
+    }
+    if (!isAuthRequirements) return;
     if (
       !encounterDiagnosesFetched ||
       !encounterFilesFetched ||
@@ -145,24 +205,22 @@ const CreateCoverageEligibilityRequestPage: FC<
     ) {
       return;
     }
+    if (!planId || !allBenefitsResolved) return;
 
     const existingItems = form.getValues("item") || [];
     const existingSupportingInfo = form.getValues("supporting_info") || [];
-
     if (existingItems.length > 0 || existingSupportingInfo.length > 0) {
-      didPrefillEncounterRef.current = true;
+      didPrefillRef.current = true;
       return;
     }
 
-    didPrefillEncounterRef.current = true;
+    didPrefillRef.current = true;
 
-    const supportingInfo =
-      (encounterFiles || []).map((file, idx) => ({
-        sequence: idx + 1,
-        value_string: undefined,
-        value_attachment: file.id as string,
-      })) || [];
-
+    const supportingInfo = (encounterFiles || []).map((file, idx) => ({
+      sequence: idx + 1,
+      value_string: undefined,
+      value_attachment: file.id as string,
+    }));
     const informationSequences = supportingInfo.map((info) => info.sequence);
     form.setValue("supporting_info", supportingInfo);
 
@@ -171,42 +229,43 @@ const CreateCoverageEligibilityRequestPage: FC<
       diagnosis_code: c.code,
     }));
 
-    const codedChargeItems = (encounterChargeItems || []).filter(
-      chargeItemHasCoding
-    );
+    if (coveredItems.length === 0) return;
 
-    if (codedChargeItems.length > 0) {
-      form.setValue(
-        "item",
-        codedChargeItems.map((ci, idx) => ({
-          sequence: idx + 1,
-          supporting_info_sequence: [...informationSequences],
-          category: {
-            display: "Primary healthcare service",
-            system: "http://snomed.info/sct",
-            code: "1586771000168103",
-          },
-          product_or_service: {
-            system: ci.code.system,
-            code: ci.code.code,
-            display: ci.code.display,
-          },
-          modifier: [],
-          quantity: {
-            value: parsePositiveNumber(ci.quantity, 1),
-          },
-          unit_price: parsePositiveNumber(ci.total_price, 1),
-          diagnosis: itemDiagnoses.map((d) => ({ ...d })),
-        }))
-      );
-    }
+    form.setValue(
+      "item",
+      coveredItems.map(({ ci, benefit }, idx) => ({
+        sequence: idx + 1,
+        supporting_info_sequence: [...informationSequences],
+        category: {
+          system:
+            "https://nrces.in/ndhm/fhir/r4/ValueSet/ndhm-benefitcategory",
+          code: benefit.coverage_type_code,
+          display: benefit.coverage_type_display,
+        },
+        product_or_service: {
+          system: ci.code.system,
+          code: ci.code.code,
+          display: ci.code.display,
+        },
+        modifier: modifiersFromBenefit(benefit),
+        quantity: {
+          value: parsePositiveNumber(ci.quantity, 1),
+        },
+        unit_price: parsePositiveNumber(ci.total_price, 1),
+        diagnosis: itemDiagnoses.map((d) => ({ ...d })),
+      }))
+    );
   }, [
-    encounterChargeItems,
-    encounterChargeItemsFetched,
+    isValidation,
+    isAuthRequirements,
     encounterDiagnoses,
     encounterDiagnosesFetched,
     encounterFiles,
     encounterFilesFetched,
+    encounterChargeItemsFetched,
+    planId,
+    allBenefitsResolved,
+    coveredItems,
     form,
   ]);
 
@@ -276,11 +335,13 @@ const CreateCoverageEligibilityRequestPage: FC<
       }
 
       createCoverageEligibilityRequest(updatedValues);
-      console.log(values);
     } catch (error) {
       console.error("Error in onSubmit:", error);
     }
   }
+
+  const showWaitingForInsuranceHint =
+    isAuthRequirements && !planId && !isPlanIdLoading;
 
   return (
     <GlobalStoreProvider
@@ -315,6 +376,12 @@ const CreateCoverageEligibilityRequestPage: FC<
                 ? "Confirm the policy is active and check the available wallet balance."
                 : "Check the coverage eligibility for the patient."}
             </p>
+            {showWaitingForInsuranceHint && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Select an insurance plan to prefill the items from this
+                encounter&apos;s charge items.
+              </p>
+            )}
           </div>
           <Button
             type="button"
@@ -337,9 +404,15 @@ const CreateCoverageEligibilityRequestPage: FC<
                 onSubmit={form.handleSubmit(onSubmit)}
                 className="space-y-8"
               >
-                <CoverageEligibilityRequestInsuranceSection form={form} />
+                <CoverageEligibilityRequestInsuranceSection
+                  form={form}
+                  readOnly={lockedPurpose !== null && lockedPurpose !== "validation"}
+                />
                 <Separator />
-                <CoverageEligibilityRequestItemSection form={form} />
+                <CoverageEligibilityRequestItemSection
+                  form={form}
+                  uncoveredChargeItems={uncoveredChargeItems}
+                />
                 <Separator />
                 <CoverageEligibilityRequestOtherSection
                   form={form}

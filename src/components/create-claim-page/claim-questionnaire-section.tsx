@@ -15,7 +15,6 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import {
-  InsurancePlanQuestionnaire,
   InsurancePlanQuestionnaireDetail,
   InsurancePlanSupportingInfoRequirement,
   QuestionnaireAnswerOption,
@@ -47,6 +46,8 @@ import { Input } from "../ui/input";
 
 import { Textarea } from "../ui/textarea";
 import { apis } from "@/apis";
+import { ClaimUseChoice } from "@/types/claim";
+import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import {
   buildInitialItems,
   countMissingRequiredItems,
@@ -807,10 +808,21 @@ export function AddQuestionnaireSection({
   form,
   index,
   planId,
+  coverageEligibilityRequest,
+  claimUse,
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   index: number;
   planId: string | null;
+  /**
+   * When provided alongside `claimUse === "preauthorization"`, the IPB benefit
+   * questionnaire requirements are filtered down to the strict intersection
+   * with the CE response's required questionnaires for this item's procedure
+   * code. For `claimUse === "claim"` (or when no CE request is available) all
+   * benefit-driven questionnaire requirements are shown unfiltered.
+   */
+  coverageEligibilityRequest?: CoverageEligibilityRequest;
+  claimUse: ClaimUseChoice | undefined;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const didAutoExpandRef = useRef(false);
@@ -831,12 +843,34 @@ export function AddQuestionnaireSection({
     staleTime: 5 * 60 * 1000,
   });
 
-  // Questionnaire requirements are supporting_info_requirements that have a documentation_url.
-  // is_required is read directly from the requirement — no separate derivation needed.
+  // CE response questionnaires expected for this item, if we are running in
+  // PA-via-CE:AR mode. `null` means "no filtering"; an empty Set means "the
+  // CE response had nothing for this item — show nothing".
+  // Per the schema, CE `required_questionnaires[].id` matches IPB
+  // requirement `questionnaire.fhir_id`.
+  const ceQuestionnaireFhirIdsForItem = useMemo(() => {
+    if (claimUse !== "preauthorization") return null;
+    if (!coverageEligibilityRequest || !productCode) return null;
+    const procedure = coverageEligibilityRequest.latest_response?.insurances
+      ?.map((i) => i.procedure)
+      .find((p) => !!p && p.code === productCode);
+    if (!procedure) return new Set<string>();
+    return new Set(procedure.required_questionnaires.map((q) => q.id));
+  }, [coverageEligibilityRequest, claimUse, productCode]);
+
+  // Questionnaire requirements are supporting_info_requirements that have a
+  // documentation_url. is_required is read directly from the requirement.
   const questionnaireRequirements = useMemo(() => {
     const all = benefitDetail?.supporting_info_requirements ?? [];
-    const filtered = all.filter((req) => req.documentation_url !== null);
-    // Deduplicate by questionnaire fhir_id
+    const qReqs = all.filter((req) => req.documentation_url !== null);
+
+    const filtered = ceQuestionnaireFhirIdsForItem
+      ? qReqs.filter((req) => {
+          const fhir = req.questionnaire?.fhir_id;
+          return !!fhir && ceQuestionnaireFhirIdsForItem.has(fhir);
+        })
+      : qReqs;
+
     const seen = new Set<string>();
     return filtered.filter((req) => {
       const key = req.questionnaire?.fhir_id ?? req.id;
@@ -844,7 +878,7 @@ export function AddQuestionnaireSection({
       seen.add(key);
       return true;
     });
-  }, [benefitDetail]);
+  }, [benefitDetail, ceQuestionnaireFhirIdsForItem]);
 
   const requiredRequirements = useMemo(
     () => questionnaireRequirements.filter((req) => req.is_required),
@@ -856,35 +890,25 @@ export function AddQuestionnaireSection({
     [questionnaireRequirements]
   );
 
-  // Map fhir_id → InsurancePlanQuestionnaire to resolve the internal id for API calls
-  const questionnaireByFhirId = useMemo(() => {
-    const map = new Map<string, InsurancePlanQuestionnaire>();
-    for (const q of benefitDetail?.questionnaires ?? []) {
-      map.set(q.fhir_id, q);
-    }
-    return map;
-  }, [benefitDetail]);
-
-  // Build the list of questionnaires to fetch — one per unique requirement
-  const questionnairesToFetch = useMemo(() => {
+  // Build the list of questionnaire ids to fetch — one per unique requirement.
+  // The `id` is now carried directly on the requirement's questionnaire ref.
+  const questionnaireIdsToFetch = useMemo(() => {
     const seen = new Set<string>();
-    return questionnaireRequirements
-      .map((req) => {
-        if (!req.questionnaire?.fhir_id) return null;
-        const q = questionnaireByFhirId.get(req.questionnaire.fhir_id);
-        if (!q || seen.has(q.id)) return null;
-        seen.add(q.id);
-        return q;
-      })
-      .filter(Boolean) as InsurancePlanQuestionnaire[];
-  }, [questionnaireRequirements, questionnaireByFhirId]);
+    const ids: string[] = [];
+    for (const req of questionnaireRequirements) {
+      const id = req.questionnaire?.id;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+    return ids;
+  }, [questionnaireRequirements]);
 
-  // Fetch full questionnaire details using the questionnaire id (not fhir_id)
   const detailQueries = useQueries({
-    queries: questionnairesToFetch.map((q) => ({
-      queryKey: ["insurancePlanQuestionnaire", q.id],
-      queryFn: () => apis.insurancePlanQuestionnaire.get(q.id),
-      enabled: Boolean(q.id),
+    queries: questionnaireIdsToFetch.map((id) => ({
+      queryKey: ["insurancePlanQuestionnaire", id],
+      queryFn: () => apis.insurancePlanQuestionnaire.get(id),
+      enabled: Boolean(id),
       staleTime: 5 * 60 * 1000,
     })),
   });
@@ -899,18 +923,17 @@ export function AddQuestionnaireSection({
     [detailQueries.map((q) => q.dataUpdatedAt).join()]
   );
 
-  // Map fhir_id → detail for quick lookup per requirement
-  const detailByFhirId = useMemo(() => {
+  const detailById = useMemo(() => {
     const map = new Map<string, InsurancePlanQuestionnaireDetail>();
     for (const detail of loadedDetails) {
-      map.set(detail.fhir_id, detail);
+      map.set(detail.id, detail);
     }
     return map;
   }, [loadedDetails]);
 
   const getDetailForReq = (req: InsurancePlanSupportingInfoRequirement) => {
-    if (!req.questionnaire?.fhir_id) return undefined;
-    return detailByFhirId.get(req.questionnaire.fhir_id);
+    if (!req.questionnaire?.id) return undefined;
+    return detailById.get(req.questionnaire.id);
   };
 
   const watchedQR = form.watch("questionnaire_responses") ?? [];
@@ -952,13 +975,13 @@ export function AddQuestionnaireSection({
   const requiredStatuses = useMemo(
     () => requiredRequirements.map((req) => ({ req, status: getQStatus(req) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [requiredRequirements, watchedQR, detailByFhirId]
+    [requiredRequirements, watchedQR, detailById]
   );
 
   const optionalStatuses = useMemo(
     () => optionalRequirements.map((req) => ({ req, status: getQStatus(req) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [optionalRequirements, watchedQR, detailByFhirId]
+    [optionalRequirements, watchedQR, detailById]
   );
 
   const unsatisfiedCount = requiredStatuses.filter(

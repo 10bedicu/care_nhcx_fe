@@ -132,6 +132,8 @@ export type InsurancePlanBenefitExclusion = {
 export type InsurancePlanQuestionnaireRef = {
   fhir_id: string;
   title: string;
+  id: string;
+  full_url: string;
 };
 
 export type InsurancePlanSupportingInfoRequirement = {

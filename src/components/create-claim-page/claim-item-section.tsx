@@ -5,6 +5,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   CircleMinusIcon,
+  InfoIcon,
   PaperclipIcon,
   PlusIcon,
   ShoppingBasketIcon,
@@ -36,12 +37,15 @@ import { apis } from "@/apis";
 import { cn } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
 import { AddQuestionnaireSection } from "./claim-questionnaire-section";
+import { ClaimUseChoice } from "@/types/claim";
+import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 
 interface ClaimItemSectionProps {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
+  coverageEligibilityRequest?: CoverageEligibilityRequest;
 }
 
 const PROGRAM_CODES = [
@@ -632,8 +636,11 @@ const PROCEDURE_CODE_SYSTEM =
   "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-procedures-code";
 const AB_PMJAY_CODE = PROGRAM_CODES.find((c) => c.code === "AB-PMJAY")!;
 
-export function ClaimItemSection({ form }: ClaimItemSectionProps) {
-  const { fields, append, remove } = useFieldArray({
+export function ClaimItemSection({
+  form,
+  coverageEligibilityRequest,
+}: ClaimItemSectionProps) {
+  const { fields, remove } = useFieldArray({
     name: "item",
     control: form.control,
   });
@@ -733,6 +740,7 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
   const planId = planListData?.results?.[0]?.id ?? null;
   const watchedItems = form.watch("item");
   const hasSubmitted = form.formState.submitCount > 0;
+  const claimUse = form.watch("use");
 
   return (
     <div className="space-y-6">
@@ -741,12 +749,24 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
           <ShoppingBasketIcon className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <h3 className="text-lg font-semibold">Add claim items</h3>
+          <h3 className="text-lg font-semibold">Claim items</h3>
           <p className="text-sm text-muted-foreground">
-            Add all applicable items to the claim.
+            Review the items carried over from coverage eligibility. New items
+            must be added via a coverage eligibility (auth requirements)
+            request.
           </p>
         </div>
       </div>
+
+      {fields.length === 0 && (
+        <div className="rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground flex items-start gap-2">
+          <InfoIcon className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-600" />
+          <span>
+            No items are attached yet. Items flow into this form from a
+            coverage eligibility (auth requirements) request.
+          </span>
+        </div>
+      )}
 
       <div className="space-y-4">
         {fields.map((field, index) => {
@@ -766,56 +786,65 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
                 key={field.id}
                 control={form.control}
                 name={`item.${index}.product_or_service`}
-                render={({ field }) => (
-                  <div className="flex justify-between items-center gap-2">
-                    <FormItem className="space-y-1.5 w-full">
-                      <FormLabel>
-                        Product or Service
-                        <span className="text-red-500 text-sm ml-0.5">*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <BenefitSearchSelect
-                          insurancePlanId={planId}
-                          value={field.value}
-                          onSelect={(benefit) => {
-                            form.setValue(
-                              `item.${index}.product_or_service`,
-                              {
-                                system: PROCEDURE_CODE_SYSTEM,
-                                code: benefit.type_code,
-                                display: benefit.type_display,
+                render={({ field }) => {
+                  const isProductLocked = !!field.value?.code;
+                  return (
+                    <div className="flex justify-between items-center gap-2">
+                      <FormItem className="space-y-1.5 w-full">
+                        <FormLabel>
+                          Product or Service
+                          <span className="text-red-500 text-sm ml-0.5">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <BenefitSearchSelect
+                            insurancePlanId={planId}
+                            value={field.value}
+                            onSelect={(benefit) => {
+                              form.setValue(
+                                `item.${index}.product_or_service`,
+                                {
+                                  system: PROCEDURE_CODE_SYSTEM,
+                                  code: benefit.type_code,
+                                  display: benefit.type_display,
+                                }
+                              );
+                              form.setValue(`item.${index}.category`, {
+                                system: BENEFIT_CATEGORY_SYSTEM,
+                                code: benefit.coverage_type_code,
+                                display: benefit.coverage_type_display,
+                              });
+                              const existing =
+                                form.getValues(`item.${index}.program_code`) ??
+                                [];
+                              if (!existing.find((c) => c.code === "AB-PMJAY")) {
+                                form.setValue(`item.${index}.program_code`, [
+                                  ...existing,
+                                  AB_PMJAY_CODE,
+                                ]);
                               }
-                            );
-                            form.setValue(`item.${index}.category`, {
-                              system: BENEFIT_CATEGORY_SYSTEM,
-                              code: benefit.coverage_type_code,
-                              display: benefit.coverage_type_display,
-                            });
-                            const existing =
-                              form.getValues(`item.${index}.program_code`) ??
-                              [];
-                            if (!existing.find((c) => c.code === "AB-PMJAY")) {
-                              form.setValue(`item.${index}.program_code`, [
-                                ...existing,
-                                AB_PMJAY_CODE,
-                              ]);
-                            }
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeItemWithCleanup(index)}
-                      className="mt-6"
-                    >
-                      <CircleMinusIcon className="h-6 w-6 text-danger-500" />
-                    </Button>
-                  </div>
-                )}
+                            }}
+                            disabled={isProductLocked}
+                          />
+                        </FormControl>
+                        {isProductLocked && (
+                          <p className="text-xs text-muted-foreground">
+                            Product is locked. Remove this item and add a new one to change it.
+                          </p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeItemWithCleanup(index)}
+                        className="mt-6"
+                      >
+                        <CircleMinusIcon className="h-6 w-6 text-danger-500" />
+                      </Button>
+                    </div>
+                  );
+                }}
               />
             </CardHeader>
             <CardContent className="space-y-4">
@@ -924,18 +953,40 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
 
               <ModifierField form={form} index={index} planId={planId} />
 
-              <AddDiagnosisSection form={form} index={index} />
+              <FormField
+                control={form.control}
+                name={`item.${index}.diagnosis_sequence`}
+                render={() => (
+                  <FormItem>
+                    <AddDiagnosisSection form={form} index={index} />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <AddProcedureSection form={form} index={index} />
-              <AddCareTeamSection form={form} index={index} />
+              <FormField
+                control={form.control}
+                name={`item.${index}.care_team_sequence`}
+                render={() => (
+                  <FormItem>
+                    <AddCareTeamSection form={form} index={index} />
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <AddSupportingInfoSection
                 form={form}
                 index={index}
                 planId={planId}
+                coverageEligibilityRequest={coverageEligibilityRequest}
+                claimUse={claimUse}
               />
               <AddQuestionnaireSection
                 form={form}
                 index={index}
                 planId={planId}
+                coverageEligibilityRequest={coverageEligibilityRequest}
+                claimUse={claimUse}
               />
 
               <div className="grid grid-cols-2 gap-4">
@@ -944,7 +995,10 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
                   name={`item.${index}.serviced_period.start`}
                   render={({ field }) => (
                     <FormItem className="space-y-1.5">
-                      <FormLabel>Service Period Start</FormLabel>
+                      <FormLabel>
+                        Service Period Start
+                        <span className="text-red-500 text-sm ml-0.5">*</span>
+                      </FormLabel>
                       <FormControl>
                         <DateTimePicker
                           value={
@@ -953,7 +1007,7 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
                           onChange={(value) => {
                             form.setValue(
                               `item.${index}.serviced_period.start`,
-                              value ? value.toISOString() : undefined
+                              value ? value.toISOString() : ""
                             );
                           }}
                           placeholder="Select start date and time"
@@ -1125,32 +1179,6 @@ export function ClaimItemSection({ form }: ClaimItemSectionProps) {
           name="item"
           render={() => (
             <FormItem>
-              <FormLabel />
-              <FormControl>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() =>
-                    append({
-                      sequence: Math.max(0, ...fields.map((f) => f.sequence)) + 1,
-                      care_team_sequence: [],
-                      diagnosis_sequence: [],
-                      procedure_sequence: [],
-                      information_sequence: [],
-                      modifier: [],
-                      program_code: [],
-                      quantity: {
-                        value: 0,
-                      },
-                      unit_price: 0,
-                    })
-                  }
-                >
-                  <PlusIcon className="w-5 h-5" />
-                  Add Item
-                </Button>
-              </FormControl>
               <FormMessage />
             </FormItem>
           )}
@@ -1200,6 +1228,24 @@ function ModifierField({
     }
     return result;
   }, [benefitDetail]);
+
+  // Auto-fill modifiers from the benefit qualifiers when the form field is
+  // empty. This covers prefill paths that didn't carry modifiers through
+  // (e.g. older CE/Claim records). Only fires once per (item, benefit) load,
+  // so user removals are preserved.
+  const didAutofillRef = useRef(false);
+  useEffect(() => {
+    if (didAutofillRef.current) return;
+    if (!productCode || qualifiers.length === 0) return;
+    const current = form.getValues(`item.${index}.modifier`) ?? [];
+    if (current.length > 0) {
+      didAutofillRef.current = true;
+      return;
+    }
+    form.setValue(`item.${index}.modifier`, qualifiers, { shouldDirty: false });
+    didAutofillRef.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productCode, qualifiers]);
 
   return (
     <FormField
@@ -1324,7 +1370,10 @@ function AddDiagnosisSection({
           ) : (
             <ChevronRightIcon className="w-4 h-4" />
           )}
-          <span className="font-medium">Diagnoses</span>
+          <span className="font-medium">
+            Diagnoses
+            <span className="text-red-500 text-sm ml-0.5">*</span>
+          </span>
           {itemSpecificDiagnoses.length > 0 && (
             <Badge variant="secondary" className="ml-2">
               {itemSpecificDiagnoses.length}
@@ -1786,7 +1835,10 @@ function AddCareTeamSection({
           ) : (
             <ChevronRightIcon className="w-4 h-4" />
           )}
-          <span className="font-medium">Care Team</span>
+          <span className="font-medium">
+            Care Team
+            <span className="text-red-500 text-sm ml-0.5">*</span>
+          </span>
           {itemSpecificCareTeam.length > 0 && (
             <Badge variant="secondary" className="ml-2">
               {itemSpecificCareTeam.length}
@@ -1953,10 +2005,21 @@ function AddSupportingInfoSection({
   form,
   index,
   planId,
+  coverageEligibilityRequest,
+  claimUse,
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   index: number;
   planId: string | null;
+  /**
+   * When provided alongside `claimUse === "preauthorization"`, the IPB benefit
+   * requirements are filtered down to the strict intersection with the CE
+   * response's required documents for this item's procedure code. For
+   * `claimUse === "claim"` (or when no CE request is available) all benefit
+   * requirements are shown unfiltered.
+   */
+  coverageEligibilityRequest?: CoverageEligibilityRequest;
+  claimUse: ClaimUseChoice | undefined;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const didAutoExpandRef = useRef(false);
@@ -1982,11 +2045,22 @@ function AddSupportingInfoSection({
     staleTime: 5 * 60 * 1000,
   });
 
+  const ceDocCodesForItem = useMemo(() => {
+    if (claimUse !== "preauthorization") return null;
+    if (!coverageEligibilityRequest || !productCode) return null;
+    const procedure = coverageEligibilityRequest.latest_response?.insurances
+      ?.map((i) => i.procedure)
+      .find((p) => !!p && p.code === productCode);
+    if (!procedure) return new Set<string>();
+    return new Set(procedure.required_documents.map((d) => d.code));
+  }, [coverageEligibilityRequest, claimUse, productCode]);
+
   const allSupportingInfoRequirements = useMemo(() => {
     const all = benefitDetail?.supporting_info_requirements ?? [];
-    // Filter out questionnaire-based requirements (those with a documentation_url)
-    const filtered = all.filter((req) => !req.documentation_url);
-    // Deduplicate by category_code + code_code
+    const docReqs = all.filter((req) => !req.documentation_url);
+    const filtered = ceDocCodesForItem
+      ? docReqs.filter((req) => ceDocCodesForItem.has(req.code_code))
+      : docReqs;
     const seen = new Set<string>();
     return filtered.filter((req) => {
       const key = `${req.category_code}:${req.code_code}`;
@@ -1994,7 +2068,7 @@ function AddSupportingInfoSection({
       seen.add(key);
       return true;
     });
-  }, [benefitDetail]);
+  }, [benefitDetail, ceDocCodesForItem]);
 
   const requiredRequirements = useMemo(
     () => allSupportingInfoRequirements.filter((req) => req.is_required),

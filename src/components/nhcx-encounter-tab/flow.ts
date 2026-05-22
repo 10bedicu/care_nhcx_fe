@@ -126,7 +126,7 @@ export function buildTimeline(
     })),
   ];
 
-  return records.sort((a, b) => a.createdAt - b.createdAt);
+  return records.sort((a, b) => b.createdAt - a.createdAt);
 }
 
 /**
@@ -139,13 +139,14 @@ export function isLatestRecord(
   target: TimelineRecord
 ): boolean {
   if (timeline.length === 0) return false;
-  const lastEntry = timeline[timeline.length - 1];
-  if (target.kind !== lastEntry.kind) return false;
-  if (target.kind === "ce" && lastEntry.kind === "ce") {
-    return target.record.id === lastEntry.record.id;
+  // Timeline is sorted descending (latest first), so index 0 is the most recent.
+  const latestEntry = timeline[0];
+  if (target.kind !== latestEntry.kind) return false;
+  if (target.kind === "ce" && latestEntry.kind === "ce") {
+    return target.record.id === latestEntry.record.id;
   }
-  if (target.kind === "claim" && lastEntry.kind === "claim") {
-    return target.record.id === lastEntry.record.id;
+  if (target.kind === "claim" && latestEntry.kind === "claim") {
+    return target.record.id === latestEntry.record.id;
   }
   return false;
 }

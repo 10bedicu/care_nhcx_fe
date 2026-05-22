@@ -128,8 +128,14 @@ export const claimInsuranceSchema = z.object({
 export const claimItemSchema = z
   .object({
     sequence: z.number().int().positive(),
-    care_team_sequence: z.array(z.number().int().positive()).default([]),
-    diagnosis_sequence: z.array(z.number().int().positive()).default([]),
+    care_team_sequence: z
+      .array(z.number().int().positive())
+      .min(1, "At least one care team member is required")
+      .default([]),
+    diagnosis_sequence: z
+      .array(z.number().int().positive())
+      .min(1, "At least one diagnosis is required")
+      .default([]),
     procedure_sequence: z.array(z.number().int().positive()).default([]),
     information_sequence: z.array(z.number().int().positive()).default([]),
     category: codingSchema.optional(),
@@ -137,7 +143,12 @@ export const claimItemSchema = z
     charge_item: z.string().uuid().optional(),
     modifier: z.array(codingSchema).default([]),
     program_code: z.array(codingSchema).default([]),
-    serviced_period: periodSchema.optional(),
+    serviced_period: z
+      .object({
+        start: z.string().datetime().optional(),
+        end: z.string().datetime().optional(),
+      })
+      .optional(),
     quantity: quantitySchema,
     unit_price: z.number().gt(0),
     factor: z.number().optional(),
@@ -155,6 +166,13 @@ export const claimItemSchema = z
       message:
         "Either a product/service or a charge item must be provided, but not both",
       path: ["product_or_service"],
+    }
+  )
+  .refine(
+    (data) => !!data.serviced_period?.start,
+    {
+      message: "Service start date is required",
+      path: ["serviced_period", "start"],
     }
   )
   .refine(
@@ -250,7 +268,7 @@ export const createClaimFormSchema = z
     care_team: z.array(claimCareTeamSchema).default([]),
     supporting_info: z.array(claimSupportingInfoSchema).default([]),
     procedure: z.array(claimProcedureSchema).default([]),
-    diagnosis: z.array(claimDiagnosisSchema).min(1).default([]),
+    diagnosis: z.array(claimDiagnosisSchema).default([]),
     insurance: z
       .array(claimInsuranceSchema)
       .min(1)

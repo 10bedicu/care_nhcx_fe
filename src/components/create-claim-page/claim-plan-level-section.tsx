@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
-  InsurancePlanQuestionnaire,
   InsurancePlanQuestionnaireDetail,
   InsurancePlanSupportingInfoRequirement,
 } from "@/types/insurance_plan";
@@ -33,6 +32,8 @@ import { createClaimFormSchema } from "./schema";
 import { z } from "zod";
 import { buildInitialItems } from "./questionnaire-helpers";
 import { QuestionnaireResponseCard } from "./claim-questionnaire-section";
+import { ClaimUseChoice } from "@/types/claim";
+import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -72,6 +73,135 @@ function usePlanId(
   });
 
   return planListData?.results?.[0]?.id ?? null;
+}
+
+// ─── CE-leftover hook (used by both plan-level sections) ──────────────────────
+
+/**
+ * For PA-via-CE:AR, compute which CE-required documents and questionnaires
+ * are NOT covered at the item level (i.e. not present in any item's IPB
+ * benefit). Those leftover requirements are eligible to surface at the plan
+ * level, intersected with the plan extension. Returns `null` when the form is
+ * not running in PA-via-CE:AR mode (i.e. no filtering should be applied and
+ * the existing IPB-driven plan-level behaviour applies).
+ */
+function useCELeftover({
+  form,
+  planId,
+  claimUse,
+  coverageEligibilityRequest,
+}: {
+  form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
+  planId: string | null;
+  claimUse: ClaimUseChoice | undefined;
+  coverageEligibilityRequest?: CoverageEligibilityRequest;
+}): {
+  docCodes: Set<string>;
+  questionnaireIds: Set<string>;
+} | null {
+  const items = form.watch("item") ?? [];
+
+  const itemProductCodes = useMemo(() => {
+    const codes: string[] = [];
+    const seen = new Set<string>();
+    for (const it of items) {
+      const c = it.product_or_service?.code;
+      if (!c || seen.has(c)) continue;
+      seen.add(c);
+      codes.push(c);
+    }
+    return codes;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.map((i) => i.product_or_service?.code).join(",")]);
+
+  const isCEMode =
+    claimUse === "preauthorization" && !!coverageEligibilityRequest;
+
+  const benefitQueries = useQueries({
+    queries: itemProductCodes.map((code) => ({
+      queryKey: ["insurancePlanBenefit", "lookup", planId, code],
+      queryFn: () =>
+        apis.insurancePlanBenefit.lookup({
+          insurance_plan: planId!,
+          type_code: code,
+        }),
+      enabled: Boolean(isCEMode && planId && code),
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
+
+  const benefitsFingerprint = benefitQueries
+    .map((q) => q.dataUpdatedAt)
+    .join(",");
+
+  return useMemo(() => {
+    if (!isCEMode || !coverageEligibilityRequest) return null;
+
+    const procedures = (
+      coverageEligibilityRequest.latest_response?.insurances ?? []
+    )
+      .map((ins) => ins.procedure)
+      .filter((p): p is NonNullable<typeof p> => !!p);
+
+    const allCEDocCodes = new Set<string>();
+    const allCEQIds = new Set<string>();
+    for (const p of procedures) {
+      for (const d of p.required_documents ?? []) {
+        allCEDocCodes.add(d.code);
+      }
+      for (const q of p.required_questionnaires ?? []) {
+        allCEQIds.add(q.id);
+      }
+    }
+
+    const matchedDocCodes = new Set<string>();
+    const matchedQIds = new Set<string>();
+
+    for (let i = 0; i < itemProductCodes.length; i++) {
+      const code = itemProductCodes[i];
+      const benefit = benefitQueries[i]?.data;
+      if (!benefit) continue;
+      const procedure = procedures.find((p) => p.code === code);
+      if (!procedure) continue;
+
+      const ipbDocCodes = new Set(
+        benefit.supporting_info_requirements
+          .filter((r) => !r.documentation_url)
+          .map((r) => r.code_code)
+      );
+      for (const d of procedure.required_documents ?? []) {
+        if (ipbDocCodes.has(d.code)) matchedDocCodes.add(d.code);
+      }
+
+      // Per the schema: CE `required_questionnaires[].id` matches IPB
+      // requirement `questionnaire.fhir_id`.
+      const ipbQFhirIds = new Set<string>();
+      for (const r of benefit.supporting_info_requirements) {
+        if (!r.documentation_url) continue;
+        const fhir = r.questionnaire?.fhir_id;
+        if (fhir) ipbQFhirIds.add(fhir);
+      }
+      for (const q of procedure.required_questionnaires ?? []) {
+        if (ipbQFhirIds.has(q.id)) matchedQIds.add(q.id);
+      }
+    }
+
+    const docCodes = new Set<string>();
+    for (const c of allCEDocCodes) {
+      if (!matchedDocCodes.has(c)) docCodes.add(c);
+    }
+    const questionnaireIds = new Set<string>();
+    for (const id of allCEQIds) {
+      if (!matchedQIds.has(id)) questionnaireIds.add(id);
+    }
+    return { docCodes, questionnaireIds };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isCEMode,
+    coverageEligibilityRequest,
+    itemProductCodes,
+    benefitsFingerprint,
+  ]);
 }
 
 // ─── Plan-Level Doc Entry Card ────────────────────────────────────────────────
@@ -335,12 +465,30 @@ function DocStatusRow({
 
 export function PlanLevelSupportingInfoSection({
   form,
+  coverageEligibilityRequest,
+  claimUse,
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
+  /**
+   * When provided alongside `claimUse === "preauthorization"`, the plan-level
+   * optional requirements are filtered down to those that intersect with the
+   * "leftover" CE response documents — i.e. CE-required docs that were not
+   * covered by any item's IPB benefit. Required plan-level requirements are
+   * always shown regardless. For other flows, all plan-level IPB
+   * requirements are shown.
+   */
+  coverageEligibilityRequest?: CoverageEligibilityRequest;
+  claimUse: ClaimUseChoice | undefined;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const didAutoExpandRef = useRef(false);
   const planId = usePlanId(form);
+  const ceLeftover = useCELeftover({
+    form,
+    planId,
+    claimUse,
+    coverageEligibilityRequest,
+  });
 
   const { data: extensions, isLoading: isExtensionsLoading } = useQuery({
     queryKey: ["insurancePlan", "extensions", planId],
@@ -354,13 +502,18 @@ export function PlanLevelSupportingInfoSection({
     const all = extensions?.supporting_info_requirements ?? [];
     const filtered = all.filter((req) => !req.documentation_url);
     const seen = new Set<string>();
-    return filtered.filter((req) => {
+    const deduped = filtered.filter((req) => {
       const key = `${req.category_code}:${req.code_code}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
-  }, [extensions]);
+    if (!ceLeftover) return deduped;
+    // Plan-level docs = required IPB plan-extension reqs ∪ (optional ∩ CE leftover)
+    return deduped.filter(
+      (r) => r.is_required || ceLeftover.docCodes.has(r.code_code)
+    );
+  }, [extensions, ceLeftover]);
 
   const requiredReqs = useMemo(
     () => allRequirements.filter((r) => r.is_required),
@@ -670,14 +823,31 @@ function QStatusRow({
 
 export function PlanLevelQuestionnairesSection({
   form,
+  coverageEligibilityRequest,
+  claimUse,
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
+  /**
+   * When provided alongside `claimUse === "preauthorization"`, the plan-level
+   * optional questionnaire requirements are filtered down to those that
+   * intersect with the "leftover" CE response questionnaires — i.e.
+   * CE-required questionnaires that were not covered by any item's IPB
+   * benefit. Required plan-level requirements are always shown regardless.
+   */
+  coverageEligibilityRequest?: CoverageEligibilityRequest;
+  claimUse: ClaimUseChoice | undefined;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const didAutoExpandRef = useRef(false);
   const { getStore } = useGlobalStore();
   const encounterId = getStore<string>("encounterId") ?? "";
   const planId = usePlanId(form);
+  const ceLeftover = useCELeftover({
+    form,
+    planId,
+    claimUse,
+    coverageEligibilityRequest,
+  });
 
   const { data: extensions, isLoading: isExtensionsLoading } = useQuery({
     queryKey: ["insurancePlan", "extensions", planId],
@@ -686,25 +856,28 @@ export function PlanLevelQuestionnairesSection({
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: planQuestionnaires } = useQuery({
-    queryKey: ["insurancePlan", "questionnaires", planId],
-    queryFn: () => apis.insurancePlan.questionnaires(planId!),
-    enabled: Boolean(planId),
-    staleTime: 5 * 60 * 1000,
-  });
-
-  // Questionnaire requirements (documentation_url is NOT null)
+  // Questionnaire requirements (documentation_url is NOT null), with optional
+  // CE-leftover filtering applied to optional reqs only. Per the schema:
+  // CE `required_questionnaires[].id` matches IPB requirement
+  // `questionnaire.fhir_id`.
   const questionnaireReqs = useMemo(() => {
     const all = extensions?.supporting_info_requirements ?? [];
     const filtered = all.filter((req) => !!req.documentation_url);
     const seen = new Set<string>();
-    return filtered.filter((req) => {
+    const deduped = filtered.filter((req) => {
       const key = req.questionnaire?.fhir_id ?? req.id;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
-  }, [extensions]);
+    if (!ceLeftover) return deduped;
+    return deduped.filter((r) => {
+      if (r.is_required) return true;
+      const fhir = r.questionnaire?.fhir_id;
+      if (!fhir) return false;
+      return ceLeftover.questionnaireIds.has(fhir);
+    });
+  }, [extensions, ceLeftover]);
 
   const requiredReqs = useMemo(
     () => questionnaireReqs.filter((r) => r.is_required),
@@ -715,34 +888,25 @@ export function PlanLevelQuestionnairesSection({
     [questionnaireReqs]
   );
 
-  // Build fhir_id → InsurancePlanQuestionnaire map from the plan questionnaires list
-  const questionnaireByFhirId = useMemo(() => {
-    const map = new Map<string, InsurancePlanQuestionnaire>();
-    for (const q of (planQuestionnaires as unknown as InsurancePlanQuestionnaire[]) ?? []) {
-      map.set(q.fhir_id, q);
-    }
-    return map;
-  }, [planQuestionnaires]);
-
-  // Unique questionnaires to fetch details for
-  const questionnairesToFetch = useMemo(() => {
+  // Unique questionnaire ids to fetch details for. The `id` is now carried
+  // directly on the requirement's questionnaire ref.
+  const questionnaireIdsToFetch = useMemo(() => {
     const seen = new Set<string>();
-    return questionnaireReqs
-      .map((req) => {
-        if (!req.questionnaire?.fhir_id) return null;
-        const q = questionnaireByFhirId.get(req.questionnaire.fhir_id);
-        if (!q || seen.has(q.id)) return null;
-        seen.add(q.id);
-        return q;
-      })
-      .filter((q): q is InsurancePlanQuestionnaire => q !== null);
-  }, [questionnaireReqs, questionnaireByFhirId]);
+    const ids: string[] = [];
+    for (const req of questionnaireReqs) {
+      const id = req.questionnaire?.id;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+    return ids;
+  }, [questionnaireReqs]);
 
   const detailQueries = useQueries({
-    queries: questionnairesToFetch.map((q) => ({
-      queryKey: ["insurancePlanQuestionnaire", q.id],
-      queryFn: () => apis.insurancePlanQuestionnaire.get(q.id),
-      enabled: Boolean(q.id),
+    queries: questionnaireIdsToFetch.map((id) => ({
+      queryKey: ["insurancePlanQuestionnaire", id],
+      queryFn: () => apis.insurancePlanQuestionnaire.get(id),
+      enabled: Boolean(id),
       staleTime: 5 * 60 * 1000,
     })),
   });
@@ -756,10 +920,10 @@ export function PlanLevelQuestionnairesSection({
     [detailQueries.map((q) => q.dataUpdatedAt).join(",")]
   );
 
-  const detailByFhirId = useMemo(() => {
+  const detailById = useMemo(() => {
     const map = new Map<string, InsurancePlanQuestionnaireDetail>();
     for (const detail of loadedDetails) {
-      map.set(detail.fhir_id, detail);
+      map.set(detail.id, detail);
     }
     return map;
   }, [loadedDetails]);
@@ -767,8 +931,8 @@ export function PlanLevelQuestionnairesSection({
   const getDetailForReq = (
     req: InsurancePlanSupportingInfoRequirement
   ): InsurancePlanQuestionnaireDetail | undefined => {
-    if (!req.questionnaire?.fhir_id) return undefined;
-    return detailByFhirId.get(req.questionnaire.fhir_id);
+    if (!req.questionnaire?.id) return undefined;
+    return detailById.get(req.questionnaire.id);
   };
 
   const watchedQR = form.watch("questionnaire_responses") ?? [];
@@ -786,12 +950,12 @@ export function PlanLevelQuestionnairesSection({
   const requiredStatuses = useMemo(
     () => requiredReqs.map((req) => ({ req, status: getQStatus(req) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [requiredReqs, watchedQR, detailByFhirId]
+    [requiredReqs, watchedQR, detailById]
   );
   const optionalStatuses = useMemo(
     () => optionalReqs.map((req) => ({ req, status: getQStatus(req) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [optionalReqs, watchedQR, detailByFhirId]
+    [optionalReqs, watchedQR, detailById]
   );
 
   const unsatisfiedCount = requiredStatuses.filter(
@@ -870,10 +1034,10 @@ export function PlanLevelQuestionnairesSection({
   // QR entries that belong to plan-level requirements
   const planQREntries = useMemo(() => {
     const planDetailUrls = new Set(
-      [...detailByFhirId.values()].map((d) => d.full_url)
+      [...detailById.values()].map((d) => d.full_url)
     );
     return watchedQR.filter((qr) => planDetailUrls.has(qr.questionnaire));
-  }, [watchedQR, detailByFhirId]);
+  }, [watchedQR, detailById]);
 
   // Auto-expand once when pre-filled questionnaire responses are detected.
   useEffect(() => {
