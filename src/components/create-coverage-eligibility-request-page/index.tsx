@@ -48,6 +48,10 @@ function parsePurposeQueryParam(
   return match ?? null;
 }
 
+function parseStringParam(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 export type CreateCoverageEligibilityRequestPageProps = {
   facilityId: string;
   patientId: string;
@@ -64,6 +68,11 @@ const CreateCoverageEligibilityRequestPage: FC<
   const lockedPurpose = useMemo(
     () => parsePurposeQueryParam(queryParams?.purpose),
     [queryParams?.purpose]
+  );
+
+  const linkedCoverageEligibilityId = useMemo(
+    () => parseStringParam(queryParams?.coverage_eligibility),
+    [queryParams?.coverage_eligibility]
   );
 
   const initialPurpose: CoverageEligibilityRequestPurposeChoice[] = useMemo(
@@ -97,6 +106,14 @@ const CreateCoverageEligibilityRequestPage: FC<
   const isValidation = lockedPurpose === "validation";
 
   const didPrefillRef = useRef(false);
+  const didPrefillInsuranceRef = useRef(false);
+
+  const { data: linkedCoverageEligibilityRequest } = useQuery({
+    queryKey: ["coverage-eligibility-request", linkedCoverageEligibilityId],
+    queryFn: () =>
+      apis.coverageEligibilityRequest.get(linkedCoverageEligibilityId as string),
+    enabled: !!linkedCoverageEligibilityId,
+  });
 
   const { data: encounterDiagnoses, isFetched: encounterDiagnosesFetched } =
     useQuery({
@@ -190,6 +207,36 @@ const CreateCoverageEligibilityRequestPage: FC<
     codedChargeItems,
     benefitsFingerprint,
   ]);
+
+  useEffect(() => {
+    if (didPrefillInsuranceRef.current) return;
+    if (!linkedCoverageEligibilityRequest) return;
+
+    const ceInsurance = linkedCoverageEligibilityRequest.insurance ?? [];
+    if (ceInsurance.length === 0) return;
+
+    const existingInsurance = form.getValues("insurance") ?? [];
+    if (existingInsurance.length > 0) {
+      didPrefillInsuranceRef.current = true;
+      return;
+    }
+
+    didPrefillInsuranceRef.current = true;
+
+    const mappedInsurance = ceInsurance.map((ins, idx) => ({
+      sequence:
+        typeof ins.sequence === "number" && ins.sequence > 0
+          ? ins.sequence
+          : idx + 1,
+      focal: !!ins.focal,
+      policy: ins.policy,
+    }));
+    if (mappedInsurance.length > 0 && !mappedInsurance.some((i) => i.focal)) {
+      mappedInsurance[0].focal = true;
+    }
+
+    form.setValue("insurance", mappedInsurance);
+  }, [linkedCoverageEligibilityRequest, form]);
 
   useEffect(() => {
     if (didPrefillRef.current) return;
