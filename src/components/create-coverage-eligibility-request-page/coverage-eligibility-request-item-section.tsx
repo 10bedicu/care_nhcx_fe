@@ -1,13 +1,12 @@
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import {
   AlertCircleIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   CircleMinusIcon,
-  InfoIcon,
   PaperclipIcon,
   PlusIcon,
+  ReceiptIcon,
   ShoppingBasketIcon,
   XIcon,
 } from "lucide-react";
@@ -47,12 +46,9 @@ interface CoverageEligibilityRequestItemSectionProps {
   form: UseFormReturn<
     z.infer<typeof createCoverageEligibilityRequestFormSchema>
   >;
-  /**
-   * Charge items associated with this encounter that could not be matched to
-   * any insurance-plan-benefit. Surfaced as a non-intrusive info banner so the
-   * provider knows they were intentionally skipped from the prefill.
-   */
-  uncoveredChargeItems?: ChargeItem[];
+  encounterChargeItems?: ChargeItem[];
+  /** Encounter diagnoses pre-mapped to the form's diagnosis shape, injected into every new item. */
+  defaultItemDiagnoses?: { diagnosis_reference?: string; diagnosis_code?: { system: string; code: string; display?: string } }[];
 }
 
 const BENEFIT_CATEGORY_SYSTEM =
@@ -60,9 +56,11 @@ const BENEFIT_CATEGORY_SYSTEM =
 const PROCEDURE_CODE_SYSTEM =
   "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-procedures-code";
 
+
 export function CoverageEligibilityRequestItemSection({
   form,
-  uncoveredChargeItems = [],
+  encounterChargeItems = [],
+  defaultItemDiagnoses = [],
 }: CoverageEligibilityRequestItemSectionProps) {
   const { fields, append, remove } = useFieldArray({
     name: "item",
@@ -102,36 +100,6 @@ export function CoverageEligibilityRequestItemSection({
           </p>
         </div>
       </div>
-
-      {uncoveredChargeItems.length > 0 && (
-        <Alert variant="info" className="bg-blue-50 border-blue-200">
-          <InfoIcon className="h-4 w-4 text-blue-600" />
-          <AlertTitle className="text-blue-900">
-            {uncoveredChargeItems.length === 1
-              ? "1 charge item is not covered by this insurance plan"
-              : `${uncoveredChargeItems.length} charge items are not covered by this insurance plan`}
-          </AlertTitle>
-          <AlertDescription className="text-blue-800">
-            <p className="mb-2">
-              The following were skipped from the prefill. You can still add
-              them manually if needed.
-            </p>
-            <ul className="space-y-0.5 text-xs">
-              {uncoveredChargeItems.map((ci) => (
-                <li key={ci.id} className="flex items-center gap-1.5">
-                  <span className="inline-block w-1 h-1 rounded-full bg-blue-400" />
-                  <span>{chargeItemLabel(ci)}</span>
-                  {ci.code?.code && (
-                    <span className="opacity-60 font-mono">
-                      ({ci.code.code})
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </AlertDescription>
-        </Alert>
-      )}
 
       <div className="space-y-4">
         {fields.map((field, index) => {
@@ -238,6 +206,12 @@ export function CoverageEligibilityRequestItemSection({
 
               <ModifierField form={form} index={index} planId={planId} />
 
+              <AddChargeItemsSection
+                form={form}
+                index={index}
+                encounterChargeItems={encounterChargeItems}
+              />
+
               <AddDiagnosisSection form={form} index={index} />
               <AddSupportingInfoSection form={form} index={index} />
 
@@ -290,29 +264,25 @@ export function CoverageEligibilityRequestItemSection({
                 />
               </div>
 
+              {/* Amount — read-only, auto-calculated from selected charge items */}
               <FormField
                 control={form.control}
                 name={`item.${index}.unit_price`}
                 render={({ field }) => (
                   <FormItem className="space-y-1.5">
                     <FormLabel>
-                      Unit Price
+                      Amount
                       <span className="text-red-500 text-sm ml-0.5">*</span>
                     </FormLabel>
                     <FormControl>
-                      <Input
-                        type="number"
-                        step="0.01"
-                        value={field.value || ""}
-                        onChange={(e) => {
-                          form.setValue(
-                            `item.${index}.unit_price`,
-                            e.target.value ? parseFloat(e.target.value) : 0
-                          );
-                        }}
-                        placeholder="Enter unit price"
-                      />
+                      <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/40 text-sm font-medium">
+                        <span className="text-muted-foreground">₹</span>
+                        <span>{(field.value ?? 0).toFixed(2)}</span>
+                      </div>
                     </FormControl>
+                    <p className="text-xs text-muted-foreground">
+                      Auto-calculated from selected charge items (capped at benefit limit)
+                    </p>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -322,6 +292,7 @@ export function CoverageEligibilityRequestItemSection({
                 form={form}
                 index={index}
                 planId={planId}
+                encounterChargeItems={encounterChargeItems}
               />
             </CardContent>
             {hasAnyError && (
@@ -359,21 +330,27 @@ export function CoverageEligibilityRequestItemSection({
                   type="button"
                   variant="outline"
                   className="w-full"
-                  onClick={() =>
+                  onClick={() => {
+                    const existingSupportingInfo =
+                      form.getValues("supporting_info") ?? [];
+                    const allSequences = existingSupportingInfo.map(
+                      (s) => s.sequence
+                    );
                     append({
-                      sequence: Math.max(0, ...fields.map((f) => f.sequence)) + 1,
+                      sequence:
+                        Math.max(0, ...fields.map((f) => f.sequence)) + 1,
                       category: undefined as unknown as Coding,
                       product_or_service: undefined,
-                      charge_item: undefined,
+                      charge_items: [],
                       modifier: [],
                       quantity: {
                         value: 0,
                       },
                       unit_price: 0,
-                      diagnosis: [],
-                      supporting_info_sequence: [],
-                    })
-                  }
+                      diagnosis: defaultItemDiagnoses.map((d) => ({ ...d })),
+                      supporting_info_sequence: allSequences,
+                    });
+                  }}
                 >
                   <PlusIcon className="w-5 h-5" />
                   Add Item
@@ -498,6 +475,180 @@ function ModifierField({
   );
 }
 
+function AddChargeItemsSection({
+  form,
+  index,
+  encounterChargeItems = [],
+}: {
+  form: UseFormReturn<z.infer<typeof createCoverageEligibilityRequestFormSchema>>;
+  index: number;
+  encounterChargeItems?: ChargeItem[];
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const rawSelectedIds = form.watch(`item.${index}.charge_items`);
+  const rawAllItems = form.watch("item");
+
+  const selectedIds = useMemo(
+    () => rawSelectedIds ?? [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(rawSelectedIds)]
+  );
+
+  const allItems = useMemo(
+    () => rawAllItems ?? [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(rawAllItems?.map((i) => i.charge_items))]
+  );
+
+  // Collect charge item IDs already used in other item rows
+  const takenByOthers = useMemo(
+    () =>
+      new Set(
+        allItems.flatMap((item, i) =>
+          i !== index ? (item.charge_items ?? []) : []
+        )
+      ),
+    [allItems, index]
+  );
+
+  const selectedChargeItems = useMemo(
+    () =>
+      selectedIds
+        .map((id) => encounterChargeItems.find((ci) => ci.id === id))
+        .filter((ci): ci is ChargeItem => !!ci),
+    [selectedIds, encounterChargeItems]
+  );
+
+  // Items available to add: not already selected in this row, not taken by another row
+  const availableToAdd = useMemo(
+    () =>
+      encounterChargeItems.filter(
+        (ci) => !selectedIds.includes(ci.id) && !takenByOthers.has(ci.id)
+      ),
+    [encounterChargeItems, selectedIds, takenByOthers]
+  );
+
+  const totalSelected = useMemo(
+    () =>
+      selectedChargeItems.reduce(
+        (sum, ci) => sum + parseFloat(ci.total_price || "0"),
+        0
+      ),
+    [selectedChargeItems]
+  );
+
+  if (encounterChargeItems.length === 0) return null;
+
+  return (
+    <div className="space-y-4">
+      <div
+        className="flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-center space-x-2">
+          {isExpanded ? (
+            <ChevronDownIcon className="w-4 h-4" />
+          ) : (
+            <ChevronRightIcon className="w-4 h-4" />
+          )}
+          <ReceiptIcon className="w-4 h-4 text-muted-foreground" />
+          <span className="font-medium">Charge Items</span>
+          {selectedIds.length > 0 && (
+            <Badge variant="secondary" className="ml-2">
+              {selectedIds.length}
+            </Badge>
+          )}
+        </div>
+        {selectedIds.length > 0 && !isExpanded && (
+          <span className="text-sm text-muted-foreground">
+            ₹{totalSelected.toFixed(2)}
+          </span>
+        )}
+      </div>
+
+      {isExpanded && (
+        <div className="space-y-3 pl-4">
+          <Autocomplete
+            options={availableToAdd.map((ci) => ({
+              label: `${chargeItemLabel(ci)}${ci.code?.code ? ` (${ci.code.code})` : ""} — ₹${parseFloat(ci.total_price || "0").toFixed(2)}`,
+              value: ci.id,
+            }))}
+            value={undefined}
+            onChange={(id) => {
+              if (!selectedIds.includes(id)) {
+                form.setValue(`item.${index}.charge_items`, [
+                  ...selectedIds,
+                  id,
+                ]);
+              }
+            }}
+            placeholder={
+              availableToAdd.length === 0
+                ? "No charge items available"
+                : "Search and select a charge item…"
+            }
+            noOptionsMessage="No charge items available"
+          />
+
+          {selectedChargeItems.length > 0 && (
+            <div className="space-y-2">
+              {selectedChargeItems.map((ci) => (
+                <div
+                  key={ci.id}
+                  className="flex items-center justify-between p-2.5 border rounded-lg bg-muted/30"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">
+                      {chargeItemLabel(ci)}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {ci.code?.code && (
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {ci.code.code}
+                        </span>
+                      )}
+                      <span className="text-xs font-medium text-foreground">
+                        ₹{parseFloat(ci.total_price || "0").toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="flex-shrink-0 h-7 w-7"
+                    onClick={() => {
+                      form.setValue(
+                        `item.${index}.charge_items`,
+                        selectedIds.filter((id) => id !== ci.id)
+                      );
+                    }}
+                  >
+                    <XIcon className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+
+              {selectedChargeItems.length > 1 && (
+                <div className="flex justify-end text-sm text-muted-foreground px-1">
+                  Total: ₹{totalSelected.toFixed(2)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {selectedIds.length === 0 && (
+            <p className="text-xs text-muted-foreground py-1">
+              No charge items selected. Select charge items to auto-calculate the amount.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function computeIpbCap(
   benefitDetail: InsurancePlanBenefitDetail,
   selectedModifierCodes: string[]
@@ -532,22 +683,36 @@ function computeIpbCap(
 }
 
 /**
- * For CE:AR items — validates amount cap (IPB limit with modifier consideration)
- * and condition rules (quantity, stratification, implant).
+ * For CE:AR items — auto-calculates unit_price from selected charge items
+ * (capped at the IPB limit), and validates condition rules.
  */
 function CEItemValidationEffects({
   form,
   index,
   planId,
+  encounterChargeItems = [],
 }: {
   form: UseFormReturn<z.infer<typeof createCoverageEligibilityRequestFormSchema>>;
   index: number;
   planId: string | null;
+  encounterChargeItems?: ChargeItem[];
 }) {
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
-  const unitPrice = form.watch(`item.${index}.unit_price`);
   const quantityValue = form.watch(`item.${index}.quantity.value`);
-  const modifiers = form.watch(`item.${index}.modifier`) ?? [];
+  const rawModifiers = form.watch(`item.${index}.modifier`);
+  const rawChargeItemIds = form.watch(`item.${index}.charge_items`);
+
+  const modifiers = useMemo(
+    () => rawModifiers ?? [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(rawModifiers)]
+  );
+
+  const chargeItemIds = useMemo(
+    () => rawChargeItemIds ?? [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(rawChargeItemIds)]
+  );
 
   const { data: benefitDetail } = useQuery({
     queryKey: ["insurancePlanBenefit", "lookup", planId, productCode],
@@ -568,16 +733,29 @@ function CEItemValidationEffects({
     );
   }, [benefitDetail, modifiers]);
 
+  // Sum total prices of all selected charge items
+  const chargeItemsTotal = useMemo(() => {
+    return chargeItemIds.reduce((sum, id) => {
+      const ci = encounterChargeItems.find((c) => c.id === id);
+      return sum + parseFloat(ci?.total_price ?? "0");
+    }, 0);
+  }, [chargeItemIds, encounterChargeItems]);
+
+  // Auto-set unit_price = min(sum, cap)
   useEffect(() => {
-    if (amountCap != null && unitPrice > amountCap) {
+    const capped =
+      amountCap != null ? Math.min(chargeItemsTotal, amountCap) : chargeItemsTotal;
+    form.setValue(`item.${index}.unit_price`, capped);
+
+    if (amountCap != null && chargeItemsTotal > amountCap) {
       form.setValue(
         `item.${index}._amount_cap_error`,
-        `Unit price ₹${unitPrice.toFixed(2)} exceeds the allowed limit of ₹${amountCap.toFixed(2)}`
+        `Charge items total ₹${chargeItemsTotal.toFixed(2)} exceeds the allowed limit of ₹${amountCap.toFixed(2)}. Amount has been capped at ₹${amountCap.toFixed(2)}.`
       );
     } else {
       form.setValue(`item.${index}._amount_cap_error`, undefined);
     }
-  }, [unitPrice, amountCap, form, index]);
+  }, [chargeItemsTotal, amountCap, form, index]);
 
   useEffect(() => {
     if (!benefitDetail?.conditions?.length) {

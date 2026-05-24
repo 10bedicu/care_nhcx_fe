@@ -140,7 +140,7 @@ export const claimItemSchema = z
     information_sequence: z.array(z.number().int().positive()).default([]),
     category: codingSchema.optional(),
     product_or_service: codingSchema.optional(),
-    charge_item: z.string().uuid().optional(),
+    charge_items: z.array(z.string().uuid()).default([]),
     modifier: z.array(codingSchema).default([]),
     program_code: z.array(codingSchema).default([]),
     serviced_period: z
@@ -150,26 +150,13 @@ export const claimItemSchema = z
       })
       .optional(),
     quantity: quantitySchema,
-    unit_price: z.number().gt(0),
+    unit_price: z.number().gte(0),
     factor: z.number().optional(),
     _mandatory_docs_error: z.string().optional(),
     _mandatory_questionnaires_error: z.string().optional(),
     _amount_cap_error: z.string().optional(),
     _condition_errors: z.string().optional(),
   })
-  .refine(
-    (data) => {
-      return (
-        (data.product_or_service && !data.charge_item) ||
-        (!data.product_or_service && data.charge_item)
-      );
-    },
-    {
-      message:
-        "Either a product/service or a charge item must be provided, but not both",
-      path: ["product_or_service"],
-    }
-  )
   .refine(
     (data) => !!data.serviced_period?.start,
     {
@@ -193,13 +180,6 @@ export const claimItemSchema = z
         data._mandatory_questionnaires_error ??
         "All mandatory questionnaires must be completed",
       path: ["_mandatory_questionnaires_error"],
-    })
-  )
-  .refine(
-    (data) => !data._amount_cap_error,
-    (data) => ({
-      message: data._amount_cap_error ?? "Amount exceeds the allowed limit",
-      path: ["_amount_cap_error"],
     })
   )
   .refine(

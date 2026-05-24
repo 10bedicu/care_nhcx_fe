@@ -87,34 +87,14 @@ export const coverageEligibilityRequestItemSchema = z
     supporting_info_sequence: z.array(z.number().int().positive()).default([]),
     category: codingSchema,
     product_or_service: codingSchema.optional(),
-    charge_item: z.string().uuid().optional(),
+    charge_items: z.array(z.string().uuid()).default([]),
     modifier: z.array(codingSchema).default([]),
     quantity: quantitySchema,
-    unit_price: z.number().gt(0),
+    unit_price: z.number().gte(0),
     diagnosis: z.array(coverageEligibilityRequestDiagnosisSchema).default([]),
     _amount_cap_error: z.string().optional(),
     _condition_errors: z.string().optional(),
   })
-  .refine(
-    (data) => {
-      return (
-        (data.product_or_service && !data.charge_item) ||
-        (!data.product_or_service && data.charge_item)
-      );
-    },
-    {
-      message:
-        "Either product_or_service or charge_item must be provided, but not both",
-      path: ["product_or_service", "charge_item"],
-    }
-  )
-  .refine(
-    (data) => !data._amount_cap_error,
-    (data) => ({
-      message: data._amount_cap_error ?? "Amount exceeds the allowed limit",
-      path: ["_amount_cap_error"],
-    })
-  )
   .refine(
     (data) => !data._condition_errors,
     (data) => ({

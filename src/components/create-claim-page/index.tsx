@@ -217,7 +217,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         });
         return res.results || [];
       },
-      enabled: !!facilityId && !!encounterId && flowKind === "fresh",
+      enabled: !!facilityId && !!encounterId,
       staleTime: 60 * 1000,
     });
 
@@ -380,13 +380,14 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             code: ci.code.code,
             display: ci.code.display,
           },
+          charge_items: [ci.id],
           modifier: [],
           diagnosis_sequence: [...diagnosisSequences],
           information_sequence: [...informationSequences],
           quantity: {
             value: parsePositiveNumber(ci.quantity, 1),
           },
-          unit_price: parsePositiveNumber(ci.total_price, 1),
+          unit_price: 0,
         }))
       );
     }
@@ -501,8 +502,8 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         information_sequence: it.information_sequence || [],
         category: it.category,
         product_or_service: it.product_or_service,
+        charge_items: [],
         modifier: it.modifier ?? [],
-        charge_item: undefined,
         program_code:
           it.program_code && it.program_code.length > 0
             ? it.program_code
@@ -598,8 +599,8 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
           information_sequence: infoSeqs,
           category: it.category ?? DEFAULT_ITEM_CATEGORY,
           product_or_service: it.product_or_service,
+          charge_items: [],
           modifier: it.modifier ?? [],
-          charge_item: undefined,
           program_code: [DEFAULT_PROGRAM_CODE],
           serviced_period: undefined,
           quantity: {
@@ -884,6 +885,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                   form={form}
                   coverageEligibilityRequest={coverageEligibilityRequest}
                   previousClaim={previousClaim}
+                  encounterChargeItems={encounterChargeItems ?? []}
                 />
                 <Separator />
                 <ClaimAccidentSection form={form} />

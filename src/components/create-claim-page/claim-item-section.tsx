@@ -8,9 +8,12 @@ import {
   InfoIcon,
   PaperclipIcon,
   PlusIcon,
+  ReceiptIcon,
   ShoppingBasketIcon,
   XIcon,
 } from "lucide-react";
+import { ChargeItem } from "@/types/charge_item";
+import { chargeItemLabel } from "@/lib/prefill";
 import { FileIcon, TrashIcon } from "lucide-react";
 import {
   FormControl,
@@ -51,6 +54,7 @@ interface ClaimItemSectionProps {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   coverageEligibilityRequest?: CoverageEligibilityRequest;
   previousClaim?: Claim;
+  encounterChargeItems?: ChargeItem[];
 }
 
 const PROGRAM_CODES = [
@@ -645,6 +649,7 @@ export function ClaimItemSection({
   form,
   coverageEligibilityRequest,
   previousClaim,
+  encounterChargeItems = [],
 }: ClaimItemSectionProps) {
   const { fields, remove } = useFieldArray({
     name: "item",
@@ -962,6 +967,12 @@ export function ClaimItemSection({
 
               <ModifierField form={form} index={index} planId={planId} />
 
+              <AddChargeItemsSection
+                form={form}
+                index={index}
+                encounterChargeItems={encounterChargeItems}
+              />
+
               <FormField
                 control={form.control}
                 name={`item.${index}.diagnosis_sequence`}
@@ -1004,6 +1015,7 @@ export function ClaimItemSection({
                 planId={planId}
                 coverageEligibilityRequest={coverageEligibilityRequest}
                 previousClaim={previousClaim}
+                encounterChargeItems={encounterChargeItems}
               />
 
               <div className="grid grid-cols-2 gap-4">
@@ -1121,19 +1133,14 @@ export function ClaimItemSection({
                         <span className="text-red-500 text-sm ml-0.5">*</span>
                       </FormLabel>
                       <FormControl>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={field.value || ""}
-                          onChange={(e) => {
-                            form.setValue(
-                              `item.${index}.unit_price`,
-                              e.target.value ? parseFloat(e.target.value) : 0
-                            );
-                          }}
-                          placeholder="Enter unit price"
-                        />
+                        <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/40 text-sm font-medium">
+                          <span className="text-muted-foreground">₹</span>
+                          <span>{(field.value ?? 0).toFixed(2)}</span>
+                        </div>
                       </FormControl>
+                      <p className="text-xs text-muted-foreground">
+                        Auto-calculated from selected charge items (capped at benefit limit)
+                      </p>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -1350,6 +1357,179 @@ function ModifierField({
   );
 }
 
+function AddChargeItemsSection({
+  form,
+  index,
+  encounterChargeItems = [],
+}: {
+  form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
+  index: number;
+  encounterChargeItems?: ChargeItem[];
+}) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const rawSelectedIds = form.watch(`item.${index}.charge_items`);
+  const rawAllItems = form.watch("item");
+
+  const selectedIds = useMemo(
+    () => rawSelectedIds ?? [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(rawSelectedIds)]
+  );
+
+  const allItems = useMemo(
+    () => rawAllItems ?? [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(rawAllItems?.map((i) => i.charge_items))]
+  );
+
+  // Charge item IDs already claimed by other item rows
+  const takenByOthers = useMemo(
+    () =>
+      new Set(
+        allItems.flatMap((item, i) =>
+          i !== index ? (item.charge_items ?? []) : []
+        )
+      ),
+    [allItems, index]
+  );
+
+  const selectedChargeItems = useMemo(
+    () =>
+      selectedIds
+        .map((id) => encounterChargeItems.find((ci) => ci.id === id))
+        .filter((ci): ci is ChargeItem => !!ci),
+    [selectedIds, encounterChargeItems]
+  );
+
+  const availableToAdd = useMemo(
+    () =>
+      encounterChargeItems.filter(
+        (ci) => !selectedIds.includes(ci.id) && !takenByOthers.has(ci.id)
+      ),
+    [encounterChargeItems, selectedIds, takenByOthers]
+  );
+
+  const totalSelected = useMemo(
+    () =>
+      selectedChargeItems.reduce(
+        (sum, ci) => sum + parseFloat(ci.total_price || "0"),
+        0
+      ),
+    [selectedChargeItems]
+  );
+
+  if (encounterChargeItems.length === 0) return null;
+
+  return (
+    <div className="space-y-4">
+      <div
+        className="flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <div className="flex items-center space-x-2">
+          {isExpanded ? (
+            <ChevronDownIcon className="w-4 h-4" />
+          ) : (
+            <ChevronRightIcon className="w-4 h-4" />
+          )}
+          <ReceiptIcon className="w-4 h-4 text-muted-foreground" />
+          <span className="font-medium">Charge Items</span>
+          {selectedIds.length > 0 && (
+            <Badge variant="secondary" className="ml-2">
+              {selectedIds.length}
+            </Badge>
+          )}
+        </div>
+        {selectedIds.length > 0 && !isExpanded && (
+          <span className="text-sm text-muted-foreground">
+            ₹{totalSelected.toFixed(2)}
+          </span>
+        )}
+      </div>
+
+      {isExpanded && (
+        <div className="space-y-3 pl-4">
+          <Autocomplete
+            options={availableToAdd.map((ci) => ({
+              label: `${chargeItemLabel(ci)}${ci.code?.code ? ` (${ci.code.code})` : ""} — ₹${parseFloat(ci.total_price || "0").toFixed(2)}`,
+              value: ci.id,
+            }))}
+            value={undefined}
+            onChange={(id) => {
+              if (!selectedIds.includes(id)) {
+                form.setValue(`item.${index}.charge_items`, [
+                  ...selectedIds,
+                  id,
+                ]);
+              }
+            }}
+            placeholder={
+              availableToAdd.length === 0
+                ? "No charge items available"
+                : "Search and select a charge item…"
+            }
+            noOptionsMessage="No charge items available"
+          />
+
+          {selectedChargeItems.length > 0 && (
+            <div className="space-y-2">
+              {selectedChargeItems.map((ci) => (
+                <div
+                  key={ci.id}
+                  className="flex items-center justify-between p-2.5 border rounded-lg bg-muted/30"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">
+                      {chargeItemLabel(ci)}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {ci.code?.code && (
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {ci.code.code}
+                        </span>
+                      )}
+                      <span className="text-xs font-medium text-foreground">
+                        ₹{parseFloat(ci.total_price || "0").toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="flex-shrink-0 h-7 w-7"
+                    onClick={() => {
+                      form.setValue(
+                        `item.${index}.charge_items`,
+                        selectedIds.filter((id) => id !== ci.id)
+                      );
+                    }}
+                  >
+                    <XIcon className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+
+              {selectedChargeItems.length > 1 && (
+                <div className="flex justify-end text-sm text-muted-foreground px-1">
+                  Total: ₹{totalSelected.toFixed(2)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {selectedIds.length === 0 && (
+            <p className="text-xs text-muted-foreground py-1">
+              No charge items selected. Select charge items to auto-calculate the unit price.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Given a loaded benefit detail, compute the cap amount considering selected modifiers.
  * Finds costs whose qualifiers are a subset of the selected modifiers. Among those,
@@ -1399,19 +1579,33 @@ function ItemValidationEffects({
   planId,
   coverageEligibilityRequest,
   previousClaim,
+  encounterChargeItems = [],
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   index: number;
   planId: string | null;
   coverageEligibilityRequest?: CoverageEligibilityRequest;
   previousClaim?: Claim;
+  encounterChargeItems?: ChargeItem[];
 }) {
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
-  const unitPrice = form.watch(`item.${index}.unit_price`);
   const quantityValue = form.watch(`item.${index}.quantity.value`);
-  const modifiers = form.watch(`item.${index}.modifier`) ?? [];
+  const rawModifiers = form.watch(`item.${index}.modifier`);
+  const rawChargeItemIds = form.watch(`item.${index}.charge_items`);
   const itemSequence = form.watch(`item.${index}.sequence`);
   const claimUse = form.watch("use");
+
+  const modifiers = useMemo(
+    () => rawModifiers ?? [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(rawModifiers)]
+  );
+
+  const chargeItemIds = useMemo(
+    () => rawChargeItemIds ?? [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [JSON.stringify(rawChargeItemIds)]
+  );
 
   // Loads benefit (same query key as ModifierField → cached, no extra request)
   const { data: benefitDetail } = useQuery({
@@ -1477,17 +1671,29 @@ function ItemValidationEffects({
     modifiers,
   ]);
 
-  // Effect: set amount cap error whenever unit_price or cap changes
+  // Sum total prices of all selected charge items
+  const chargeItemsTotal = useMemo(() => {
+    return chargeItemIds.reduce((sum, id) => {
+      const ci = encounterChargeItems.find((c) => c.id === id);
+      return sum + parseFloat(ci?.total_price ?? "0");
+    }, 0);
+  }, [chargeItemIds, encounterChargeItems]);
+
+  // Auto-set unit_price = min(sum, cap); surface informational cap notice
   useEffect(() => {
-    if (amountCap != null && unitPrice > amountCap) {
+    const capped =
+      amountCap != null ? Math.min(chargeItemsTotal, amountCap) : chargeItemsTotal;
+    form.setValue(`item.${index}.unit_price`, capped);
+
+    if (amountCap != null && chargeItemsTotal > amountCap) {
       form.setValue(
         `item.${index}._amount_cap_error`,
-        `Unit price ₹${unitPrice.toFixed(2)} exceeds the allowed limit of ₹${amountCap.toFixed(2)}`
+        `Charge items total ₹${chargeItemsTotal.toFixed(2)} exceeds the allowed limit of ₹${amountCap.toFixed(2)}. Amount has been capped at ₹${amountCap.toFixed(2)}.`
       );
     } else {
       form.setValue(`item.${index}._amount_cap_error`, undefined);
     }
-  }, [unitPrice, amountCap, form, index]);
+  }, [chargeItemsTotal, amountCap, form, index]);
 
   // Effect: set condition errors whenever quantity or modifiers change
   useEffect(() => {
