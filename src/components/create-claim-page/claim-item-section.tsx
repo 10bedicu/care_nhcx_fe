@@ -1791,19 +1791,14 @@ function AddDiagnosisSection({
   const diagnosisFields = form.watch("diagnosis") || [];
   const itemDiagnosisSequences =
     form.watch(`item.${index}.diagnosis_sequence`) || [];
-  const { fields: diagnosisArrayFields, append: appendDiagnosis } =
-    useFieldArray({
-      name: "diagnosis",
-      control: form.control,
-    });
-
   const itemSpecificDiagnoses = diagnosisFields.filter((diagnosis) =>
     itemDiagnosisSequences.includes(diagnosis.sequence)
   );
 
   const addNewDiagnosis = () => {
+    const currentDiagnoses = form.getValues("diagnosis") || [];
     const newSequence =
-      Math.max(0, ...diagnosisArrayFields.map((f) => f.sequence)) + 1;
+      Math.max(0, ...currentDiagnoses.map((d) => d.sequence)) + 1;
     const newDiagnosis = {
       sequence: newSequence,
       type: [],
@@ -1812,7 +1807,7 @@ function AddDiagnosisSection({
       on_admission: undefined,
     };
 
-    appendDiagnosis(newDiagnosis);
+    form.setValue("diagnosis", [...currentDiagnoses, newDiagnosis]);
 
     const currentSequences =
       form.getValues(`item.${index}.diagnosis_sequence`) || [];
@@ -2022,19 +2017,14 @@ function AddProcedureSection({
   const procedureFields = form.watch("procedure") || [];
   const itemProcedureSequences =
     form.watch(`item.${index}.procedure_sequence`) || [];
-  const { fields: procedureArrayFields, append: appendProcedure } =
-    useFieldArray({
-      name: "procedure",
-      control: form.control,
-    });
-
   const itemSpecificProcedures = procedureFields.filter((procedure) =>
     itemProcedureSequences.includes(procedure.sequence)
   );
 
   const addNewProcedure = () => {
+    const currentProcedures = form.getValues("procedure") || [];
     const newSequence =
-      Math.max(0, ...procedureArrayFields.map((f) => f.sequence)) + 1;
+      Math.max(0, ...currentProcedures.map((p) => p.sequence)) + 1;
     const newProcedure = {
       sequence: newSequence,
       type: [],
@@ -2043,7 +2033,7 @@ function AddProcedureSection({
       procedure_code: undefined,
     };
 
-    appendProcedure(newProcedure);
+    form.setValue("procedure", [...currentProcedures, newProcedure]);
 
     const currentSequences =
       form.getValues(`item.${index}.procedure_sequence`) || [];
@@ -2245,12 +2235,6 @@ function AddCareTeamSection({
   const careTeamFields = form.watch("care_team") || [];
   const itemCareTeamSequences =
     form.watch(`item.${index}.care_team_sequence`) || [];
-  const { fields: careTeamArrayFields, append: appendCareTeam } = useFieldArray(
-    {
-      name: "care_team",
-      control: form.control,
-    }
-  );
 
   const itemSpecificCareTeam = careTeamFields.filter((member) =>
     itemCareTeamSequences.includes(member.sequence)
@@ -2266,8 +2250,13 @@ function AddCareTeamSection({
   const users = usersResponse?.results || [];
 
   const addNewCareTeamMember = () => {
+    // Read the current care team directly from the form store (always
+    // up-to-date) instead of relying on useFieldArray's local snapshot, which
+    // can be stale when multiple AddCareTeamSection instances are mounted for
+    // different items and would cause duplicate sequence numbers.
+    const currentCareTeam = form.getValues("care_team") || [];
     const newSequence =
-      Math.max(0, ...careTeamArrayFields.map((f) => f.sequence)) + 1;
+      Math.max(0, ...currentCareTeam.map((m) => m.sequence)) + 1;
     const newCareTeamMember = {
       sequence: newSequence,
       provider: "",
@@ -2275,7 +2264,7 @@ function AddCareTeamSection({
       role: undefined,
     };
 
-    appendCareTeam(newCareTeamMember);
+    form.setValue("care_team", [...currentCareTeam, newCareTeamMember]);
 
     const currentSequences =
       form.getValues(`item.${index}.care_team_sequence`) || [];
@@ -2492,11 +2481,6 @@ function AddSupportingInfoSection({
     form.watch(`item.${index}.information_sequence`) || [];
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
 
-  const { fields: supportingInfoArrayFields, append: appendSupportingInfo } =
-    useFieldArray({
-      name: "supporting_info",
-      control: form.control,
-    });
 
   const { data: benefitDetail } = useQuery({
     queryKey: ["insurancePlanBenefit", "lookup", planId, productCode],
@@ -2622,15 +2606,16 @@ function AddSupportingInfoSection({
         info.code?.code === req.code_code
     );
     if (!alreadyAdded) {
+      const currentSupportingInfo = form.getValues("supporting_info") || [];
       const currentQRSeqs = (form.getValues("questionnaire_responses") ?? []).map(
         (qr) => qr.sequence
       );
       const newSequence =
-        Math.max(0, ...supportingInfoArrayFields.map((f) => f.sequence), ...currentQRSeqs) + 1;
+        Math.max(0, ...currentSupportingInfo.map((s) => s.sequence), ...currentQRSeqs) + 1;
 
       // Update information_sequence BEFORE appending to supporting_info so that
-      // any intermediate render triggered by appendSupportingInfo already sees
-      // the new sequence as item-linked (preventing it from flashing as plan-level).
+      // any intermediate render already sees the new sequence as item-linked
+      // (preventing it from flashing as plan-level).
       const currentSequences =
         form.getValues(`item.${index}.information_sequence`) || [];
       form.setValue(`item.${index}.information_sequence`, [
@@ -2638,33 +2623,37 @@ function AddSupportingInfoSection({
         newSequence,
       ]);
 
-      appendSupportingInfo({
-        sequence: newSequence,
-        category: {
-          system: req.category.coding?.[0]?.system ?? "",
-          code: req.category_code,
-          display: req.category.text ?? req.category.coding?.[0]?.display,
+      form.setValue("supporting_info", [
+        ...currentSupportingInfo,
+        {
+          sequence: newSequence,
+          category: {
+            system: req.category.coding?.[0]?.system ?? "",
+            code: req.category_code,
+            display: req.category.text ?? req.category.coding?.[0]?.display,
+          },
+          code: {
+            system: req.code.coding?.[0]?.system ?? "",
+            code: req.code_code,
+            display: req.code.text ?? req.code.coding?.[0]?.display,
+          },
+          timing: undefined,
+          value_string: undefined,
+          value_attachment: undefined,
+          _is_plan_level: false,
         },
-        code: {
-          system: req.code.coding?.[0]?.system ?? "",
-          code: req.code_code,
-          display: req.code.text ?? req.code.coding?.[0]?.display,
-        },
-        timing: undefined,
-        value_string: undefined,
-        value_attachment: undefined,
-        _is_plan_level: false,
-      });
+      ]);
     }
     if (!isExpanded) setIsExpanded(true);
   };
 
   const addNewSupportingInfo = () => {
+    const currentSupportingInfo = form.getValues("supporting_info") || [];
     const currentQRSeqs = (form.getValues("questionnaire_responses") ?? []).map(
       (qr) => qr.sequence
     );
     const newSequence =
-      Math.max(0, ...supportingInfoArrayFields.map((f) => f.sequence), ...currentQRSeqs) + 1;
+      Math.max(0, ...currentSupportingInfo.map((s) => s.sequence), ...currentQRSeqs) + 1;
 
     // Update information_sequence BEFORE appending to supporting_info (same
     // ordering rationale as addSupportingInfoForReq above).
@@ -2675,15 +2664,18 @@ function AddSupportingInfoSection({
       newSequence,
     ]);
 
-    appendSupportingInfo({
-      sequence: newSequence,
-      category: undefined as unknown as Coding,
-      code: undefined as unknown as Coding,
-      timing: undefined,
-      value_string: undefined,
-      value_attachment: undefined,
-      _is_plan_level: false,
-    });
+    form.setValue("supporting_info", [
+      ...currentSupportingInfo,
+      {
+        sequence: newSequence,
+        category: undefined as unknown as Coding,
+        code: undefined as unknown as Coding,
+        timing: undefined,
+        value_string: undefined,
+        value_attachment: undefined,
+        _is_plan_level: false,
+      },
+    ]);
   };
 
   return (

@@ -959,19 +959,14 @@ function AddSupportingInfoSection({
   const supportingInfoFields = form.watch("supporting_info") || [];
   const itemSupportingInfoSequences =
     form.watch(`item.${index}.supporting_info_sequence`) || [];
-  const { fields: supportingInfoArrayFields, append: appendSupportingInfo } =
-    useFieldArray({
-      name: "supporting_info",
-      control: form.control,
-    });
-
   const itemSpecificSupportingInfo = supportingInfoFields.filter((info) =>
     itemSupportingInfoSequences.includes(info.sequence)
   );
 
   const addNewSupportingInfo = () => {
+    const currentSupportingInfo = form.getValues("supporting_info") || [];
     const newSequence =
-      Math.max(0, ...supportingInfoArrayFields.map((f) => f.sequence)) + 1;
+      Math.max(0, ...currentSupportingInfo.map((s) => s.sequence)) + 1;
     const newSupportingInfo = {
       sequence: newSequence,
       value_string: undefined,
@@ -979,7 +974,7 @@ function AddSupportingInfoSection({
       value_file: undefined,
     };
 
-    appendSupportingInfo(newSupportingInfo);
+    form.setValue("supporting_info", [...currentSupportingInfo, newSupportingInfo]);
 
     const currentSequences =
       form.getValues(`item.${index}.supporting_info_sequence`) || [];
@@ -1018,36 +1013,8 @@ function AddSupportingInfoSection({
             );
             return (
               <Card key={infoIndex}>
-                <CardHeader>
-                  <div className="flex justify-between items-center gap-2">
-                    <FormField
-                      control={form.control}
-                      name={`supporting_info.${mainInfoIndex}.sequence`}
-                      render={({ field }) => (
-                        <FormItem className="space-y-1.5 w-full">
-                          <FormLabel>
-                            Sequence
-                            <span className="text-red-500 text-sm ml-0.5">
-                              *
-                            </span>
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              value={field.value || ""}
-                              onChange={(e) => {
-                                form.setValue(
-                                  `supporting_info.${mainInfoIndex}.sequence`,
-                                  e.target.value ? parseInt(e.target.value) : 0
-                                );
-                              }}
-                              placeholder="Enter sequence number"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                <CardContent className="space-y-4 pt-6">
+                  <div className="flex justify-end">
                     <Button
                       type="button"
                       variant="ghost"
@@ -1074,13 +1041,10 @@ function AddSupportingInfoSection({
                           );
                         });
                       }}
-                      className="mt-6"
                     >
                       <CircleMinusIcon className="h-6 w-6 text-danger-500" />
                     </Button>
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
                   <SupportingInfoFileUpload
                     form={form}
                     mainInfoIndex={mainInfoIndex}
