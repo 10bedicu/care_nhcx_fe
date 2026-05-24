@@ -1622,15 +1622,16 @@ function ItemValidationEffects({
   // Compute the effective amount cap for this item based on the current stage
   const amountCap = useMemo(() => {
     if (claimUse === "preauthorization") {
-      // Pre-auth: cap at CE:AR response procedure allowed_amount
+      // Pre-auth: cap at CE:AR response item allowed_amount
       const insurances =
         coverageEligibilityRequest?.latest_response?.insurances;
       if (insurances) {
-        const matched =
-          insurances.find((ins) => ins.procedure?.code === productCode) ??
-          (insurances.length === 1 ? insurances[0] : undefined);
-        if (matched?.procedure?.allowed_amount?.value != null) {
-          return matched.procedure.allowed_amount.value;
+        const allItems = insurances.flatMap((ins) => ins.items ?? []);
+        const matchedItem =
+          allItems.find((item) => item.code === productCode) ??
+          (allItems.length === 1 ? allItems[0] : undefined);
+        if (matchedItem?.allowed_amount?.value != null) {
+          return matchedItem.allowed_amount.value;
         }
       }
     } else if (claimUse === "claim") {
@@ -2511,11 +2512,13 @@ function AddSupportingInfoSection({
   const ceDocCodesForItem = useMemo(() => {
     if (claimUse !== "preauthorization") return null;
     if (!coverageEligibilityRequest || !productCode) return null;
-    const procedure = coverageEligibilityRequest.latest_response?.insurances
-      ?.map((i) => i.procedure)
-      .find((p) => !!p && p.code === productCode);
-    if (!procedure) return new Set<string>();
-    return new Set(procedure.required_documents.map((d) => d.code));
+    const allItems =
+      coverageEligibilityRequest.latest_response?.insurances?.flatMap(
+        (i) => i.items ?? []
+      ) ?? [];
+    const matchedItem = allItems.find((item) => item.code === productCode);
+    if (!matchedItem) return new Set<string>();
+    return new Set(matchedItem.required_documents.map((d) => d.code));
   }, [coverageEligibilityRequest, claimUse, productCode]);
 
   const allSupportingInfoRequirements = useMemo(() => {

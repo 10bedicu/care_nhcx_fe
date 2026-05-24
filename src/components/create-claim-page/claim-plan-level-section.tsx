@@ -139,9 +139,7 @@ function useCELeftover({
 
     const procedures = (
       coverageEligibilityRequest.latest_response?.insurances ?? []
-    )
-      .map((ins) => ins.procedure)
-      .filter((p): p is NonNullable<typeof p> => !!p);
+    ).flatMap((ins) => ins.items ?? []);
 
     const allCEDocCodes = new Set<string>();
     const allCEQIds = new Set<string>();

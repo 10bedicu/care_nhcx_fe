@@ -106,7 +106,7 @@ export type InsuranceEntry = {
   plan_id: string | null;
   policy_period: { start: string; end: string } | null;
   balance: Balance | null;
-  procedure: EligibilityProcedure | null;
+  items: EligibilityProcedure[];
 };
 
 export type CoverageEligibilityResponse = {

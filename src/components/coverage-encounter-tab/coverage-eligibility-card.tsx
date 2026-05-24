@@ -619,21 +619,21 @@ function BenefitsView({
   disposition: string | null;
   showQuestionnaires?: boolean;
 }) {
-  const procedure = insurances[0]?.procedure;
+  const allItems = insurances.flatMap((ins) => ins.items ?? []);
+  const excludedItems = allItems.filter((item) => item.excluded);
+  const activeItems = allItems.filter((item) => !item.excluded);
 
   return (
     <div className="space-y-4">
-      {procedure?.excluded && (
-        <Alert className="bg-red-50 border-red-300 text-red-800">
+      {excludedItems.map((item, i) => (
+        <Alert key={i} className="bg-red-50 border-red-300 text-red-800">
           <BanIcon className="h-4 w-4 text-red-600" />
           <AlertDescription className="font-semibold">
-            This procedure is not covered under the policy. Claim submission is
-            blocked.
+            {item.display ?? item.code} is not covered under the policy. Claim
+            submission is blocked.
           </AlertDescription>
         </Alert>
-      )}
-
-      {procedure && <ProcedureHeader procedure={procedure} />}
+      ))}
 
       <DispositionBanner
         disposition={disposition}
@@ -646,17 +646,18 @@ function BenefitsView({
         ))}
       </div>
 
-      {procedure && !procedure.excluded && (
-        <>
+      {activeItems.map((item, i) => (
+        <div key={i} className="space-y-3">
           <Separator />
-          <RequiredDocuments documents={procedure.required_documents} />
+          <ProcedureHeader procedure={item} />
+          <RequiredDocuments documents={item.required_documents} />
           {showQuestionnaires && (
             <RequiredQuestionnaires
-              questionnaires={procedure.required_questionnaires}
+              questionnaires={item.required_questionnaires}
             />
           )}
-        </>
-      )}
+        </div>
+      ))}
     </div>
   );
 }

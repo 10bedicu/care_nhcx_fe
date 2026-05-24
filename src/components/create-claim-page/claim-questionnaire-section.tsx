@@ -851,11 +851,13 @@ export function AddQuestionnaireSection({
   const ceQuestionnaireFhirIdsForItem = useMemo(() => {
     if (claimUse !== "preauthorization") return null;
     if (!coverageEligibilityRequest || !productCode) return null;
-    const procedure = coverageEligibilityRequest.latest_response?.insurances
-      ?.map((i) => i.procedure)
-      .find((p) => !!p && p.code === productCode);
-    if (!procedure) return new Set<string>();
-    return new Set(procedure.required_questionnaires.map((q) => q.id));
+    const allItems =
+      coverageEligibilityRequest.latest_response?.insurances?.flatMap(
+        (i) => i.items ?? []
+      ) ?? [];
+    const matchedItem = allItems.find((item) => item.code === productCode);
+    if (!matchedItem) return new Set<string>();
+    return new Set(matchedItem.required_questionnaires.map((q) => q.id));
   }, [coverageEligibilityRequest, claimUse, productCode]);
 
   // Questionnaire requirements are supporting_info_requirements that have a
