@@ -18,6 +18,9 @@ export type TaskBase = {
   claim: string;
   part_of?: string;
   focus?: unknown;
+  dispatch_status: "pending" | "awaiting" | "complete" | "error";
+  dispatched_at: string | null;
+  dispatch_error: string;
   use_case:
     | "communication_request"
     | "communication_response"

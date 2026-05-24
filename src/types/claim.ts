@@ -195,6 +195,9 @@ export type Claim = {
   item: ClaimItem[];
   accident?: ClaimAccident;
   payee?: ClaimPayee;
+  dispatch_status: "pending" | "awaiting" | "partial" | "complete" | "error";
+  dispatched_at: string | null;
+  dispatch_error: string;
   latest_response?: ClaimResponse;
   questionnaire_responses?: ClaimQuestionnaireResponse[];
   created_date: string;

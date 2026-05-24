@@ -6,6 +6,7 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   ClipboardCopyIcon,
+  SendIcon,
   XCircleIcon,
 } from "lucide-react";
 import {
@@ -56,6 +57,29 @@ function getResponseStatus(claim: Claim): ResponseStatus {
       label: "Cancelled",
       colorClass: "text-gray-500",
       iconColorClass: "text-gray-500",
+    };
+  }
+
+  // Dispatch-level status takes priority when it gives us specific information
+  if (claim.dispatch_status === "error") {
+    return {
+      label: "Submission Failed",
+      colorClass: "text-red-600",
+      iconColorClass: "text-red-500",
+    };
+  }
+  if (claim.dispatch_status === "pending") {
+    return {
+      label: "Not Submitted",
+      colorClass: "text-gray-500",
+      iconColorClass: "text-gray-400",
+    };
+  }
+  if (claim.dispatch_status === "awaiting") {
+    return {
+      label: "Awaiting Response",
+      colorClass: "text-blue-600",
+      iconColorClass: "text-blue-500",
     };
   }
 
@@ -154,9 +178,18 @@ function StatusIcon({
     return <CheckCircleIcon className={cn("w-4 h-4", iconColorClass)} />;
   if (label === "Partially Approved")
     return <CheckCircleIcon className={cn("w-4 h-4", iconColorClass)} />;
-  if (label === "Rejected" || label === "Error" || label === "Cancelled")
+  if (
+    label === "Rejected" ||
+    label === "Error" ||
+    label === "Cancelled" ||
+    label === "Submission Failed"
+  )
     return <XCircleIcon className={cn("w-4 h-4", iconColorClass)} />;
-  return <AlarmClockMinusIcon className={cn("w-4 h-4", iconColorClass)} />;
+  if (label === "Not Submitted")
+    return <AlarmClockMinusIcon className={cn("w-4 h-4", iconColorClass)} />;
+  return (
+    <AlarmClockMinusIcon className={cn("w-4 h-4 animate-pulse", iconColorClass)} />
+  );
 }
 
 // ─── response type label ──────────────────────────────────────────────────────
@@ -342,6 +375,23 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
         <CollapsibleContent>
           <CardContent>
             <div className="mt-6 space-y-5">
+              {/* Dispatch error section */}
+              {claim.dispatch_status === "error" && (
+                <Alert className="bg-red-50 border-red-200">
+                  <XCircleIcon className="h-4 w-4 text-red-600" />
+                  <AlertDescription>
+                    <p className="font-semibold text-red-800 mb-1">
+                      Gateway submission failed
+                    </p>
+                    {claim.dispatch_error && (
+                      <p className="text-xs text-red-700">
+                        {claim.dispatch_error}
+                      </p>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {/* Payer info block */}
               {response && (
                 <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
@@ -675,18 +725,28 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                 <CalendarIcon className="w-4 h-4" />
                 <span>Created on: {formatDate(claim.created_date)}</span>
               </div>
-              {response && responseStatus.label !== "Pending" && (
+              {claim.dispatched_at && (
                 <div className="flex items-center gap-1.5">
-                  <StatusIcon
-                    label={responseStatus.label}
-                    iconColorClass={responseStatus.iconColorClass}
-                  />
-                  <span>
-                    {responseStatus.label} on:{" "}
-                    {formatDate(response.created_date)}
-                  </span>
+                  <SendIcon className="w-4 h-4" />
+                  <span>Submitted on: {formatDate(claim.dispatched_at)}</span>
                 </div>
               )}
+              {response &&
+                responseStatus.label !== "Pending" &&
+                responseStatus.label !== "Not Submitted" &&
+                responseStatus.label !== "Awaiting Response" &&
+                responseStatus.label !== "Submission Failed" && (
+                  <div className="flex items-center gap-1.5">
+                    <StatusIcon
+                      label={responseStatus.label}
+                      iconColorClass={responseStatus.iconColorClass}
+                    />
+                    <span>
+                      {responseStatus.label} on:{" "}
+                      {formatDate(response.created_date)}
+                    </span>
+                  </div>
+                )}
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               {footerActions}

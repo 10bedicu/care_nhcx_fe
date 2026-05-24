@@ -12,6 +12,7 @@ import {
   ExternalLinkIcon,
   FileTextIcon,
   InfoIcon,
+  SendIcon,
   ShieldCheckIcon,
   UserIcon,
   WalletIcon,
@@ -72,11 +73,29 @@ function formatPurposeTitle(purposes: CoverageEligibilityRequestPurposeChoice[])
 
 // ─── status helpers ───────────────────────────────────────────────────────────
 
-type CardStatus = "pending" | "processing" | "completed" | "error";
+type CardStatus =
+  | "not-submitted"
+  | "pending"
+  | "processing"
+  | "partial"
+  | "completed"
+  | "error"
+  | "dispatch-error";
 
-function deriveStatus(
-  request: CoverageEligibilityRequest
-): CardStatus {
+function deriveStatus(request: CoverageEligibilityRequest): CardStatus {
+  switch (request.dispatch_status) {
+    case "pending":
+      return "not-submitted";
+    case "awaiting":
+      return "processing";
+    case "partial":
+      return "partial";
+    case "error":
+      return "dispatch-error";
+    case "complete":
+      break; // fall through to response-based logic
+  }
+  // Backward compat (no dispatch_status) or dispatch_status === "complete"
   if (!request.latest_response) return "pending";
   const { outcome } = request.latest_response;
   if (outcome === "complete") return "completed";
@@ -89,18 +108,35 @@ function StatusIcon({ status }: { status: CardStatus }) {
     case "completed":
       return <CheckCircleIcon className="w-4 h-4 text-green-500" />;
     case "error":
+    case "dispatch-error":
       return <XCircleIcon className="w-4 h-4 text-red-500" />;
+    case "partial":
     case "processing":
-      return <ClockIcon className="w-4 h-4 text-blue-500" />;
+      return <ClockIcon className="w-4 h-4 text-blue-500 animate-pulse" />;
+    case "not-submitted":
+      return <ClockIcon className="w-4 h-4 text-gray-400" />;
     case "pending":
-      return <ClockIcon className="w-4 h-4 text-yellow-500" />;
+      return <ClockIcon className="w-4 h-4 text-yellow-500 animate-pulse" />;
   }
 }
 
+const STATUS_LABEL: Record<CardStatus, string> = {
+  "not-submitted": "Not Submitted",
+  completed: "Completed",
+  error: "Error",
+  "dispatch-error": "Submission Failed",
+  processing: "Processing",
+  partial: "Partially Processed",
+  pending: "Pending",
+};
+
 const STATUS_TEXT_COLOR: Record<CardStatus, string> = {
+  "not-submitted": "text-gray-500",
   completed: "text-green-600",
   error: "text-red-600",
+  "dispatch-error": "text-red-600",
   processing: "text-blue-600",
+  partial: "text-orange-600",
   pending: "text-yellow-600",
 };
 
@@ -627,6 +663,32 @@ function BenefitsView({
 
 // ─── pending / error / empty states ──────────────────────────────────────────
 
+function NotSubmittedState() {
+  return (
+    <div className="flex flex-col items-center justify-center py-8 text-center space-y-2">
+      <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+        <ClockIcon className="w-5 h-5 text-gray-400" />
+      </div>
+      <p className="text-sm font-medium text-gray-700">Not yet submitted</p>
+      <p className="text-xs text-gray-500">
+        This request has been created but has not yet been sent to the gateway.
+      </p>
+    </div>
+  );
+}
+
+function DispatchErrorState({ error }: { error: string }) {
+  return (
+    <Alert className="bg-red-50 border-red-200">
+      <XCircleIcon className="h-4 w-4 text-red-600" />
+      <AlertDescription className="space-y-1">
+        <p className="font-semibold text-red-800">Gateway submission failed</p>
+        {error && <p className="text-xs text-red-700">{error}</p>}
+      </AlertDescription>
+    </Alert>
+  );
+}
+
 function PendingState() {
   return (
     <div className="flex flex-col items-center justify-center py-8 text-center space-y-2">
@@ -737,41 +799,77 @@ const CoverageEligibilityCard: FC<CoverageEligibilityCardProps> = ({
   const isMultiPurpose = purposes.length > 1;
 
   const renderResponseContent = () => {
-    if (!response) return <PendingState />;
-    if (response.outcome === "error") return <ErrorState error={response.error} />;
-    if (!response.insurances || response.insurances.length === 0)
-      return <EmptyInsurancesState />;
-
-    if (isMultiPurpose) {
+    // Dispatch-level states take priority
+    if (status === "not-submitted") return <NotSubmittedState />;
+    if (status === "dispatch-error")
       return (
-        <Tabs defaultValue={purposes[0]}>
-          <TabsList className="w-full">
-            {purposes.map((p) => (
-              <TabsTrigger key={p} value={p} className="flex-1 text-xs">
-                {PURPOSE_LABEL[p]}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-          {purposes.map((p) => (
-            <TabsContent key={p} value={p} className="mt-4">
-              <PurposeResponseContent
-                purpose={p}
-                insurances={response.insurances!}
-                disposition={response.disposition}
-              />
-            </TabsContent>
-          ))}
-        </Tabs>
+        <DispatchErrorState error={coverageEligibilityRequest.dispatch_error} />
       );
-    }
 
-    return (
+    const partialBanner =
+      status === "partial" ? (
+        <Alert className="bg-orange-50 border-orange-200">
+          <ClockIcon className="h-4 w-4 text-orange-500 animate-pulse" />
+          <AlertDescription className="text-orange-800 font-medium">
+            Partially processed — awaiting the final payer response. No action
+            needed.
+          </AlertDescription>
+        </Alert>
+      ) : null;
+
+    if (!response) return partialBanner ?? <PendingState />;
+    if (response.outcome === "error")
+      return (
+        <div className="space-y-3">
+          {partialBanner}
+          <ErrorState error={response.error} />
+        </div>
+      );
+    if (!response.insurances || response.insurances.length === 0)
+      return (
+        <div className="space-y-3">
+          {partialBanner}
+          <EmptyInsurancesState />
+        </div>
+      );
+
+    const purposeContent = isMultiPurpose ? (
+      <Tabs defaultValue={purposes[0]}>
+        <TabsList className="w-full">
+          {purposes.map((p) => (
+            <TabsTrigger key={p} value={p} className="flex-1 text-xs">
+              {PURPOSE_LABEL[p]}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+        {purposes.map((p) => (
+          <TabsContent key={p} value={p} className="mt-4">
+            <PurposeResponseContent
+              purpose={p}
+              insurances={response.insurances!}
+              disposition={response.disposition}
+            />
+          </TabsContent>
+        ))}
+      </Tabs>
+    ) : (
       <PurposeResponseContent
         purpose={purposes[0]}
         insurances={response.insurances}
         disposition={response.disposition}
       />
     );
+
+    if (partialBanner) {
+      return (
+        <div className="space-y-4">
+          {partialBanner}
+          {purposeContent}
+        </div>
+      );
+    }
+
+    return purposeContent;
   };
 
   return (
@@ -812,12 +910,9 @@ const CoverageEligibilityCard: FC<CoverageEligibilityCardProps> = ({
             <div className="flex items-center gap-1.5">
               <StatusIcon status={status} />
               <span
-                className={cn(
-                  "capitalize font-medium text-sm",
-                  STATUS_TEXT_COLOR[status]
-                )}
+                className={cn("font-medium text-sm", STATUS_TEXT_COLOR[status])}
               >
-                {status}
+                {STATUS_LABEL[status]}
               </span>
               {response?.disposition && status === "completed" && (
                 <>
@@ -855,12 +950,19 @@ const CoverageEligibilityCard: FC<CoverageEligibilityCardProps> = ({
                   Created {formatDate(coverageEligibilityRequest.created_date)}
                 </span>
               </div>
-              {response && (
+              {coverageEligibilityRequest.dispatched_at && (
+                <div className="flex items-center gap-1">
+                  <SendIcon className="w-3.5 h-3.5" />
+                  <span>
+                    Submitted{" "}
+                    {formatDate(coverageEligibilityRequest.dispatched_at)}
+                  </span>
+                </div>
+              )}
+              {response && status === "completed" && (
                 <div className="flex items-center gap-1">
                   <StatusIcon status={status} />
-                  <span className="capitalize">
-                    {status} {formatDate(response.created_date)}
-                  </span>
+                  <span>{formatDate(response.created_date)}</span>
                 </div>
               )}
             </div>

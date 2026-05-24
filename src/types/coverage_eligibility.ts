@@ -118,6 +118,15 @@ export type CoverageEligibilityResponse = {
   created_date: string;
 };
 
+export const DISPATCH_STATUS_CHOICES = [
+  "pending",
+  "awaiting",
+  "partial",
+  "complete",
+  "error",
+] as const;
+export type DispatchStatusChoice = (typeof DISPATCH_STATUS_CHOICES)[number];
+
 export type CoverageEligibilityRequest = {
   id: string;
   status: CoverageEligibilityRequestStatusChoice;
@@ -130,6 +139,10 @@ export type CoverageEligibilityRequest = {
   supporting_info: CoverageEligibilityRequestSupportingInfo[];
   insurance: CoverageEligibilityRequestInsurance[];
   item: CoverageEligibilityRequestItem[];
+
+  dispatch_status: DispatchStatusChoice;
+  dispatched_at: string | null;
+  dispatch_error: string;
 
   latest_response: CoverageEligibilityResponse | null;
   created_date: string;
