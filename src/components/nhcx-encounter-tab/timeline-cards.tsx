@@ -218,9 +218,20 @@ export const CoverageEligibilityTimelineCard: FC<
           />
         );
       } else if (validationOutcome?.kind === "pending") {
-        headerBanner = (
-          <PendingResponseBanner message="Waiting for the payer to confirm policy status and wallet balance. Next steps appear once the response arrives." />
-        );
+        if (request.dispatch_status === "error") {
+          headerBanner = (
+            <ResponseErrorBanner
+              message={
+                request.dispatch_error ||
+                "Failed to submit to the payer. Please try resubmitting."
+              }
+            />
+          );
+        } else {
+          headerBanner = (
+            <PendingResponseBanner message="Waiting for the payer to confirm policy status and wallet balance. Next steps appear once the response arrives." />
+          );
+        }
       } else if (validationOutcome?.kind === "error") {
         headerBanner = (
           <ResponseErrorBanner message="The payer responded with an error. Try running coverage validation again." />
@@ -228,9 +239,20 @@ export const CoverageEligibilityTimelineCard: FC<
       }
     } else if (isAuthRequirements) {
       if (!response) {
-        headerBanner = (
-          <PendingResponseBanner message="Waiting for the payer to return the documents and questionnaires required for pre-authorisation." />
-        );
+        if (request.dispatch_status === "error") {
+          headerBanner = (
+            <ResponseErrorBanner
+              message={
+                request.dispatch_error ||
+                "Failed to submit to the payer. Please try resubmitting."
+              }
+            />
+          );
+        } else {
+          headerBanner = (
+            <PendingResponseBanner message="Waiting for the payer to return the documents and questionnaires required for pre-authorisation." />
+          );
+        }
       } else if (response.outcome === "complete") {
         footerActions = (
           <>
@@ -328,15 +350,26 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   let headerBanner: ReactNode = null;
 
   if (isCurrent && outcome === "pending") {
-    headerBanner = (
-      <PendingResponseBanner
-        message={
-          isPreauth
-            ? "Waiting for the payer to adjudicate this pre-authorisation. You can still cancel or check auth requirements while you wait."
-            : "Waiting for the payer to adjudicate this claim. Next steps appear once a response arrives."
-        }
-      />
-    );
+    if (claim.dispatch_status === "error") {
+      headerBanner = (
+        <ResponseErrorBanner
+          message={
+            claim.dispatch_error ||
+            "Failed to submit to the payer. Please try resubmitting."
+          }
+        />
+      );
+    } else {
+      headerBanner = (
+        <PendingResponseBanner
+          message={
+            isPreauth
+              ? "Waiting for the payer to adjudicate this pre-authorisation. You can still cancel or check auth requirements while you wait."
+              : "Waiting for the payer to adjudicate this claim. Next steps appear once a response arrives."
+          }
+        />
+      );
+    }
   }
 
   // Cancel + Check Auth Requirements are always available on the latest

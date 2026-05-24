@@ -55,7 +55,7 @@ export type CoverageEligibilityRequestItem = {
   supporting_info_sequence: number[];
   category: Coding;
   product_or_service: Coding;
-  charge_item?: ChargeItem;
+  charge_items: ChargeItem[];
   modifier?: Coding[];
   quantity: Quantity;
   unit_price: number;

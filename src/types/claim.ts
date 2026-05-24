@@ -92,7 +92,7 @@ export type ClaimItem = {
   information_sequence: number[];
   category?: Coding;
   product_or_service: Coding;
-  charge_item?: ChargeItem;
+  charge_items: ChargeItem[];
   modifier?: Coding[];
   program_code: Coding[];
   serviced_period?: Period;

@@ -502,7 +502,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         information_sequence: it.information_sequence || [],
         category: it.category,
         product_or_service: it.product_or_service,
-        charge_items: [],
+        charge_items: (it.charge_items ?? []).map((ci) => ci.id),
         modifier: it.modifier ?? [],
         program_code:
           it.program_code && it.program_code.length > 0
@@ -510,7 +510,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             : [DEFAULT_PROGRAM_CODE],
         serviced_period: it.serviced_period,
         quantity: it.quantity,
-        unit_price: it.unit_price,
+        unit_price: 0,
         factor: it.factor,
       })),
 
@@ -599,7 +599,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
           information_sequence: infoSeqs,
           category: it.category ?? DEFAULT_ITEM_CATEGORY,
           product_or_service: it.product_or_service,
-          charge_items: [],
+          charge_items: (it.charge_items ?? []).map((ci) => ci.id),
           modifier: it.modifier ?? [],
           program_code: [DEFAULT_PROGRAM_CODE],
           serviced_period: undefined,
@@ -607,7 +607,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             value: it.quantity?.value > 0 ? it.quantity.value : 1,
             unit: it.quantity?.unit,
           },
-          unit_price: it.unit_price > 0 ? it.unit_price : 1,
+          unit_price: 0,
           factor: undefined,
         };
       }
