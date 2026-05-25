@@ -42,6 +42,7 @@ import { Form } from "@/components/ui/form";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
 import { InsurancePlanDetailsPanel } from "../insurance-plan-details-panel";
 import PayerQueryBanner from "@/components/common/payer-query-banner";
+import { FormPrefillSkeleton } from "@/components/common/form-prefill-skeleton";
 import { PmjayBiometricVerificationGate } from "@/components/common/pmjay-biometric-verification-gate";
 import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
@@ -868,7 +869,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     }
   }, [watchedItemsForTotal, validationBalance, form]);
 
-  const { mutate: submitClaim } = useMutation({
+  const { mutate: submitClaim, isPending: submitClaimIsPending } = useMutation({
     mutationFn: apis.claim.submit,
     onSuccess: () => {
       toast.success("Claim submitted successfully");
@@ -979,6 +980,64 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
   const formUse = form.watch("use");
 
+  const isFormPrefillLoading = useMemo(() => {
+    if (hasBulkPrefill) {
+      return false;
+    }
+
+    if (!encounterFetched) {
+      return true;
+    }
+
+    if (isGuidedFlow) {
+      const effectiveUse = lockedUse ?? formUse;
+
+      if (effectiveUse === "claim") {
+        return (
+          !!prefilledClaimId &&
+          (!prefilledClaimFetched || !prefilledClaim)
+        );
+      }
+
+      if (coverageEligibilityId && !coverageEligibilityRequest) {
+        return true;
+      }
+
+      if (prefilledClaimId && !prefilledClaimFetched) {
+        return true;
+      }
+
+      return !!coverageEligibilityId;
+    }
+
+    const waitingDiagnoses =
+      !!patientId && !!encounterId && !encounterDiagnosesFetched;
+    const waitingFiles = !!encounterId && !encounterFilesFetched;
+    const waitingChargeItems =
+      !!facilityId && !!encounterId && !encounterChargeItemsFetched;
+
+    return waitingDiagnoses || waitingFiles || waitingChargeItems;
+  }, [
+    coverageEligibilityId,
+    coverageEligibilityRequest,
+    encounterChargeItemsFetched,
+    encounterDiagnosesFetched,
+    encounterFetched,
+    encounterFilesFetched,
+    encounterId,
+    facilityId,
+    formUse,
+    hasBulkPrefill,
+    isGuidedFlow,
+    lockedUse,
+    patientId,
+    prefilledClaim,
+    prefilledClaimFetched,
+    prefilledClaimId,
+  ]);
+
+  const isSubmitting = createClaimIsPending || submitClaimIsPending;
+
   return (
     <GlobalStoreProvider
       initialStore={{
@@ -1039,6 +1098,9 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
+            {isFormPrefillLoading ? (
+              <FormPrefillSkeleton />
+            ) : (
             <Form {...form}>
               <form
                 onSubmit={form.handleSubmit(onSubmit)}
@@ -1108,13 +1170,14 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                   className="w-full"
                   size="lg"
                   type="submit"
-                  loading={createClaimIsPending}
-                  disabled={isUnchangedPrefill}
+                  loading={isSubmitting}
+                  disabled={isUnchangedPrefill || isFormPrefillLoading}
                 >
                   Create Claim
                 </Button>
               </form>
             </Form>
+            )}
           </div>
 
           <div className="lg:col-span-1">

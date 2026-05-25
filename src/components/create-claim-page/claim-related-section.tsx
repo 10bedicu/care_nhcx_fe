@@ -11,6 +11,7 @@ import { UseFormReturn, useFieldArray } from "react-hook-form";
 
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { Skeleton } from "../ui/skeleton";
 import { createClaimFormSchema } from "./schema";
 import { useQuery } from "@tanstack/react-query";
 import { apis } from "@/apis";
@@ -84,7 +85,7 @@ function RelatedClaimCard({
   isLocked,
   onRemove,
 }: RelatedClaimCardProps) {
-  const { data: claim } = useQuery({
+  const { data: claim, isLoading } = useQuery({
     queryKey: ["claim", claimId],
     queryFn: () => apis.claim.get(claimId),
     enabled: !!claimId,
@@ -106,7 +107,15 @@ function RelatedClaimCard({
               <FormItem className="space-y-1.5 w-full">
                 <FormLabel>Claim</FormLabel>
                 <FormControl>
-                  <Input value={claimLabel} disabled className="bg-muted cursor-not-allowed" />
+                  {isLoading ? (
+                    <Skeleton className="h-10 w-full" />
+                  ) : (
+                    <Input
+                      value={claimLabel}
+                      disabled
+                      className="bg-muted cursor-not-allowed"
+                    />
+                  )}
                 </FormControl>
                 <FormMessage />
               </FormItem>

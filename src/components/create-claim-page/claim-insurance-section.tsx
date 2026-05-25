@@ -18,6 +18,7 @@ import {
   PolicyIdentifierTab,
   PolicyLookupTabs,
 } from "@/components/common/policy-lookup-tabs";
+import { InlineLoading } from "@/components/common/loading-spinner";
 import { useEffect, useState } from "react";
 
 import { Checkbox } from "../ui/checkbox";
@@ -49,7 +50,7 @@ export function ClaimInsuranceSection({ form, readOnly = false }: ClaimInsurance
   const [memberIdInput, setMemberIdInput] = useState("SBXSTG007");
   const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
 
-  const { data: abhaNumber } = useQuery({
+  const { data: abhaNumber, isFetching: isAbhaLoading } = useQuery({
     queryKey: ["abhaNumber", form.getValues("patient")],
     queryFn: () => apis.abhaNumber.get(form.getValues("patient")),
     enabled: !!form.getValues("patient") && !readOnly,
@@ -180,8 +181,12 @@ export function ClaimInsuranceSection({ form, readOnly = false }: ClaimInsurance
         activeTab={activeTab}
         onTabChange={handleTabChange}
         onSearch={handleSearch}
-        isLoading={isPoliciesLoading}
+        isLoading={isPoliciesLoading || isAbhaLoading}
       />
+
+      {isPoliciesLoading && (
+        <InlineLoading label="Searching policies…" className="mt-2" />
+      )}
 
       <div>
         <FormField

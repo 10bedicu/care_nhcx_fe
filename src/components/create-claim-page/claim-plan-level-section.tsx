@@ -26,6 +26,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { apis } from "@/apis";
+import { InlineLoading } from "@/components/common/loading-spinner";
 import { cn } from "@/lib/utils";
 import { useGlobalStore } from "@/hooks/use-global-store";
 import { createClaimFormSchema } from "./schema";
@@ -669,9 +670,7 @@ export function PlanLevelSupportingInfoSection({
           )}
         </div>
         {isExtensionsLoading && (
-          <span className="text-xs text-muted-foreground animate-pulse">
-            Loading…
-          </span>
+          <InlineLoading label="Loading requirements…" />
         )}
       </button>
 
@@ -804,13 +803,14 @@ function QStatusRow({
               : "border-blue-300 hover:bg-blue-50"
           )}
           disabled={isLoading}
+          loading={isLoading}
           onClick={(e) => {
             e.stopPropagation();
             onAdd(req);
           }}
         >
           <PlusIcon className="w-3 h-3 mr-0.5" />
-          {isLoading ? "Loading…" : "Add"}
+          Add
         </Button>
       )}
     </div>
@@ -1088,9 +1088,7 @@ export function PlanLevelQuestionnairesSection({
           )}
         </div>
         {isLoadingDetails && (
-          <span className="text-xs text-muted-foreground animate-pulse">
-            Loading…
-          </span>
+          <InlineLoading label="Loading questionnaires…" />
         )}
       </button>
 

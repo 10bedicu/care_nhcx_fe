@@ -17,6 +17,7 @@ import { CoverageEligibilityRequestOtherSection } from "./coverage-eligibility-r
 import { Form } from "@/components/ui/form";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
 import { InsurancePlanDetailsPanel } from "../insurance-plan-details-panel";
+import { FormPrefillSkeleton } from "@/components/common/form-prefill-skeleton";
 import { PmjayBiometricVerificationGate } from "@/components/common/pmjay-biometric-verification-gate";
 import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
@@ -96,7 +97,8 @@ const CreateCoverageEligibilityRequestPage: FC<
 
   const didPrefillFromLinkedCeRef = useRef(false);
 
-  const { data: linkedCoverageEligibilityRequest } = useQuery({
+  const { data: linkedCoverageEligibilityRequest, isFetching: isLinkedCeLoading } =
+    useQuery({
     queryKey: ["coverage-eligibility-request", linkedCoverageEligibilityId],
     queryFn: () =>
       apis.coverageEligibilityRequest.get(
@@ -125,7 +127,7 @@ const CreateCoverageEligibilityRequestPage: FC<
     );
   }, [linkedCoverageEligibilityRequest]);
 
-  const { data: encounterDiagnoses } = useQuery({
+  const { data: encounterDiagnoses, isFetching: isDiagnosesLoading } = useQuery({
     queryKey: ["cer-encounter-diagnoses", patientId, encounterId],
     queryFn: async (): Promise<Condition[]> => {
       const res = await apis.diagnosis.list(patientId, {
@@ -216,7 +218,8 @@ const CreateCoverageEligibilityRequestPage: FC<
     [encounterDiagnoses],
   );
 
-  const { mutate: checkCoverageEligibility } = useMutation({
+  const { mutate: checkCoverageEligibility, isPending: checkIsPending } =
+    useMutation({
     mutationFn: apis.coverageEligibilityRequest.check,
     onSuccess: () => {
       toast.success("Coverage check submitted successfully");
@@ -240,6 +243,17 @@ const CreateCoverageEligibilityRequestPage: FC<
       });
     },
   });
+
+  const isFormPrefillLoading =
+    (!!linkedCoverageEligibilityId && isLinkedCeLoading) ||
+    (isAuthRequirements &&
+      !!patientId &&
+      !!encounterId &&
+      isDiagnosesLoading &&
+      !hasLinkedCePrefill);
+
+  const isSubmitting =
+    createCoverageEligibilityRequestIsPending || checkIsPending;
 
   async function onSubmit(
     values: z.infer<typeof createCoverageEligibilityRequestFormSchema>,
@@ -342,6 +356,9 @@ const CreateCoverageEligibilityRequestPage: FC<
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
+            {isFormPrefillLoading ? (
+              <FormPrefillSkeleton />
+            ) : (
             <Form {...form}>
               <form
                 onSubmit={form.handleSubmit(onSubmit)}
@@ -385,13 +402,14 @@ const CreateCoverageEligibilityRequestPage: FC<
                   className="w-full"
                   size="lg"
                   type="submit"
-                  loading={createCoverageEligibilityRequestIsPending}
-                  disabled={isUnchangedPrefill}
+                  loading={isSubmitting}
+                  disabled={isUnchangedPrefill || isFormPrefillLoading}
                 >
                   Check Coverage Eligibility
                 </Button>
               </form>
             </Form>
+            )}
           </div>
 
           <div className="lg:col-span-1">

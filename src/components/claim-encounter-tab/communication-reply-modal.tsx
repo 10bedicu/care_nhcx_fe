@@ -57,7 +57,7 @@ const CommunicationReplyModal: FC<CommunicationReplyModalProps> = ({
     name: "payload",
   });
 
-  const { mutate: sendCommunication } = useMutation({
+  const { mutate: sendCommunication, isPending: sendIsPending } = useMutation({
     mutationFn: apis.communication.send,
     onSuccess: () => {
       form.reset();
@@ -66,7 +66,8 @@ const CommunicationReplyModal: FC<CommunicationReplyModalProps> = ({
     },
   });
 
-  const { mutate: createCommunication } = useMutation({
+  const { mutate: createCommunication, isPending: createIsPending } =
+    useMutation({
     mutationFn: apis.communication.create,
     onSuccess: (data) => {
       toast.success("Communication created successfully");
@@ -76,6 +77,8 @@ const CommunicationReplyModal: FC<CommunicationReplyModalProps> = ({
       });
     },
   });
+
+  const isSubmitting = createIsPending || sendIsPending;
 
   const onSubmit = async (
     data: z.infer<typeof createCommunicationFormSchema>
@@ -117,7 +120,6 @@ const CommunicationReplyModal: FC<CommunicationReplyModalProps> = ({
       }
 
       createCommunication(updatedValues);
-      setIsOpen(false);
     } catch (error) {
       console.error("Error in onSubmit:", error);
     }
@@ -289,7 +291,8 @@ const CommunicationReplyModal: FC<CommunicationReplyModalProps> = ({
             <Button
               type="submit"
               className="flex items-center space-x-2"
-              disabled={fields.length === 0}
+              disabled={fields.length === 0 || isSubmitting}
+              loading={isSubmitting}
             >
               <Send className="w-4 h-4" />
               <span>Send Reply</span>

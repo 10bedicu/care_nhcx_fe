@@ -14,6 +14,10 @@ import {
 } from "./flow";
 
 import { Button } from "@/components/ui/button";
+import {
+  EncounterPrereqsSkeleton,
+  TimelineSkeleton,
+} from "@/components/common/timeline-skeleton";
 import { Encounter } from "@/types/encounter";
 import { FC } from "react";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
@@ -115,6 +119,8 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
       }}
     >
       <div className="min-h-screen bg-gray-50 p-6 space-y-6">
+        {isLoadingPrereqs && <EncounterPrereqsSkeleton />}
+
         {!isLoadingPrereqs && !hasHealthFacility && (
           <Alert variant="warning">
             <AlertTitle>Health Facility Required</AlertTitle>
@@ -218,11 +224,7 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
 
             {/* ─── Timeline ─── */}
             <div className="space-y-4">
-              {isLoadingTimeline && (
-                <div className="text-center py-8 text-gray-500">
-                  Loading insurance activity…
-                </div>
-              )}
+              {isLoadingTimeline && <TimelineSkeleton count={3} />}
 
               {!isLoadingTimeline && timeline.length === 0 && !showInitialCTA && (
                 <div className="text-center py-8 text-gray-500">

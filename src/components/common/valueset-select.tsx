@@ -21,7 +21,7 @@ export default function ValuesetSelect({
 }: ValuesetSelectProps) {
   const [search, setSearch] = useState("");
 
-  const { data: valueset } = useQuery({
+  const { data: valueset, isFetching } = useQuery({
     queryKey: ["valueset", system, "expand", count, search],
     queryFn: () => apis.valueset.expand(system, { count, search }),
   });
@@ -51,6 +51,7 @@ export default function ValuesetSelect({
       }}
       onSearch={setSearch}
       disabled={disabled}
+      isLoading={isFetching}
     />
   );
 }

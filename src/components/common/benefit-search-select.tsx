@@ -33,7 +33,7 @@ export default function BenefitSearchSelect({
   const byId = useRef<Map<string, InsurancePlanBenefit>>(new Map());
   const byCode = useRef<Map<string, InsurancePlanBenefit>>(new Map());
 
-  const { data } = useQuery({
+  const { data, isFetching } = useQuery({
     queryKey: ["insurancePlanBenefit", "list", insurancePlanId, search],
     queryFn: () =>
       apis.insurancePlanBenefit.list({
@@ -94,6 +94,7 @@ export default function BenefitSearchSelect({
       noOptionsMessage={
         insurancePlanId ? "No procedures found" : "Select an insurance to search procedures"
       }
+      isLoading={Boolean(insurancePlanId) && isFetching}
     />
   );
 }

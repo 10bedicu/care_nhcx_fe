@@ -36,6 +36,8 @@ import { InsurancePlanSupportingInfoRequirement } from "@/types/insurance_plan";
 import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import ValuesetSelect from "../common/valueset-select";
+import { InlineLoading } from "@/components/common/loading-spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 import { apis } from "@/apis";
 import { cn } from "@/lib/utils";
 import {
@@ -741,7 +743,7 @@ export function ClaimItemSection({
     selectedInsurances?.find((i) => i.focal)?.policy ??
     selectedInsurances?.[0]?.policy;
 
-  const { data: planListData } = useQuery({
+  const { data: planListData, isLoading: isPlanLoading } = useQuery({
     queryKey: ["insurancePlan", "list", focalPolicy?.sno],
     queryFn: () =>
       apis.insurancePlan.list({
@@ -770,6 +772,12 @@ export function ClaimItemSection({
           </p>
         </div>
       </div>
+
+      {focalPolicy?.sno && isPlanLoading && (
+        <div className="rounded-lg border border-dashed bg-muted/30 px-4 py-3">
+          <InlineLoading label="Loading insurance plan details for procedure search…" />
+        </div>
+      )}
 
       {fields.length === 0 && (
         <div className="rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground flex items-start gap-2">
@@ -2241,9 +2249,7 @@ function AddCareTeamSection({
       {isExpanded && (
         <div className="space-y-4 pl-4">
           {loading && (
-            <div className="text-sm text-muted-foreground">
-              Loading facility users...
-            </div>
+            <InlineLoading label="Loading facility users…" />
           )}
 
           {itemSpecificCareTeam.map((member, memberIndex) => {
@@ -3075,7 +3081,7 @@ function SupportingInfoFileUpload({
     `supporting_info.${mainInfoIndex}.value_attachment`
   );
 
-  const { data: existingFile } = useQuery({
+  const { data: existingFile, isLoading: isFileLoading } = useQuery({
     queryKey: ["file", attachmentId],
     queryFn: () => apis.file.get(attachmentId as string),
     enabled: !!attachmentId && !currentFile,
@@ -3135,6 +3141,10 @@ function SupportingInfoFileUpload({
                     <TrashIcon className="h-4 w-4" />
                   </Button>
                 </div>
+              )}
+
+              {!currentFile && isFileLoading && attachmentId && (
+                <Skeleton className="h-[72px] w-full rounded-lg" />
               )}
 
               {!currentFile && existingFile?.read_signed_url && (

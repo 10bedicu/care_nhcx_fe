@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 
 import { BiometricVerificationDialog } from "./biometric-verification-dialog";
 import { Policy } from "@/types/policy";
@@ -58,8 +59,17 @@ export function PmjayBiometricVerificationGate({
     }
   }, [lookupData, lookupFetching]);
 
-  if (!focalPolicy || lookupFetching) {
+  if (!focalPolicy) {
     return null;
+  }
+
+  if (lookupFetching) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+        Checking biometric verification status…
+      </div>
+    );
   }
 
   return (

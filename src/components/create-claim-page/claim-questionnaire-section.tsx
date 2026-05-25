@@ -46,6 +46,7 @@ import { Input } from "../ui/input";
 
 import { Textarea } from "../ui/textarea";
 import { apis } from "@/apis";
+import { InlineLoading } from "@/components/common/loading-spinner";
 import { ClaimUseChoice } from "@/types/claim";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import {
@@ -1131,9 +1132,7 @@ export function AddQuestionnaireSection({
           )}
         </div>
         {isLoading && (
-          <span className="text-xs text-muted-foreground animate-pulse">
-            Loading…
-          </span>
+          <InlineLoading label="Loading questionnaires…" />
         )}
       </div>
 
@@ -1192,9 +1191,10 @@ export function AddQuestionnaireSection({
                         </Button>
                       )}
                       {status === "missing" && !detail && isLoading && (
-                        <span className="text-xs text-amber-600 animate-pulse">
-                          Loading…
-                        </span>
+                        <InlineLoading
+                          label="Loading…"
+                          className="text-amber-600"
+                        />
                       )}
                     </div>
                   );
