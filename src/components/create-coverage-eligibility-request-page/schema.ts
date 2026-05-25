@@ -87,12 +87,9 @@ export const coverageEligibilityRequestItemSchema = z
     supporting_info_sequence: z.array(z.number().int().positive()).default([]),
     category: codingSchema,
     product_or_service: codingSchema.optional(),
-    charge_items: z.array(z.string().uuid()).default([]),
     modifier: z.array(codingSchema).default([]),
     quantity: quantitySchema,
-    unit_price: z.number().gte(0),
     diagnosis: z.array(coverageEligibilityRequestDiagnosisSchema).default([]),
-    _amount_cap_error: z.string().optional(),
     _condition_errors: z.string().optional(),
   })
   .refine(

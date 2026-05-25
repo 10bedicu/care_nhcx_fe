@@ -13,11 +13,9 @@ import {
 import { useNavigate, useQueryParams } from "raviger";
 
 import { Button } from "@/components/ui/button";
-import { ChargeItem } from "@/types/charge_item";
 import { CoverageEligibilityRequestInsuranceSection } from "./coverage-eligibility-request-insurance-section";
 import { CoverageEligibilityRequestItemSection } from "./coverage-eligibility-request-item-section";
 import { CoverageEligibilityRequestOtherSection } from "./coverage-eligibility-request-other-section";
-import { FileUploadModel } from "@/types/file_upload";
 import { Form } from "@/components/ui/form";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
 import { InsurancePlanDetailsPanel } from "../insurance-plan-details-panel";
@@ -81,7 +79,7 @@ const CreateCoverageEligibilityRequestPage: FC<
       facility: facilityId,
       patient: patientId,
       encounter: encounterId,
-      status: "draft",
+      status: "active",
       priority: "normal",
       purpose: initialPurpose,
     },
@@ -93,10 +91,8 @@ const CreateCoverageEligibilityRequestPage: FC<
   });
 
   const isAuthRequirements = lockedPurpose === "auth-requirements";
-  const isValidation = lockedPurpose === "validation";
 
-  const didPrefillRef = useRef(false);
-  const didPrefillInsuranceRef = useRef(false);
+  const didPrefillFromLinkedCeRef = useRef(false);
 
   const { data: linkedCoverageEligibilityRequest } = useQuery({
     queryKey: ["coverage-eligibility-request", linkedCoverageEligibilityId],
@@ -105,8 +101,7 @@ const CreateCoverageEligibilityRequestPage: FC<
     enabled: !!linkedCoverageEligibilityId,
   });
 
-  const { data: encounterDiagnoses, isFetched: encounterDiagnosesFetched } =
-    useQuery({
+  const { data: encounterDiagnoses } = useQuery({
       queryKey: ["cer-encounter-diagnoses", patientId, encounterId],
       queryFn: async (): Promise<Condition[]> => {
         const res = await apis.diagnosis.list(patientId, {
@@ -120,49 +115,16 @@ const CreateCoverageEligibilityRequestPage: FC<
       staleTime: 60 * 1000,
     });
 
-  const { data: encounterFiles, isFetched: encounterFilesFetched } = useQuery({
-    queryKey: ["cer-encounter-files", encounterId],
-    queryFn: async (): Promise<FileUploadModel[]> => {
-      const res = await apis.file.list({
-        file_type: "encounter",
-        associating_id: encounterId,
-        ordering: "-created_date",
-      });
-      return (res.results || []).filter((file) => !!file.id);
-    },
-    enabled: !!encounterId && isAuthRequirements,
-    staleTime: 60 * 1000,
-  });
-
-  const { data: encounterChargeItems, isFetched: encounterChargeItemsFetched } =
-    useQuery({
-      queryKey: ["cer-encounter-charge-items", facilityId, encounterId],
-      queryFn: async (): Promise<ChargeItem[]> => {
-        const res = await apis.charge_item.list(facilityId, {
-          encounter: encounterId,
-          ordering: "-created_date",
-        });
-        return res.results || [];
-      },
-      enabled: !!facilityId && !!encounterId && isAuthRequirements,
-      staleTime: 60 * 1000,
-    });
-
-
   useEffect(() => {
-    if (didPrefillInsuranceRef.current) return;
+    if (didPrefillFromLinkedCeRef.current) return;
+    if (!linkedCoverageEligibilityId) return;
     if (!linkedCoverageEligibilityRequest) return;
 
+    didPrefillFromLinkedCeRef.current = true;
+
     const ceInsurance = linkedCoverageEligibilityRequest.insurance ?? [];
-    if (ceInsurance.length === 0) return;
-
-    const existingInsurance = form.getValues("insurance") ?? [];
-    if (existingInsurance.length > 0) {
-      didPrefillInsuranceRef.current = true;
-      return;
-    }
-
-    didPrefillInsuranceRef.current = true;
+    const ceItems = linkedCoverageEligibilityRequest.item ?? [];
+    const ceSupportingInfo = linkedCoverageEligibilityRequest.supporting_info ?? [];
 
     const mappedInsurance = ceInsurance.map((ins, idx) => ({
       sequence:
@@ -176,8 +138,45 @@ const CreateCoverageEligibilityRequestPage: FC<
       mappedInsurance[0].focal = true;
     }
 
-    form.setValue("insurance", mappedInsurance);
-  }, [linkedCoverageEligibilityRequest, form]);
+    const supportingInfo = ceSupportingInfo
+      .filter((s) => s.value_string || s.value_attachment)
+      .map((s) => ({
+        sequence: s.sequence,
+        value_string: s.value_string,
+        value_attachment: s.value_attachment as unknown as string | undefined,
+      }));
+
+    const mappedItems = ceItems.map((it, idx) => ({
+      sequence:
+        typeof it.sequence === "number" && it.sequence > 0 ? it.sequence : idx + 1,
+      supporting_info_sequence: it.supporting_info_sequence ?? [],
+      category: it.category,
+      product_or_service: it.product_or_service,
+      modifier: it.modifier ?? [],
+      quantity: {
+        value: it.quantity?.value > 0 ? it.quantity.value : 1,
+        unit: it.quantity?.unit,
+      },
+      diagnosis: (it.diagnosis ?? []).map((d) => ({
+        diagnosis_reference: d.diagnosis_reference?.id,
+        diagnosis_code: d.diagnosis_code,
+      })),
+    }));
+
+    if (mappedInsurance.length > 0) {
+      form.setValue("insurance", mappedInsurance);
+    }
+    if (supportingInfo.length > 0) {
+      form.setValue("supporting_info", supportingInfo);
+    }
+    if (mappedItems.length > 0) {
+      form.setValue("item", mappedItems);
+    }
+  }, [
+    linkedCoverageEligibilityId,
+    linkedCoverageEligibilityRequest,
+    form,
+  ]);
 
   // Mapped diagnosis objects ready to pre-fill into each new item
   const defaultItemDiagnoses = useMemo(
@@ -188,44 +187,6 @@ const CreateCoverageEligibilityRequestPage: FC<
       })),
     [encounterDiagnoses]
   );
-
-  useEffect(() => {
-    if (didPrefillRef.current) return;
-    if (isValidation) {
-      didPrefillRef.current = true;
-      return;
-    }
-    if (!isAuthRequirements) return;
-    if (
-      !encounterDiagnosesFetched ||
-      !encounterFilesFetched ||
-      !encounterChargeItemsFetched
-    )
-      return;
-
-    const existingSupportingInfo = form.getValues("supporting_info") || [];
-    if (existingSupportingInfo.length > 0) {
-      didPrefillRef.current = true;
-      return;
-    }
-
-    didPrefillRef.current = true;
-
-    const supportingInfo = (encounterFiles || []).map((file, idx) => ({
-      sequence: idx + 1,
-      value_string: undefined,
-      value_attachment: file.id as string,
-    }));
-    form.setValue("supporting_info", supportingInfo);
-  }, [
-    isValidation,
-    isAuthRequirements,
-    encounterDiagnosesFetched,
-    encounterFiles,
-    encounterFilesFetched,
-    encounterChargeItemsFetched,
-    form,
-  ]);
 
   const { mutate: checkCoverageEligibility } = useMutation({
     mutationFn: apis.coverageEligibilityRequest.check,
@@ -360,7 +321,6 @@ const CreateCoverageEligibilityRequestPage: FC<
                 <Separator />
                 <CoverageEligibilityRequestItemSection
                   form={form}
-                  encounterChargeItems={isAuthRequirements ? (encounterChargeItems ?? []) : []}
                   defaultItemDiagnoses={isAuthRequirements ? defaultItemDiagnoses : []}
                 />
                 <Separator />
