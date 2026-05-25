@@ -791,7 +791,7 @@ export function ClaimItemSection({
           return (
           <Card
             className={cn(
-              hasAnyError && "border-red-500 ring-1 ring-red-500"
+              hasAnyError && "overflow-hidden border-red-500"
             )}
           >
             <CardHeader>
@@ -1174,7 +1174,7 @@ export function ClaimItemSection({
               </div>
             </CardContent>
             {hasAnyError && (
-              <CardFooter className="px-6 py-3 border-t border-red-200 bg-red-50 flex-col items-start gap-2">
+              <CardFooter className="rounded-b-xl px-6 py-3 border-t border-red-200 bg-red-50 flex-col items-start gap-2">
                 {mandatoryDocsError && (
                   <div className="flex items-center gap-2 text-sm font-medium text-red-600">
                     <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
@@ -1676,15 +1676,19 @@ function ItemValidationEffects({
   useEffect(() => {
     const capped =
       amountCap != null ? Math.min(chargeItemsTotal, amountCap) : chargeItemsTotal;
-    form.setValue(`item.${index}.unit_price`, capped);
+    form.setValue(`item.${index}.unit_price`, capped, { shouldDirty: false });
 
     if (amountCap != null && chargeItemsTotal > amountCap) {
       form.setValue(
         `item.${index}._amount_cap_error`,
-        `Charge items total ₹${chargeItemsTotal.toFixed(2)} exceeds the allowed limit of ₹${amountCap.toFixed(2)}. Amount has been capped at ₹${amountCap.toFixed(2)}.`
+        `Charge items total ₹${chargeItemsTotal.toFixed(2)} exceeds the allowed limit of ₹${amountCap.toFixed(2)}. Amount has been capped at ₹${amountCap.toFixed(2)}.`,
+        { shouldDirty: false, shouldValidate: false }
       );
     } else {
-      form.setValue(`item.${index}._amount_cap_error`, undefined);
+      form.setValue(`item.${index}._amount_cap_error`, undefined, {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
     }
   }, [chargeItemsTotal, amountCap, form, index]);
 

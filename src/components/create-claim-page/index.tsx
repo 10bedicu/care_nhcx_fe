@@ -1,3 +1,4 @@
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   CLAIM_USE_CHOICES,
   ClaimDiagnosisOnAdmissionChoice,
@@ -19,19 +20,18 @@ import {
   PlanLevelQuestionnairesSection,
   PlanLevelSupportingInfoSection,
 } from "./claim-plan-level-section";
-import { useForm, useWatch } from "react-hook-form";
+import { useForm, useFormState, useWatch } from "react-hook-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useQueryParams } from "raviger";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChargeItem } from "@/types/charge_item";
 import { ClaimAccidentSection } from "./claim-accident-section";
 import { ClaimInsuranceSection } from "./claim-insurance-section";
-import { ClaimRelatedSection } from "./claim-related-section";
 import { ClaimItemSection } from "./claim-item-section";
 import { ClaimOtherSection } from "./claim-other-section";
+import { ClaimRelatedSection } from "./claim-related-section";
 import { EncounterClass } from "@/types/encounter";
 import { FileUploadModel } from "@/types/file_upload";
 import { Form } from "@/components/ui/form";
@@ -75,17 +75,17 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
   const lockedUse = useMemo(
     () => parseUseQueryParam(queryParams?.use),
-    [queryParams?.use]
+    [queryParams?.use],
   );
 
   const coverageEligibilityId = useMemo(
     () => parseStringParam(queryParams?.coverage_eligibility),
-    [queryParams?.coverage_eligibility]
+    [queryParams?.coverage_eligibility],
   );
 
   const relatedClaimId = useMemo(
     () => parseStringParam(queryParams?.related),
-    [queryParams?.related]
+    [queryParams?.related],
   );
 
   // The guided flow drives the form via two mutually-exclusive prefill sources:
@@ -97,8 +97,8 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   const flowKind: "via-related" | "via-ce-ar" | "fresh" = relatedClaimId
     ? "via-related"
     : coverageEligibilityId
-    ? "via-ce-ar"
-    : "fresh";
+      ? "via-ce-ar"
+      : "fresh";
 
   const form = useForm<z.infer<typeof createClaimFormSchema>>({
     resolver: zodResolver(createClaimFormSchema),
@@ -112,18 +112,26 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     },
   });
 
+  const { isDirty } = useFormState({ control: form.control });
+  const [hasBulkPrefill, setHasBulkPrefill] = useState(false);
+  const isUnchangedPrefill = hasBulkPrefill && !isDirty;
+
   useEffect(() => {
     if (relatedClaimId) {
       const existingRelated = form.getValues("related") || [];
       if (!existingRelated.find((r) => r.claim === relatedClaimId)) {
-        form.setValue("related", [
-          {
-            claim: relatedClaimId,
-            relationship: DEFAULT_RELATED_RELATIONSHIP,
-            reference: "",
-          },
-          ...existingRelated,
-        ]);
+        form.setValue(
+          "related",
+          [
+            {
+              claim: relatedClaimId,
+              relationship: DEFAULT_RELATED_RELATIONSHIP,
+              reference: "",
+            },
+            ...existingRelated,
+          ],
+          { shouldDirty: false },
+        );
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -235,53 +243,81 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
     switch (encounter.encounter_class) {
       case EncounterClass.inpatient:
-        form.setValue("type", {
-          code: "737481003",
-          system: "http://snomed.info/sct",
-          display: "Inpatient care management",
-        });
+        form.setValue(
+          "type",
+          {
+            code: "737481003",
+            system: "http://snomed.info/sct",
+            display: "Inpatient care management",
+          },
+          { shouldDirty: false },
+        );
         break;
       case EncounterClass.outpatient:
-        form.setValue("type", {
-          code: "737492002",
-          system: "http://snomed.info/sct",
-          display: "Outpatient care management",
-        });
+        form.setValue(
+          "type",
+          {
+            code: "737492002",
+            system: "http://snomed.info/sct",
+            display: "Outpatient care management",
+          },
+          { shouldDirty: false },
+        );
         break;
       case EncounterClass.observation:
-        form.setValue("type", {
-          code: "737492002",
-          system: "http://snomed.info/sct",
-          display: "Outpatient care management",
-        });
+        form.setValue(
+          "type",
+          {
+            code: "737492002",
+            system: "http://snomed.info/sct",
+            display: "Outpatient care management",
+          },
+          { shouldDirty: false },
+        );
         break;
       case EncounterClass.emergency:
-        form.setValue("type", {
-          code: "737481003",
-          system: "http://snomed.info/sct",
-          display: "Inpatient care management",
-        });
+        form.setValue(
+          "type",
+          {
+            code: "737481003",
+            system: "http://snomed.info/sct",
+            display: "Inpatient care management",
+          },
+          { shouldDirty: false },
+        );
         break;
       case EncounterClass.virtual:
-        form.setValue("type", {
-          code: "713603004",
-          system: "http://snomed.info/sct",
-          display: "Advance care planning",
-        });
+        form.setValue(
+          "type",
+          {
+            code: "713603004",
+            system: "http://snomed.info/sct",
+            display: "Advance care planning",
+          },
+          { shouldDirty: false },
+        );
         break;
       case EncounterClass.home:
-        form.setValue("type", {
-          code: "60689008",
-          system: "http://snomed.info/sct",
-          display: "Home care of patient",
-        });
+        form.setValue(
+          "type",
+          {
+            code: "60689008",
+            system: "http://snomed.info/sct",
+            display: "Home care of patient",
+          },
+          { shouldDirty: false },
+        );
         break;
       default:
-        form.setValue("type", {
-          code: "737850002",
-          system: "http://snomed.info/sct",
-          display: "Outpatient care management",
-        });
+        form.setValue(
+          "type",
+          {
+            code: "737850002",
+            system: "http://snomed.info/sct",
+            display: "Outpatient care management",
+          },
+          { shouldDirty: false },
+        );
         break;
     }
   }, [encounter, form]);
@@ -328,7 +364,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       on_admission: "unknown" as ClaimDiagnosisOnAdmissionChoice,
     }));
     const diagnosisSequences = diagnosis.map((d) => d.sequence);
-    form.setValue("diagnosis", diagnosis);
 
     const supportingInfo = (encounterFiles || []).map((file, idx) => ({
       sequence: idx + 1,
@@ -340,7 +375,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       _is_plan_level: false,
     }));
     const informationSequences = supportingInfo.map((info) => info.sequence);
-    form.setValue("supporting_info", supportingInfo);
 
     const care_team =
       encounter?.care_team
@@ -352,10 +386,9 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
           role: entry.role,
         })) || [];
     const careTeamSequences = care_team.map((m) => m.sequence);
-    form.setValue("care_team", care_team);
 
     const codedChargeItems = (encounterChargeItems || []).filter(
-      chargeItemHasCoding
+      chargeItemHasCoding,
     );
 
     const emptyItemTemplate = {
@@ -369,27 +402,43 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       factor: undefined,
     };
 
-    if (codedChargeItems.length > 0) {
-      form.setValue(
-        "item",
-        codedChargeItems.map((ci, idx) => ({
-          ...emptyItemTemplate,
-          sequence: idx + 1,
-          product_or_service: {
-            system: ci.code.system,
-            code: ci.code.code,
-            display: ci.code.display,
-          },
-          charge_items: [ci.id],
-          modifier: [],
-          diagnosis_sequence: [...diagnosisSequences],
-          information_sequence: [...informationSequences],
-          quantity: {
-            value: parsePositiveNumber(ci.quantity, 1),
-          },
-          unit_price: 0,
-        }))
-      );
+    const current = form.getValues();
+    form.reset(
+      {
+        ...current,
+        diagnosis,
+        supporting_info: supportingInfo,
+        care_team,
+        item:
+          codedChargeItems.length > 0
+            ? codedChargeItems.map((ci, idx) => ({
+                ...emptyItemTemplate,
+                sequence: idx + 1,
+                product_or_service: {
+                  system: ci.code.system,
+                  code: ci.code.code,
+                  display: ci.code.display,
+                },
+                charge_items: [ci.id],
+                modifier: [],
+                diagnosis_sequence: [...diagnosisSequences],
+                information_sequence: [...informationSequences],
+                quantity: {
+                  value: parsePositiveNumber(ci.quantity, 1),
+                },
+                unit_price: 0,
+              }))
+            : current.item,
+      },
+      { keepDefaultValues: false },
+    );
+    if (
+      diagnosis.length > 0 ||
+      supportingInfo.length > 0 ||
+      care_team.length > 0 ||
+      codedChargeItems.length > 0
+    ) {
+      setHasBulkPrefill(true);
     }
     setPrefillNonce((n) => n + 1);
   }, [
@@ -434,7 +483,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                 previousClaim.latest_response?.pre_auth_ref ||
                 "",
             }
-          : r
+          : r,
       ),
       care_team:
         (previousClaim.care_team || []).map((m) => ({
@@ -449,8 +498,8 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       supporting_info: (() => {
         const itemInfoSeqs = new Set(
           (previousClaim.item || []).flatMap(
-            (it) => it.information_sequence || []
-          )
+            (it) => it.information_sequence || [],
+          ),
         );
         return (previousClaim.supporting_info || []).map((s) => ({
           sequence: s.sequence,
@@ -530,6 +579,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     };
 
     form.reset(mappedValues, { keepDefaultValues: false });
+    setHasBulkPrefill(true);
     setPrefillNonce((n) => n + 1);
   }, [form, previousClaim, lockedUse, flowKind, relatedClaimId]);
 
@@ -589,7 +639,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
           .map((d) => seenDiagnoses.get(d.diagnosis_code?.code ?? ""))
           .filter((s): s is number => typeof s === "number");
         const infoSeqs = (it.supporting_info_sequence ?? []).filter((s) =>
-          validSiSeqs.has(s)
+          validSiSeqs.has(s),
         );
         return {
           sequence: idx + 1,
@@ -610,7 +660,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
           unit_price: 0,
           factor: undefined,
         };
-      }
+      },
     );
 
     const current = form.getValues();
@@ -642,8 +692,9 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         item: items,
         questionnaire_responses: [],
       },
-      { keepDefaultValues: false }
+      { keepDefaultValues: false },
     );
+    setHasBulkPrefill(true);
     setPrefillNonce((n) => n + 1);
   }, [flowKind, coverageEligibilityRequest, form, lockedUse]);
 
@@ -651,8 +702,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   const validationBalance = useMemo(() => {
     const insurances = ceValidation?.latest_response?.insurances;
     if (!insurances?.length) return null;
-    const primary =
-      insurances.find((i) => i.is_primary) ?? insurances[0];
+    const primary = insurances.find((i) => i.is_primary) ?? insurances[0];
     if (!primary?.balance) return null;
     const available =
       primary.balance.allowed.value - primary.balance.used.value;
@@ -662,7 +712,10 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   const watchedItemsForTotal = form.watch("item");
   useEffect(() => {
     if (validationBalance === null) {
-      form.setValue("_total_amount_cap_error", undefined);
+      form.setValue("_total_amount_cap_error", undefined, {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
       return;
     }
     const total = (watchedItemsForTotal ?? []).reduce((sum, item) => {
@@ -676,10 +729,14 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     if (total > validationBalance) {
       form.setValue(
         "_total_amount_cap_error",
-        `Total claim amount ₹${total.toFixed(2)} exceeds available wallet balance of ₹${validationBalance.toFixed(2)}`
+        `Total claim amount ₹${total.toFixed(2)} exceeds available wallet balance of ₹${validationBalance.toFixed(2)}`,
+        { shouldDirty: false, shouldValidate: false },
       );
     } else {
-      form.setValue("_total_amount_cap_error", undefined);
+      form.setValue("_total_amount_cap_error", undefined, {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
     }
   }, [watchedItemsForTotal, validationBalance, form]);
 
@@ -688,7 +745,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     onSuccess: () => {
       toast.success("Claim submitted successfully");
       navigate(
-        `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`
+        `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`,
       );
     },
   });
@@ -704,6 +761,11 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   });
 
   async function onSubmit(values: z.infer<typeof createClaimFormSchema>) {
+    if (isUnchangedPrefill) {
+      toast.error("No changes noted. Please update the form before submitting.");
+      return;
+    }
+
     try {
       const updatedValues = { ...values };
 
@@ -724,7 +786,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
               const uploadResponse = await uploadFile(
                 info.value_file,
-                fileUploadRequest
+                fileUploadRequest,
               );
 
               updatedValues.supporting_info[i].value_attachment =
@@ -734,7 +796,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             } catch (error) {
               console.error("Error uploading file:", error);
               throw new Error(
-                `Failed to upload file: ${info.value_file?.name}`
+                `Failed to upload file: ${info.value_file?.name}`,
               );
             }
           }
@@ -747,7 +809,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       if (updatedValues.questionnaire_responses?.length) {
         const maxSupportingInfoSeq = Math.max(
           0,
-          ...(updatedValues.supporting_info ?? []).map((s) => s.sequence)
+          ...(updatedValues.supporting_info ?? []).map((s) => s.sequence),
         );
         const seqMap = new Map<number, number>();
         updatedValues.questionnaire_responses =
@@ -761,7 +823,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
           updatedValues.item = updatedValues.item.map((item) => ({
             ...item,
             information_sequence: item.information_sequence.map(
-              (seq) => seqMap.get(seq) ?? seq
+              (seq) => seqMap.get(seq) ?? seq,
             ),
           }));
         }
@@ -808,15 +870,15 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
               {lockedUse === "preauthorization"
                 ? "Submit Pre-Authorization"
                 : lockedUse === "claim"
-                ? "Submit Claim"
-                : "Create Claim"}
+                  ? "Submit Claim"
+                  : "Create Claim"}
             </h3>
             <p className="text-sm text-muted-foreground">
               {lockedUse === "preauthorization"
                 ? "Request pre-authorisation from the payer for the planned procedures."
                 : lockedUse === "claim"
-                ? "Submit the final claim to the payer."
-                : "Create a new claim for the patient."}
+                  ? "Submit the final claim to the payer."
+                  : "Create a new claim for the patient."}
             </p>
             {coverageEligibilityId && (
               <p className="text-xs text-muted-foreground mt-1">
@@ -830,7 +892,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             variant="outline"
             onClick={() => {
               navigate(
-                `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`
+                `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`,
               );
             }}
           >
@@ -902,11 +964,24 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                   </Alert>
                 )}
 
+                {isUnchangedPrefill && (
+                  <Alert
+                    variant="destructive"
+                    className="flex items-center gap-2"
+                  >
+                    <AlertCircleIcon className="h-4 w-4" />
+                    <AlertDescription>
+                      No changes noted. Please update the form before submitting.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 <Button
                   className="w-full"
                   size="lg"
                   type="submit"
                   loading={createClaimIsPending}
+                  disabled={isUnchangedPrefill}
                 >
                   Create Claim
                 </Button>

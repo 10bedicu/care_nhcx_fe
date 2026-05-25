@@ -1,17 +1,15 @@
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   COVERAGE_ELIGIBILITY_REQUEST_PURPOSE_CHOICES,
   CoverageEligibilityRequestPurposeChoice,
 } from "@/types/coverage_eligibility";
 import { Condition, ConditionCategory } from "@/types/condition";
-import { FC, useEffect, useMemo, useRef } from "react";
-import { useForm, useWatch } from "react-hook-form";
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { FC, useEffect, useMemo, useRef, useState } from "react";
+import { useForm, useFormState, useWatch } from "react-hook-form";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useQueryParams } from "raviger";
 
+import { AlertCircleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CoverageEligibilityRequestInsuranceSection } from "./coverage-eligibility-request-insurance-section";
 import { CoverageEligibilityRequestItemSection } from "./coverage-eligibility-request-item-section";
@@ -29,12 +27,12 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 function parsePurposeQueryParam(
-  value: unknown
+  value: unknown,
 ): CoverageEligibilityRequestPurposeChoice | null {
   if (typeof value !== "string") return null;
   const lower = value.toLowerCase();
   const match = COVERAGE_ELIGIBILITY_REQUEST_PURPOSE_CHOICES.find(
-    (choice) => choice === lower
+    (choice) => choice === lower,
   );
   return match ?? null;
 }
@@ -58,17 +56,17 @@ const CreateCoverageEligibilityRequestPage: FC<
 
   const lockedPurpose = useMemo(
     () => parsePurposeQueryParam(queryParams?.purpose),
-    [queryParams?.purpose]
+    [queryParams?.purpose],
   );
 
   const linkedCoverageEligibilityId = useMemo(
     () => parseStringParam(queryParams?.coverage_eligibility),
-    [queryParams?.coverage_eligibility]
+    [queryParams?.coverage_eligibility],
   );
 
   const initialPurpose: CoverageEligibilityRequestPurposeChoice[] = useMemo(
     () => (lockedPurpose ? [lockedPurpose] : ["validation"]),
-    [lockedPurpose]
+    [lockedPurpose],
   );
 
   const form = useForm<
@@ -85,6 +83,10 @@ const CreateCoverageEligibilityRequestPage: FC<
     },
   });
 
+  const { isDirty } = useFormState({ control: form.control });
+  const [hasLinkedCePrefill, setHasLinkedCePrefill] = useState(false);
+  const isUnchangedPrefill = hasLinkedCePrefill && !isDirty;
+
   const insuranceSelection = useWatch({
     control: form.control,
     name: "insurance",
@@ -97,7 +99,9 @@ const CreateCoverageEligibilityRequestPage: FC<
   const { data: linkedCoverageEligibilityRequest } = useQuery({
     queryKey: ["coverage-eligibility-request", linkedCoverageEligibilityId],
     queryFn: () =>
-      apis.coverageEligibilityRequest.get(linkedCoverageEligibilityId as string),
+      apis.coverageEligibilityRequest.get(
+        linkedCoverageEligibilityId as string,
+      ),
     enabled: !!linkedCoverageEligibilityId,
   });
 
@@ -105,33 +109,35 @@ const CreateCoverageEligibilityRequestPage: FC<
     () =>
       Boolean(
         linkedCoverageEligibilityId &&
-          linkedCoverageEligibilityRequest?.purpose.includes("auth-requirements")
+        linkedCoverageEligibilityRequest?.purpose.includes("auth-requirements"),
       ),
-    [linkedCoverageEligibilityId, linkedCoverageEligibilityRequest]
+    [linkedCoverageEligibilityId, linkedCoverageEligibilityRequest],
   );
 
   const prefilledItemSequences = useMemo(() => {
     if (!linkedCoverageEligibilityRequest) return new Set<number>();
     return new Set(
       (linkedCoverageEligibilityRequest.item ?? []).map((it, idx) =>
-        typeof it.sequence === "number" && it.sequence > 0 ? it.sequence : idx + 1
-      )
+        typeof it.sequence === "number" && it.sequence > 0
+          ? it.sequence
+          : idx + 1,
+      ),
     );
   }, [linkedCoverageEligibilityRequest]);
 
   const { data: encounterDiagnoses } = useQuery({
-      queryKey: ["cer-encounter-diagnoses", patientId, encounterId],
-      queryFn: async (): Promise<Condition[]> => {
-        const res = await apis.diagnosis.list(patientId, {
-          encounter: encounterId,
-          category: [ConditionCategory.encounter_diagnosis],
-          ordering: "-created_date",
-        });
-        return res.results || [];
-      },
-      enabled: !!patientId && !!encounterId && isAuthRequirements,
-      staleTime: 60 * 1000,
-    });
+    queryKey: ["cer-encounter-diagnoses", patientId, encounterId],
+    queryFn: async (): Promise<Condition[]> => {
+      const res = await apis.diagnosis.list(patientId, {
+        encounter: encounterId,
+        category: [ConditionCategory.encounter_diagnosis],
+        ordering: "-created_date",
+      });
+      return res.results || [];
+    },
+    enabled: !!patientId && !!encounterId && isAuthRequirements,
+    staleTime: 60 * 1000,
+  });
 
   useEffect(() => {
     if (didPrefillFromLinkedCeRef.current) return;
@@ -140,9 +146,12 @@ const CreateCoverageEligibilityRequestPage: FC<
 
     didPrefillFromLinkedCeRef.current = true;
 
+    const current = form.getValues();
+
     const ceInsurance = linkedCoverageEligibilityRequest.insurance ?? [];
     const ceItems = linkedCoverageEligibilityRequest.item ?? [];
-    const ceSupportingInfo = linkedCoverageEligibilityRequest.supporting_info ?? [];
+    const ceSupportingInfo =
+      linkedCoverageEligibilityRequest.supporting_info ?? [];
 
     const mappedInsurance = ceInsurance.map((ins, idx) => ({
       sequence:
@@ -166,14 +175,15 @@ const CreateCoverageEligibilityRequestPage: FC<
 
     const mappedItems = ceItems.map((it, idx) => ({
       sequence:
-        typeof it.sequence === "number" && it.sequence > 0 ? it.sequence : idx + 1,
+        typeof it.sequence === "number" && it.sequence > 0
+          ? it.sequence
+          : idx + 1,
       supporting_info_sequence: it.supporting_info_sequence ?? [],
       category: it.category,
       product_or_service: it.product_or_service,
       modifier: it.modifier ?? [],
       quantity: {
-        value:
-          Number(it.quantity?.value) > 0 ? Number(it.quantity?.value) : 1,
+        value: Number(it.quantity?.value) > 0 ? Number(it.quantity?.value) : 1,
         unit: it.quantity?.unit,
       },
       diagnosis: (it.diagnosis ?? []).map((d) => ({
@@ -183,19 +193,18 @@ const CreateCoverageEligibilityRequestPage: FC<
     }));
 
     if (mappedInsurance.length > 0) {
-      form.setValue("insurance", mappedInsurance);
+      current.insurance = mappedInsurance;
     }
     if (supportingInfo.length > 0) {
-      form.setValue("supporting_info", supportingInfo);
+      current.supporting_info = supportingInfo;
     }
     if (mappedItems.length > 0) {
-      form.setValue("item", mappedItems);
+      current.item = mappedItems;
     }
-  }, [
-    linkedCoverageEligibilityId,
-    linkedCoverageEligibilityRequest,
-    form,
-  ]);
+
+    form.reset(current, { keepDefaultValues: false });
+    setHasLinkedCePrefill(true);
+  }, [linkedCoverageEligibilityId, linkedCoverageEligibilityRequest, form]);
 
   // Mapped diagnosis objects ready to pre-fill into each new item
   const defaultItemDiagnoses = useMemo(
@@ -204,7 +213,7 @@ const CreateCoverageEligibilityRequestPage: FC<
         diagnosis_reference: undefined as string | undefined,
         diagnosis_code: c.code,
       })),
-    [encounterDiagnoses]
+    [encounterDiagnoses],
   );
 
   const { mutate: checkCoverageEligibility } = useMutation({
@@ -212,7 +221,7 @@ const CreateCoverageEligibilityRequestPage: FC<
     onSuccess: () => {
       toast.success("Coverage check submitted successfully");
       navigate(
-        `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`
+        `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`,
       );
     },
   });
@@ -233,8 +242,13 @@ const CreateCoverageEligibilityRequestPage: FC<
   });
 
   async function onSubmit(
-    values: z.infer<typeof createCoverageEligibilityRequestFormSchema>
+    values: z.infer<typeof createCoverageEligibilityRequestFormSchema>,
   ) {
+    if (isUnchangedPrefill) {
+      toast.error("No changes noted. Please update the form before submitting.");
+      return;
+    }
+
     try {
       const updatedValues = { ...values };
 
@@ -255,7 +269,7 @@ const CreateCoverageEligibilityRequestPage: FC<
 
               const uploadResponse = await uploadFile(
                 info.value_file,
-                fileUploadRequest
+                fileUploadRequest,
               );
 
               updatedValues.supporting_info[i].value_attachment =
@@ -265,7 +279,7 @@ const CreateCoverageEligibilityRequestPage: FC<
             } catch (error) {
               console.error("Error uploading file:", error);
               throw new Error(
-                `Failed to upload file: ${info.value_file?.name}`
+                `Failed to upload file: ${info.value_file?.name}`,
               );
             }
           }
@@ -297,19 +311,19 @@ const CreateCoverageEligibilityRequestPage: FC<
               {lockedPurpose === "auth-requirements"
                 ? "Check Auth Requirements"
                 : lockedPurpose === "validation"
-                ? "Coverage Validation"
-                : lockedPurpose === "discovery"
-                ? "Coverage Discovery"
-                : lockedPurpose === "benefits"
-                ? "Benefits Check"
-                : "Check Coverage Eligibility"}
+                  ? "Coverage Validation"
+                  : lockedPurpose === "discovery"
+                    ? "Coverage Discovery"
+                    : lockedPurpose === "benefits"
+                      ? "Benefits Check"
+                      : "Check Coverage Eligibility"}
             </h3>
             <p className="text-sm text-muted-foreground">
               {lockedPurpose === "auth-requirements"
                 ? "Discover what documents and questionnaires are required for pre-authorisation."
                 : lockedPurpose === "validation"
-                ? "Confirm the policy is active and check the available wallet balance."
-                : "Check the coverage eligibility for the patient."}
+                  ? "Confirm the policy is active and check the available wallet balance."
+                  : "Check the coverage eligibility for the patient."}
             </p>
           </div>
           <Button
@@ -317,7 +331,7 @@ const CreateCoverageEligibilityRequestPage: FC<
             variant="outline"
             onClick={() => {
               navigate(
-                `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`
+                `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`,
               );
             }}
           >
@@ -335,12 +349,16 @@ const CreateCoverageEligibilityRequestPage: FC<
               >
                 <CoverageEligibilityRequestInsuranceSection
                   form={form}
-                  readOnly={lockedPurpose !== null && lockedPurpose !== "validation"}
+                  readOnly={
+                    lockedPurpose !== null && lockedPurpose !== "validation"
+                  }
                 />
                 <Separator />
                 <CoverageEligibilityRequestItemSection
                   form={form}
-                  defaultItemDiagnoses={isAuthRequirements ? defaultItemDiagnoses : []}
+                  defaultItemDiagnoses={
+                    isAuthRequirements ? defaultItemDiagnoses : []
+                  }
                   requireEnhancementAllowed={requireEnhancementAllowed}
                   prefilledItemSequences={prefilledItemSequences}
                 />
@@ -351,11 +369,24 @@ const CreateCoverageEligibilityRequestPage: FC<
                 />
                 <Separator />
 
+                {isUnchangedPrefill && (
+                  <Alert
+                    variant="destructive"
+                    className="flex items-center gap-2"
+                  >
+                    <AlertCircleIcon className="h-4 w-4" />
+                    <AlertDescription>
+                      No changes noted. Please update the form before submitting.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
                 <Button
                   className="w-full"
                   size="lg"
                   type="submit"
                   loading={createCoverageEligibilityRequestIsPending}
+                  disabled={isUnchangedPrefill}
                 >
                   Check Coverage Eligibility
                 </Button>

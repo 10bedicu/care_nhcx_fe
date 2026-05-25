@@ -168,7 +168,7 @@ export function CoverageEligibilityRequestItemSection({
           <Card
             key={field.id}
             className={cn(
-              hasAnyError && "border-red-500 ring-1 ring-red-500"
+              hasAnyError && "overflow-hidden border-red-500"
             )}
           >
             <CardHeader>
@@ -323,7 +323,7 @@ export function CoverageEligibilityRequestItemSection({
               />
             </CardContent>
             {hasAnyError && (
-              <CardFooter className="px-6 py-3 border-t border-red-200 bg-red-50 flex-col items-start gap-2">
+              <CardFooter className="rounded-b-xl px-6 py-3 border-t border-red-200 bg-red-50 flex-col items-start gap-2">
                 {conditionErrors &&
                   conditionErrors.split(" • ").map((err, i) => (
                     <div
