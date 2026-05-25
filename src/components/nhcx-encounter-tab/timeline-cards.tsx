@@ -471,19 +471,19 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
           label="Proceed to Claim"
           icon={<ArrowRightIcon className="h-4 w-4" />}
         />,
-        <ActionButton
-          key="enhancement"
-          to={buildClaimNewUrl({
+      ];
+      extraMenuItems = [
+        {
+          label: "Enhancement",
+          icon: <PlusCircleIcon className="h-4 w-4" />,
+          to: buildClaimNewUrl({
             use: "preauthorization",
             coverageEligibilityId: latestCoverageEligibilityId,
             ...claimRedirectParams,
-          })}
-          label="Enhancement"
-          icon={<PlusCircleIcon className="h-4 w-4" />}
-          variant="outline"
-        />,
+          }),
+        },
+        ...preauthAlwaysExtras,
       ];
-      extraMenuItems = [...preauthAlwaysExtras];
     } else if (outcome === "partially-approved") {
       primaryActions = [
         <ActionButton
@@ -495,13 +495,6 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
           })}
           label="Proceed to Claim"
           icon={<ArrowRightIcon className="h-4 w-4" />}
-        />,
-        <ActionButton
-          key="dispute"
-          label="Dispute"
-          icon={<AlertCircleIcon className="h-4 w-4" />}
-          variant="outline"
-          onClick={() => setDisputeOpen(true)}
         />,
       ];
       extraMenuItems = [
@@ -519,11 +512,14 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
     } else if (outcome === "rejected") {
       primaryActions = [
         <ActionButton
-          key="dispute"
-          label="Dispute"
-          icon={<AlertCircleIcon className="h-4 w-4" />}
-          variant="outline"
-          onClick={() => setDisputeOpen(true)}
+          key="resubmit"
+          to={buildClaimNewUrl({
+            use: "preauthorization",
+            coverageEligibilityId: latestCoverageEligibilityId,
+            ...claimRedirectParams,
+          })}
+          label="Resubmit"
+          icon={<RotateCwIcon className="h-4 w-4" />}
         />,
       ];
       extraMenuItems = [...preauthAlwaysExtras];
@@ -585,6 +581,19 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
           <CheckCircle2Icon className="h-3.5 w-3.5" />
           Claim Approved
         </span>,
+      ];
+    } else if (isDispatchError) {
+      primaryActions = [
+        <ActionButton
+          key="retry"
+          to={buildClaimNewUrl({
+            use: "claim",
+            coverageEligibilityId: latestCoverageEligibilityId,
+            ...claimRedirectParams,
+          })}
+          label="Retry again"
+          icon={<RotateCwIcon className="h-4 w-4" />}
+        />,
       ];
     } else if (
       outcome === "partially-approved" ||
