@@ -80,6 +80,36 @@ export type ClaimOutcome =
   | "queried"
   | "cancelled";
 
+/** True when the payer returned a usable adjudication response (not a dispatch/submission failure). */
+export function hasSuccessfulPayerResponse(claim: Claim): boolean {
+  if (claim.dispatch_status === "error") return false;
+  const response = claim.latest_response;
+  if (!response) return false;
+  if (response.outcome === "error") return false;
+  return true;
+}
+
+function sortClaimsByCreatedDesc(claims: Claim[]): Claim[] {
+  return claims
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.created_date).getTime() - new Date(a.created_date).getTime()
+    );
+}
+
+/** Most recent claim on the encounter (by created_date). */
+export function findLatestClaim(claims: Claim[]): Claim | undefined {
+  return sortClaimsByCreatedDesc(claims)[0];
+}
+
+/** Most recent claim that received a successful payer response. */
+export function findLatestClaimWithSuccessfulResponse(
+  claims: Claim[]
+): Claim | undefined {
+  return sortClaimsByCreatedDesc(claims).find(hasSuccessfulPayerResponse);
+}
+
 export function deriveClaimOutcome(claim: Claim): ClaimOutcome {
   if (claim.status === "cancelled") return "cancelled";
 

@@ -177,20 +177,22 @@ function MoreActionsMenu({ items }: { items: MenuItem[] }) {
 function buildClaimNewUrl({
   use,
   coverageEligibilityId,
-  latestClaimId,
+  claimId,
   relatedClaimId,
 }: {
   use: "claim" | "preauthorization";
   coverageEligibilityId?: string;
-  latestClaimId?: string;
+  /** Prefill source — latest claim on the encounter. Omit for a fresh pre-auth. */
+  claimId?: string;
+  /** FHIR related-claim linkage — latest claim with a successful payer response. */
   relatedClaimId?: string;
 }): string {
   const params = new URLSearchParams({ use });
   if (coverageEligibilityId) {
     params.set("coverage_eligibility", coverageEligibilityId);
   }
-  if (latestClaimId) {
-    params.set("claim", latestClaimId);
+  if (claimId) {
+    params.set("claim", claimId);
   }
   if (relatedClaimId) {
     params.set("related", relatedClaimId);
@@ -198,16 +200,33 @@ function buildClaimNewUrl({
   return `claims/new?${params.toString()}`;
 }
 
+interface ClaimRedirectParams {
+  latestClaimId?: string;
+  latestSuccessfulClaimId?: string;
+}
+
+/** Standard claim/related wiring used by all guided claim redirects. */
+function standardClaimRedirectParams({
+  latestClaimId,
+  latestSuccessfulClaimId,
+}: ClaimRedirectParams) {
+  return {
+    claimId: latestClaimId,
+    relatedClaimId: latestSuccessfulClaimId,
+  };
+}
+
 // ─── Coverage Eligibility actions ────────────────────────────────────────────
 
 interface CoverageEligibilityTimelineCardProps extends BaseProps {
   request: CoverageEligibilityRequest;
   latestClaimId?: string;
+  latestSuccessfulClaimId?: string;
 }
 
 export const CoverageEligibilityTimelineCard: FC<
   CoverageEligibilityTimelineCardProps
-> = ({ request, isCurrent, latestClaimId }) => {
+> = ({ request, isCurrent, latestClaimId, latestSuccessfulClaimId }) => {
   const isValidation = hasValidationPurpose(request);
   const isAuthRequirements = hasAuthRequirementsPurpose(request);
   const validationOutcome = isValidation
@@ -292,7 +311,10 @@ export const CoverageEligibilityTimelineCard: FC<
               to={buildClaimNewUrl({
                 use: "preauthorization",
                 coverageEligibilityId: request.id,
-                latestClaimId,
+                ...standardClaimRedirectParams({
+                  latestClaimId,
+                  latestSuccessfulClaimId,
+                }),
               })}
               label="Start Pre-Auth"
               icon={<ArrowRightIcon className="h-4 w-4" />}
@@ -327,8 +349,10 @@ interface ClaimTimelineCardProps extends BaseProps {
   claim: Claim;
   /** The most recent CE to wire as a query param when redirecting back to /coverages/new. */
   latestCoverageEligibilityId?: string;
-  /** The most recent claim on the encounter — always passed to /claims/new. */
+  /** The most recent claim on the encounter — passed as the `claim` query param. */
   latestClaimId?: string;
+  /** The most recent claim with a successful payer response — passed as `related`. */
+  latestSuccessfulClaimId?: string;
 }
 
 export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
@@ -337,6 +361,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   encounterId,
   latestCoverageEligibilityId,
   latestClaimId,
+  latestSuccessfulClaimId,
 }) => {
   const queryClient = useQueryClient();
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -373,10 +398,16 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   const outcome = deriveClaimOutcome(claim);
   const isPreauth = claim.use === "preauthorization";
   const isClaim = claim.use === "claim";
+  const isDispatchError = claim.dispatch_status === "error";
 
   const ceQueryParam = latestCoverageEligibilityId
     ? `&coverage_eligibility=${latestCoverageEligibilityId}`
     : "";
+
+  const claimRedirectParams = standardClaimRedirectParams({
+    latestClaimId,
+    latestSuccessfulClaimId,
+  });
 
   let primaryActions: ReactNode[] = [];
   let extraMenuItems: MenuItem[] = [];
@@ -405,16 +436,18 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
     }
   }
 
-  // Cancel + Check Auth Requirements are always available on the latest
-  // pre-authorization card so the user can course-correct even before the
-  // payer has finished adjudicating. Already-cancelled records skip Cancel.
+  // Add more items + Cancel are available on the latest pre-authorization card
+  // so the user can course-correct while waiting. Queried and cancelled records
+  // skip Add more items; cancelled also skips Cancel.
   const preauthAlwaysExtras: MenuItem[] = [];
   if (isCurrent && isPreauth) {
-    preauthAlwaysExtras.push({
-      label: "Check Auth Requirements",
-      icon: <ShieldAlertIcon className="h-4 w-4" />,
-      to: `coverages/new?purpose=auth-requirements${ceQueryParam}`,
-    });
+    if (outcome !== "queried") {
+      preauthAlwaysExtras.push({
+        label: "Add more items",
+        icon: <PlusCircleIcon className="h-4 w-4" />,
+        to: `coverages/new?purpose=auth-requirements${ceQueryParam}`,
+      });
+    }
     if (outcome !== "cancelled") {
       preauthAlwaysExtras.push({
         label: "Cancel Pre-Auth",
@@ -433,8 +466,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
           to={buildClaimNewUrl({
             use: "claim",
             coverageEligibilityId: latestCoverageEligibilityId,
-            latestClaimId,
-            relatedClaimId: claim.id,
+            ...claimRedirectParams,
           })}
           label="Proceed to Claim"
           icon={<ArrowRightIcon className="h-4 w-4" />}
@@ -444,8 +476,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
           to={buildClaimNewUrl({
             use: "preauthorization",
             coverageEligibilityId: latestCoverageEligibilityId,
-            latestClaimId,
-            relatedClaimId: claim.id,
+            ...claimRedirectParams,
           })}
           label="Enhancement"
           icon={<PlusCircleIcon className="h-4 w-4" />}
@@ -460,8 +491,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
           to={buildClaimNewUrl({
             use: "claim",
             coverageEligibilityId: latestCoverageEligibilityId,
-            latestClaimId,
-            relatedClaimId: claim.id,
+            ...claimRedirectParams,
           })}
           label="Proceed to Claim"
           icon={<ArrowRightIcon className="h-4 w-4" />}
@@ -481,8 +511,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
           to: buildClaimNewUrl({
             use: "preauthorization",
             coverageEligibilityId: latestCoverageEligibilityId,
-            latestClaimId,
-            relatedClaimId: claim.id,
+            ...claimRedirectParams,
           }),
         },
         ...preauthAlwaysExtras,
@@ -505,17 +534,43 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
           to={buildClaimNewUrl({
             use: "preauthorization",
             coverageEligibilityId: latestCoverageEligibilityId,
-            latestClaimId,
-            relatedClaimId: claim.id,
+            ...claimRedirectParams,
           })}
           label="Resubmit"
           icon={<RotateCwIcon className="h-4 w-4" />}
         />,
       ];
       extraMenuItems = [...preauthAlwaysExtras];
+    } else if (outcome === "cancelled") {
+      primaryActions = [
+        <ActionButton
+          key="raise-new"
+          to={buildClaimNewUrl({
+            use: "preauthorization",
+            coverageEligibilityId: latestCoverageEligibilityId,
+          })}
+          label="Raise new Pre-auth"
+          icon={<PlusCircleIcon className="h-4 w-4" />}
+        />,
+      ];
+      extraMenuItems = [...preauthAlwaysExtras];
+    } else if (isDispatchError) {
+      primaryActions = [
+        <ActionButton
+          key="retry"
+          to={buildClaimNewUrl({
+            use: "preauthorization",
+            coverageEligibilityId: latestCoverageEligibilityId,
+            ...claimRedirectParams,
+          })}
+          label="Retry again"
+          icon={<RotateCwIcon className="h-4 w-4" />}
+        />,
+      ];
+      extraMenuItems = [...preauthAlwaysExtras];
     } else {
-      // Pending / unknown — no primary actions, but cancel + CE:AR are still
-      // exposed via the always-extras list below.
+      // Pending / unknown — no primary actions, but add-more-items + cancel are
+      // still exposed via the always-extras list below.
       extraMenuItems = [...preauthAlwaysExtras];
     }
   }
@@ -551,8 +606,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
           to={buildClaimNewUrl({
             use: "claim",
             coverageEligibilityId: latestCoverageEligibilityId,
-            latestClaimId,
-            relatedClaimId: claim.id,
+            ...claimRedirectParams,
           })}
           label="Resubmit"
           icon={<RotateCwIcon className="h-4 w-4" />}

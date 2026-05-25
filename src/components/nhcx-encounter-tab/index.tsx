@@ -7,6 +7,8 @@ import {
 import {
   buildTimeline,
   deriveValidationOutcome,
+  findLatestClaim,
+  findLatestClaimWithSuccessfulResponse,
   hasValidationPurpose,
   isLatestRecord,
 } from "./flow";
@@ -100,13 +102,10 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
         new Date(a.created_date).getTime()
     )[0]?.id;
 
-  const latestClaimId = (claims?.results ?? [])
-    .slice()
-    .sort(
-      (a, b) =>
-        new Date(b.created_date).getTime() -
-        new Date(a.created_date).getTime()
-    )[0]?.id;
+  const encounterClaims = claims?.results ?? [];
+  const latestClaimId = findLatestClaim(encounterClaims)?.id;
+  const latestSuccessfulClaimId =
+    findLatestClaimWithSuccessfulResponse(encounterClaims)?.id;
 
   return (
     <GlobalStoreProvider
@@ -241,6 +240,7 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
                       encounterId={encounter.id}
                       isCurrent={isCurrent}
                       latestClaimId={latestClaimId}
+                      latestSuccessfulClaimId={latestSuccessfulClaimId}
                     />
                   );
                 }
@@ -252,6 +252,7 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
                     isCurrent={isCurrent}
                     latestCoverageEligibilityId={latestCoverageEligibilityId}
                     latestClaimId={latestClaimId}
+                    latestSuccessfulClaimId={latestSuccessfulClaimId}
                   />
                 );
               })}
