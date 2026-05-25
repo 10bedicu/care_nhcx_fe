@@ -18,7 +18,7 @@ export const periodSchema = z.object({
 });
 
 export const quantitySchema = z.object({
-  value: z.number().gt(0),
+  value: z.coerce.number().gt(0),
   unit: codingSchema.optional(),
   code: codingSchema.optional(),
 });

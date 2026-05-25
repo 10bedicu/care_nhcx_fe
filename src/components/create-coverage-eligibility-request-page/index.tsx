@@ -101,6 +101,24 @@ const CreateCoverageEligibilityRequestPage: FC<
     enabled: !!linkedCoverageEligibilityId,
   });
 
+  const requireEnhancementAllowed = useMemo(
+    () =>
+      Boolean(
+        linkedCoverageEligibilityId &&
+          linkedCoverageEligibilityRequest?.purpose.includes("auth-requirements")
+      ),
+    [linkedCoverageEligibilityId, linkedCoverageEligibilityRequest]
+  );
+
+  const prefilledItemSequences = useMemo(() => {
+    if (!linkedCoverageEligibilityRequest) return new Set<number>();
+    return new Set(
+      (linkedCoverageEligibilityRequest.item ?? []).map((it, idx) =>
+        typeof it.sequence === "number" && it.sequence > 0 ? it.sequence : idx + 1
+      )
+    );
+  }, [linkedCoverageEligibilityRequest]);
+
   const { data: encounterDiagnoses } = useQuery({
       queryKey: ["cer-encounter-diagnoses", patientId, encounterId],
       queryFn: async (): Promise<Condition[]> => {
@@ -154,7 +172,8 @@ const CreateCoverageEligibilityRequestPage: FC<
       product_or_service: it.product_or_service,
       modifier: it.modifier ?? [],
       quantity: {
-        value: it.quantity?.value > 0 ? it.quantity.value : 1,
+        value:
+          Number(it.quantity?.value) > 0 ? Number(it.quantity?.value) : 1,
         unit: it.quantity?.unit,
       },
       diagnosis: (it.diagnosis ?? []).map((d) => ({
@@ -322,6 +341,8 @@ const CreateCoverageEligibilityRequestPage: FC<
                 <CoverageEligibilityRequestItemSection
                   form={form}
                   defaultItemDiagnoses={isAuthRequirements ? defaultItemDiagnoses : []}
+                  requireEnhancementAllowed={requireEnhancementAllowed}
+                  prefilledItemSequences={prefilledItemSequences}
                 />
                 <Separator />
                 <CoverageEligibilityRequestOtherSection

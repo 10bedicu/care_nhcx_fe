@@ -38,11 +38,14 @@ import { Textarea } from "../ui/textarea";
 import ValuesetSelect from "../common/valueset-select";
 import { apis } from "@/apis";
 import { cn } from "@/lib/utils";
+import {
+  buildBenefitConditionErrors,
+  isModifierRequired,
+} from "@/lib/benefit-item-validation";
 import { createClaimFormSchema } from "./schema";
 import { AddQuestionnaireSection } from "./claim-questionnaire-section";
 import { Claim, ClaimUseChoice } from "@/types/claim";
 import {
-  BenefitCostQualifierType,
   InsurancePlanBenefitDetail,
 } from "@/types/insurance_plan";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
@@ -750,7 +753,6 @@ export function ClaimItemSection({
 
   const planId = planListData?.results?.[0]?.id ?? null;
   const watchedItems = form.watch("item");
-  const hasSubmitted = form.formState.submitCount > 0;
   const claimUse = form.watch("use");
 
   return (
@@ -789,10 +791,7 @@ export function ClaimItemSection({
           return (
           <Card
             className={cn(
-              hasAnyError &&
-                (hasSubmitted
-                  ? "border-destructive ring-1 ring-destructive"
-                  : "border-amber-400 ring-1 ring-amber-400")
+              hasAnyError && "border-red-500 ring-1 ring-red-500"
             )}
           >
             <CardHeader>
@@ -1175,37 +1174,25 @@ export function ClaimItemSection({
               </div>
             </CardContent>
             {hasAnyError && (
-              <CardFooter
-                className={cn(
-                  "px-6 py-3 border-t flex-col items-start gap-2",
-                  hasSubmitted
-                    ? "border-destructive/30 bg-destructive/5"
-                    : "border-amber-300 bg-amber-50"
-                )}
-              >
+              <CardFooter className="px-6 py-3 border-t border-red-200 bg-red-50 flex-col items-start gap-2">
                 {mandatoryDocsError && (
-                  <div
-                    className={cn(
-                      "flex items-center gap-2 text-sm font-medium",
-                      hasSubmitted ? "text-destructive" : "text-amber-700"
-                    )}
-                  >
-                    <AlertCircleIcon className="h-4 w-4 flex-shrink-0" />
+                  <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                    <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
                     {mandatoryDocsError}
                   </div>
                 )}
                 {amountCapError && (
-                  <div className="flex items-center gap-2 text-sm font-medium text-destructive">
-                    <AlertCircleIcon className="h-4 w-4 flex-shrink-0" />
+                  <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                    <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
                     {amountCapError}
                   </div>
                 )}
                 {conditionErrors && conditionErrors.split(" • ").map((err, i) => (
                   <div
                     key={i}
-                    className="flex items-center gap-2 text-sm font-medium text-destructive"
+                    className="flex items-center gap-2 text-sm font-medium text-red-600"
                   >
-                    <AlertCircleIcon className="h-4 w-4 flex-shrink-0" />
+                    <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
                     {err}
                   </div>
                 ))}
@@ -1294,7 +1281,12 @@ function ModifierField({
       name={`item.${index}.modifier`}
       render={({ field }) => (
         <FormItem className="space-y-1.5">
-          <FormLabel>Modifier</FormLabel>
+          <FormLabel>
+            Modifier
+            {isModifierRequired(benefitDetail) && (
+              <span className="text-red-500 text-sm ml-0.5">*</span>
+            )}
+          </FormLabel>
           <FormControl>
             <div className="grid gap-4">
               <Autocomplete
@@ -1698,83 +1690,20 @@ function ItemValidationEffects({
 
   // Effect: set condition errors whenever quantity or modifiers change
   useEffect(() => {
-    if (!benefitDetail?.conditions?.length) {
-      form.setValue(`item.${index}._condition_errors`, undefined);
-      return;
-    }
-
-    // Build a map of qualifier_code → qualifier_type for fast lookup
-    const qualifierTypeMap = new Map<string, BenefitCostQualifierType>();
-    for (const cost of benefitDetail.costs ?? []) {
-      for (const q of cost.qualifiers) {
-        qualifierTypeMap.set(q.qualifier_code, q.qualifier_type);
-      }
-    }
-
-    const stratificationModifiers = modifiers.filter(
-      (m) => qualifierTypeMap.get(m.code) === "stratification"
+    const errors = buildBenefitConditionErrors(
+      benefitDetail,
+      Number(quantityValue),
+      modifiers
     );
-    const implantModifiers = modifiers.filter(
-      (m) => qualifierTypeMap.get(m.code) === "implant"
-    );
+    const nextError = errors.length > 0 ? errors.join(" • ") : undefined;
+    const currentError = form.getValues(`item.${index}._condition_errors`);
 
-    const errors: string[] = [];
-
-    for (const cond of benefitDetail.conditions) {
-      // Quantity
-      if (cond.quantity_allowed > 0 && quantityValue > cond.quantity_allowed) {
-        errors.push(
-          `Quantity ${quantityValue} exceeds the allowed maximum of ${cond.quantity_allowed}`
-        );
-      }
-
-      // Stratifications
-      if (stratificationModifiers.length > 0) {
-        if (!cond.stratification_allowed) {
-          errors.push("Stratification is not allowed for this benefit");
-        } else {
-          if (
-            !cond.multiple_stratification_allowed &&
-            stratificationModifiers.length > 1
-          ) {
-            errors.push("Only one stratification is allowed");
-          } else if (
-            cond.maximum_stratification_allowed > 0 &&
-            stratificationModifiers.length > cond.maximum_stratification_allowed
-          ) {
-            errors.push(
-              `Maximum ${cond.maximum_stratification_allowed} stratification(s) allowed, ${stratificationModifiers.length} selected`
-            );
-          }
-        }
-      }
-
-      // Implants
-      if (implantModifiers.length > 0) {
-        if (!cond.implant_applicable) {
-          errors.push("Implants are not applicable for this benefit");
-        } else {
-          if (
-            !cond.multiple_implants_allowed &&
-            implantModifiers.length > 1
-          ) {
-            errors.push("Only one implant is allowed");
-          } else if (
-            cond.maximum_implants_allowed > 0 &&
-            implantModifiers.length > cond.maximum_implants_allowed
-          ) {
-            errors.push(
-              `Maximum ${cond.maximum_implants_allowed} implant(s) allowed, ${implantModifiers.length} selected`
-            );
-          }
-        }
-      }
+    if (currentError !== nextError) {
+      form.setValue(`item.${index}._condition_errors`, nextError, {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
     }
-
-    form.setValue(
-      `item.${index}._condition_errors`,
-      errors.length > 0 ? errors.join(" • ") : undefined
-    );
   }, [benefitDetail, quantityValue, modifiers, form, index]);
 
   return null;
@@ -2683,7 +2612,7 @@ function AddSupportingInfoSection({
       <div
         className={cn(
           "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
-          unsatisfiedCount > 0 && "border-amber-400 bg-amber-50/50"
+          unsatisfiedCount > 0 && "border-red-500 bg-red-50/50"
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -2708,7 +2637,7 @@ function AddSupportingInfoSection({
       </div>
 
       {(mandatoryDocsFieldState.error?.message || mandatoryDocsField.value) && (
-        <p className="text-sm font-medium text-destructive px-1">
+        <p className="text-sm font-medium text-red-600 px-1">
           {mandatoryDocsFieldState.error?.message || mandatoryDocsField.value}
         </p>
       )}
@@ -2737,15 +2666,15 @@ function AddSupportingInfoSection({
                       className={cn(
                         "flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm",
                         status === "satisfied" && "bg-green-50 text-green-800",
-                        status === "incomplete" && "bg-amber-50 text-amber-800",
-                        status === "missing" && "bg-amber-50 text-amber-800"
+                        status === "incomplete" && "bg-red-50 text-red-800",
+                        status === "missing" && "bg-red-50 text-red-800"
                       )}
                     >
                       <div className="flex items-center gap-1.5 min-w-0">
                         {status === "satisfied" ? (
                           <CheckCircle2Icon className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
                         ) : (
-                          <AlertCircleIcon className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                          <AlertCircleIcon className="w-3.5 h-3.5 text-red-600 flex-shrink-0" />
                         )}
                         <span className="truncate">
                           {label}{" "}
@@ -2759,7 +2688,7 @@ function AddSupportingInfoSection({
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-6 text-xs px-2 shrink-0 border-amber-300 bg-white hover:bg-amber-50"
+                          className="h-6 text-xs px-2 shrink-0 border-red-300 bg-white hover:bg-red-50"
                           onClick={(e) => {
                             e.stopPropagation();
                             addSupportingInfoForRequirement(req);
@@ -2770,7 +2699,7 @@ function AddSupportingInfoSection({
                         </Button>
                       )}
                       {status === "incomplete" && (
-                        <span className="text-xs text-amber-600 shrink-0 font-medium">
+                        <span className="text-xs text-red-600 shrink-0 font-medium">
                           Upload required
                         </span>
                       )}

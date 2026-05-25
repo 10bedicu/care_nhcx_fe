@@ -29,12 +29,14 @@ import { Label } from "../ui/label";
 import { Textarea } from "../ui/textarea";
 import ValuesetSelect from "../common/valueset-select";
 import { apis } from "@/apis";
-import {
-  BenefitCostQualifierType,
-} from "@/types/insurance_plan";
 import { cn } from "@/lib/utils";
+import {
+  buildBenefitConditionErrors,
+  buildCrossItemErrors,
+  isModifierRequired,
+} from "@/lib/benefit-item-validation";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 
@@ -44,6 +46,10 @@ interface CoverageEligibilityRequestItemSectionProps {
   >;
   /** Encounter diagnoses pre-mapped to the form's diagnosis shape, injected into every new item. */
   defaultItemDiagnoses?: { diagnosis_reference?: string; diagnosis_code?: { system: string; code: string; display?: string } }[];
+  /** When adding items to an auth-requirements CE, only benefits with enhancement allowed are permitted. */
+  requireEnhancementAllowed?: boolean;
+  /** Sequences of items prefilled from the linked CE — exempt from enhancement validation. */
+  prefilledItemSequences?: Set<number>;
 }
 
 const BENEFIT_CATEGORY_SYSTEM =
@@ -55,6 +61,8 @@ const PROCEDURE_CODE_SYSTEM =
 export function CoverageEligibilityRequestItemSection({
   form,
   defaultItemDiagnoses = [],
+  requireEnhancementAllowed = false,
+  prefilledItemSequences,
 }: CoverageEligibilityRequestItemSectionProps) {
   const { fields, append, remove } = useFieldArray({
     name: "item",
@@ -79,6 +87,61 @@ export function CoverageEligibilityRequestItemSection({
 
   const planId = planListData?.results?.[0]?.id ?? null;
 
+  const productCodesKey = fields
+    .map((_, index) => form.watch(`item.${index}.product_or_service`)?.code ?? "")
+    .join("|");
+
+  const productCodes = useMemo(
+    () => [...new Set(productCodesKey.split("|").filter(Boolean))],
+    [productCodesKey]
+  );
+
+  const benefitDetailQueries = useQueries({
+    queries: productCodes.map((code) => ({
+      queryKey: ["insurancePlanBenefit", "lookup", planId, code],
+      queryFn: () =>
+        apis.insurancePlanBenefit.lookup({
+          insurance_plan: planId!,
+          type_code: code,
+        }),
+      enabled: Boolean(planId && code),
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
+
+  const benefitDetailsDataKey = productCodes
+    .map((code, index) => `${code}:${benefitDetailQueries[index]?.data?.id ?? ""}`)
+    .join("|");
+
+  const benefitDetailsByCode = useMemo(() => {
+    const map = new Map<
+      string,
+      (typeof benefitDetailQueries)[number]["data"]
+    >();
+    productCodes.forEach((code, index) => {
+      map.set(code, benefitDetailQueries[index]?.data);
+    });
+    return map;
+  }, [productCodes, benefitDetailsDataKey]);
+
+  const crossItemErrorsByIndex = useMemo(() => {
+    const validationItems = fields.map((_, index) => ({
+      sequence: form.getValues(`item.${index}.sequence`),
+      product_or_service: form.getValues(`item.${index}.product_or_service`),
+    }));
+    return buildCrossItemErrors(validationItems, benefitDetailsByCode, {
+      requireEnhancementAllowed,
+      enhancementExemptSequences: prefilledItemSequences,
+    });
+  }, [
+    fields.length,
+    productCodesKey,
+    benefitDetailsByCode,
+    requireEnhancementAllowed,
+    prefilledItemSequences,
+    form,
+  ]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3 mb-6">
@@ -97,14 +160,15 @@ export function CoverageEligibilityRequestItemSection({
 
       <div className="space-y-4">
         {fields.map((field, index) => {
-          const watchedItem = form.watch(`item.${index}`);
-          const conditionErrors = watchedItem?._condition_errors;
+          const conditionErrors = form.watch(`item.${index}._condition_errors`);
           const hasAnyError = !!conditionErrors;
+          const crossItemErrorsKey =
+            crossItemErrorsByIndex.get(index)?.join(" • ") ?? "";
           return (
           <Card
             key={field.id}
             className={cn(
-              hasAnyError && "border-destructive ring-1 ring-destructive"
+              hasAnyError && "border-red-500 ring-1 ring-red-500"
             )}
           >
             <CardHeader>
@@ -255,17 +319,18 @@ export function CoverageEligibilityRequestItemSection({
                 form={form}
                 index={index}
                 planId={planId}
+                crossItemErrorsKey={crossItemErrorsKey}
               />
             </CardContent>
             {hasAnyError && (
-              <CardFooter className="px-6 py-3 border-t border-destructive/30 bg-destructive/5 flex-col items-start gap-2">
+              <CardFooter className="px-6 py-3 border-t border-red-200 bg-red-50 flex-col items-start gap-2">
                 {conditionErrors &&
                   conditionErrors.split(" • ").map((err, i) => (
                     <div
                       key={i}
-                      className="flex items-center gap-2 text-sm font-medium text-destructive"
+                      className="flex items-center gap-2 text-sm font-medium text-red-600"
                     >
-                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0" />
+                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
                       {err}
                     </div>
                   ))}
@@ -299,7 +364,7 @@ export function CoverageEligibilityRequestItemSection({
                       product_or_service: undefined,
                       modifier: [],
                       quantity: {
-                        value: 0,
+                        value: 1,
                       },
                       diagnosis: defaultItemDiagnoses.map((d) => ({ ...d })),
                       supporting_info_sequence: allSequences,
@@ -366,7 +431,12 @@ function ModifierField({
       name={`item.${index}.modifier`}
       render={({ field }) => (
         <FormItem className="space-y-1.5">
-          <FormLabel>Modifier</FormLabel>
+          <FormLabel>
+            Modifier
+            {isModifierRequired(benefitDetail) && (
+              <span className="text-red-500 text-sm ml-0.5">*</span>
+            )}
+          </FormLabel>
           <FormControl>
             <div className="grid gap-4">
               <Autocomplete
@@ -436,10 +506,12 @@ function CEItemValidationEffects({
   form,
   index,
   planId,
+  crossItemErrorsKey = "",
 }: {
   form: UseFormReturn<z.infer<typeof createCoverageEligibilityRequestFormSchema>>;
   index: number;
   planId: string | null;
+  crossItemErrorsKey?: string;
 }) {
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
   const quantityValue = form.watch(`item.${index}.quantity.value`);
@@ -463,77 +535,33 @@ function CEItemValidationEffects({
   });
 
   useEffect(() => {
-    if (!benefitDetail?.conditions?.length) {
-      form.setValue(`item.${index}._condition_errors`, undefined);
-      return;
-    }
-
-    const qualifierTypeMap = new Map<string, BenefitCostQualifierType>();
-    for (const cost of benefitDetail.costs ?? []) {
-      for (const q of cost.qualifiers) {
-        qualifierTypeMap.set(q.qualifier_code, q.qualifier_type);
-      }
-    }
-
-    const stratificationModifiers = modifiers.filter(
-      (m) => qualifierTypeMap.get(m.code) === "stratification"
+    const conditionErrors = buildBenefitConditionErrors(
+      benefitDetail,
+      Number(quantityValue),
+      modifiers
     );
-    const implantModifiers = modifiers.filter(
-      (m) => qualifierTypeMap.get(m.code) === "implant"
-    );
+    const crossItemErrors = crossItemErrorsKey
+      ? crossItemErrorsKey.split(" • ")
+      : [];
+    const allErrors = [...conditionErrors, ...crossItemErrors];
+    const nextError =
+      allErrors.length > 0 ? allErrors.join(" • ") : undefined;
+    const currentError = form.getValues(`item.${index}._condition_errors`);
 
-    const errors: string[] = [];
-
-    for (const cond of benefitDetail.conditions) {
-      if (cond.quantity_allowed > 0 && quantityValue > cond.quantity_allowed) {
-        errors.push(
-          `Quantity ${quantityValue} exceeds the allowed maximum of ${cond.quantity_allowed}`
-        );
-      }
-
-      if (stratificationModifiers.length > 0) {
-        if (!cond.stratification_allowed) {
-          errors.push("Stratification is not allowed for this benefit");
-        } else {
-          if (
-            !cond.multiple_stratification_allowed &&
-            stratificationModifiers.length > 1
-          ) {
-            errors.push("Only one stratification is allowed");
-          } else if (
-            cond.maximum_stratification_allowed > 0 &&
-            stratificationModifiers.length > cond.maximum_stratification_allowed
-          ) {
-            errors.push(
-              `Maximum ${cond.maximum_stratification_allowed} stratification(s) allowed, ${stratificationModifiers.length} selected`
-            );
-          }
-        }
-      }
-
-      if (implantModifiers.length > 0) {
-        if (!cond.implant_applicable) {
-          errors.push("Implants are not applicable for this benefit");
-        } else {
-          if (!cond.multiple_implants_allowed && implantModifiers.length > 1) {
-            errors.push("Only one implant is allowed");
-          } else if (
-            cond.maximum_implants_allowed > 0 &&
-            implantModifiers.length > cond.maximum_implants_allowed
-          ) {
-            errors.push(
-              `Maximum ${cond.maximum_implants_allowed} implant(s) allowed, ${implantModifiers.length} selected`
-            );
-          }
-        }
-      }
+    if (currentError !== nextError) {
+      form.setValue(`item.${index}._condition_errors`, nextError, {
+        shouldDirty: false,
+        shouldValidate: false,
+      });
     }
-
-    form.setValue(
-      `item.${index}._condition_errors`,
-      errors.length > 0 ? errors.join(" • ") : undefined
-    );
-  }, [benefitDetail, quantityValue, modifiers, form, index]);
+  }, [
+    benefitDetail,
+    quantityValue,
+    modifiers,
+    crossItemErrorsKey,
+    form,
+    index,
+  ]);
 
   return null;
 }
