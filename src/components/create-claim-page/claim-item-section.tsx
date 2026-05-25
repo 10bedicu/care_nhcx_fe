@@ -1051,7 +1051,12 @@ export function ClaimItemSection({
                   name={`item.${index}.serviced_period.end`}
                   render={({ field }) => (
                     <FormItem className="space-y-1.5">
-                      <FormLabel>Service Period End</FormLabel>
+                      <FormLabel>
+                        Service Period End
+                        {claimUse === "claim" && (
+                          <span className="text-red-500 text-sm ml-0.5">*</span>
+                        )}
+                      </FormLabel>
                       <FormControl>
                         <DateTimePicker
                           value={

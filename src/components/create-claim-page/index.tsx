@@ -15,6 +15,8 @@ import {
   DEFAULT_SUPPORTING_INFO_CATEGORY,
   DEFAULT_SUPPORTING_INFO_CODE,
   chargeItemHasCoding,
+  encounterServicedPeriod,
+  mergeServicedPeriod,
   parsePositiveNumber,
 } from "@/lib/prefill";
 import { FC, useEffect, useMemo, useRef, useState } from "react";
@@ -94,7 +96,10 @@ function mapClaimSupportingInfo(
   }));
 }
 
-function mapClaimItems(claim: Claim): ClaimFormValues["item"] {
+function mapClaimItems(
+  claim: Claim,
+  encounterPeriod?: ReturnType<typeof encounterServicedPeriod>,
+): ClaimFormValues["item"] {
   return (claim.item || []).map((it) => ({
     sequence: it.sequence,
     care_team_sequence: it.care_team_sequence || [],
@@ -109,7 +114,7 @@ function mapClaimItems(claim: Claim): ClaimFormValues["item"] {
       it.program_code && it.program_code.length > 0
         ? it.program_code
         : [DEFAULT_PROGRAM_CODE],
-    serviced_period: it.serviced_period,
+    serviced_period: mergeServicedPeriod(it.serviced_period, encounterPeriod),
     quantity: it.quantity,
     unit_price: 0,
     factor: it.factor,
@@ -121,13 +126,14 @@ function mapClaimToFormValues(
   current: ClaimFormValues,
   lockedUse: ClaimUseChoice | null,
   relatedClaimId?: string,
+  encounterPeriod?: ReturnType<typeof encounterServicedPeriod>,
 ): ClaimFormValues {
   return {
     facility: current.facility,
     patient: current.patient,
     encounter: current.encounter,
     use: lockedUse ?? claim.use,
-    status: "draft",
+    status: "active",
     priority: claim.priority,
     type: claim.type,
     billable_period: claim.billable_period,
@@ -164,7 +170,7 @@ function mapClaimToFormValues(
       on_admission: d.on_admission,
     })),
     insurance: mapClaimInsurance(claim.insurance),
-    item: mapClaimItems(claim),
+    item: mapClaimItems(claim, encounterPeriod),
     accident: claim.accident ?? undefined,
     payment: undefined,
     questionnaire_responses: (claim.questionnaire_responses ?? []).map((qr) => ({
@@ -181,6 +187,7 @@ function buildCePrefillValues(
   coverageEligibilityRequest: CoverageEligibilityRequest,
   current: ClaimFormValues,
   lockedUse: ClaimUseChoice | null,
+  encounterPeriod?: ReturnType<typeof encounterServicedPeriod>,
 ): ClaimFormValues {
   const ceItems = coverageEligibilityRequest.item ?? [];
   const ceSupportingInfo = coverageEligibilityRequest.supporting_info ?? [];
@@ -235,7 +242,7 @@ function buildCePrefillValues(
       charge_items: (it.charge_items ?? []).map((ci) => ci.id),
       modifier: it.modifier ?? [],
       program_code: [DEFAULT_PROGRAM_CODE],
-      serviced_period: undefined,
+      serviced_period: encounterPeriod,
       quantity: {
         value: it.quantity?.value > 0 ? it.quantity.value : 1,
         unit: it.quantity?.unit,
@@ -247,6 +254,7 @@ function buildCePrefillValues(
 
   return {
     ...current,
+    status: "active",
     use: lockedUse ?? current.use,
     priority: current.priority ?? "normal",
     related: current.related ?? [],
@@ -295,7 +303,10 @@ function overlayClaimOnCePrefill(
         claimItem.program_code && claimItem.program_code.length > 0
           ? claimItem.program_code
           : ceItem.program_code,
-      serviced_period: claimItem.serviced_period,
+      serviced_period: mergeServicedPeriod(
+        claimItem.serviced_period,
+        ceItem.serviced_period,
+      ),
       quantity: claimItem.quantity ?? ceItem.quantity,
       unit_price: 0,
       factor: claimItem.factor,
@@ -396,7 +407,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       facility: facilityId,
       patient: patientId,
       encounter: encounterId,
-      status: "draft",
+      status: "active",
       priority: "normal",
       use: lockedUse ?? undefined,
     },
@@ -685,6 +696,8 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       chargeItemHasCoding,
     );
 
+    const encounterPeriod = encounterServicedPeriod(encounter);
+
     const emptyItemTemplate = {
       care_team_sequence: [...careTeamSequences],
       procedure_sequence: [] as number[],
@@ -692,7 +705,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       program_code: [DEFAULT_PROGRAM_CODE] as z.infer<
         typeof createClaimFormSchema
       >["item"][number]["program_code"],
-      serviced_period: undefined,
+      serviced_period: encounterPeriod,
       factor: undefined,
     };
 
@@ -752,9 +765,11 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   useEffect(() => {
     if (!isGuidedFlow) return;
     if (didPrefillGuidedRef.current) return;
+    if (!encounterFetched) return;
 
     const current = form.getValues();
     const effectiveUse = lockedUse ?? current.use;
+    const encounterPeriod = encounterServicedPeriod(encounter);
 
     if (effectiveUse === "claim") {
       if (!prefilledClaimId) return;
@@ -768,6 +783,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
           current,
           lockedUse,
           relatedClaimId,
+          encounterPeriod,
         ),
         { keepDefaultValues: false },
       );
@@ -786,6 +802,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         coverageEligibilityRequest,
         current,
         lockedUse,
+        encounterPeriod,
       );
       const finalValues =
         prefilledClaim && prefilledClaimId
@@ -803,6 +820,8 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     prefilledClaim,
     prefilledClaimId,
     prefilledClaimFetched,
+    encounter,
+    encounterFetched,
     form,
     relatedClaimId,
   ]);

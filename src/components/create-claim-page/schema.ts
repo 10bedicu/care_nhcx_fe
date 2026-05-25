@@ -313,4 +313,16 @@ export const createClaimFormSchema = z
         "Total claim amount exceeds available wallet balance",
       path: ["_total_amount_cap_error"],
     })
-  );
+  )
+  .superRefine((data, ctx) => {
+    if (data.use !== "claim") return;
+    data.item.forEach((item, index) => {
+      if (!item.serviced_period?.end) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Service end date is required",
+          path: ["item", index, "serviced_period", "end"],
+        });
+      }
+    });
+  });

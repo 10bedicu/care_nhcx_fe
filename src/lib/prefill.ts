@@ -1,5 +1,6 @@
 import { ChargeItem } from "@/types/charge_item";
-import { Coding } from "@/types/base";
+import { Coding, Period } from "@/types/base";
+import { Encounter } from "@/types/encounter";
 import { InsurancePlanBenefitDetail } from "@/types/insurance_plan";
 
 const SUPPORTING_INFO_CATEGORY_SYSTEM =
@@ -50,6 +51,25 @@ export const DEFAULT_ITEM_CATEGORY: Coding = {
 
 export function chargeItemHasCoding(ci: ChargeItem): boolean {
   return Boolean(ci.code?.system?.trim() && ci.code?.code?.trim());
+}
+
+export function encounterServicedPeriod(
+  encounter: Encounter | undefined | null,
+): Period | undefined {
+  const period = encounter?.period;
+  if (!period?.start && !period?.end) return undefined;
+  return period;
+}
+
+/** Merge serviced periods field-by-field; claim values take precedence. */
+export function mergeServicedPeriod(
+  claimPeriod: Period | undefined,
+  fallbackPeriod: Period | undefined,
+): Period | undefined {
+  const start = claimPeriod?.start ?? fallbackPeriod?.start;
+  const end = claimPeriod?.end ?? fallbackPeriod?.end;
+  if (!start && !end) return undefined;
+  return { start, end };
 }
 
 export function parsePositiveNumber(

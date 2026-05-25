@@ -1,4 +1,5 @@
-import { Coding } from "@/types/base";
+import { Coding, Period } from "@/types/base";
+
 import { Facility } from "@/types/facility";
 import { Patient } from "@/types/patient";
 import { User } from "@/types/user";
@@ -22,6 +23,7 @@ export type Encounter = {
   facility: Facility;
   encounter_class: EncounterClass;
   care_team: EncounterCareTeam[];
+  period: Period;
 
   [key: string]: unknown;
 };
