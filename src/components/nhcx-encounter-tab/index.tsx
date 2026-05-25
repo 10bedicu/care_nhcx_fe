@@ -100,6 +100,14 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
         new Date(a.created_date).getTime()
     )[0]?.id;
 
+  const latestClaimId = (claims?.results ?? [])
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.created_date).getTime() -
+        new Date(a.created_date).getTime()
+    )[0]?.id;
+
   return (
     <GlobalStoreProvider
       initialStore={{
@@ -232,6 +240,7 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
                       request={entry.record}
                       encounterId={encounter.id}
                       isCurrent={isCurrent}
+                      latestClaimId={latestClaimId}
                     />
                   );
                 }
@@ -242,6 +251,7 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
                     encounterId={encounter.id}
                     isCurrent={isCurrent}
                     latestCoverageEligibilityId={latestCoverageEligibilityId}
+                    latestClaimId={latestClaimId}
                   />
                 );
               })}

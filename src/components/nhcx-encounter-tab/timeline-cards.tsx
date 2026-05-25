@@ -173,15 +173,41 @@ function MoreActionsMenu({ items }: { items: MenuItem[] }) {
   );
 }
 
+/** Build a `/claims/new` URL with the standard guided-flow query params. */
+function buildClaimNewUrl({
+  use,
+  coverageEligibilityId,
+  latestClaimId,
+  relatedClaimId,
+}: {
+  use: "claim" | "preauthorization";
+  coverageEligibilityId?: string;
+  latestClaimId?: string;
+  relatedClaimId?: string;
+}): string {
+  const params = new URLSearchParams({ use });
+  if (coverageEligibilityId) {
+    params.set("coverage_eligibility", coverageEligibilityId);
+  }
+  if (latestClaimId) {
+    params.set("claim", latestClaimId);
+  }
+  if (relatedClaimId) {
+    params.set("related", relatedClaimId);
+  }
+  return `claims/new?${params.toString()}`;
+}
+
 // ─── Coverage Eligibility actions ────────────────────────────────────────────
 
 interface CoverageEligibilityTimelineCardProps extends BaseProps {
   request: CoverageEligibilityRequest;
+  latestClaimId?: string;
 }
 
 export const CoverageEligibilityTimelineCard: FC<
   CoverageEligibilityTimelineCardProps
-> = ({ request, isCurrent }) => {
+> = ({ request, isCurrent, latestClaimId }) => {
   const isValidation = hasValidationPurpose(request);
   const isAuthRequirements = hasAuthRequirementsPurpose(request);
   const validationOutcome = isValidation
@@ -263,7 +289,11 @@ export const CoverageEligibilityTimelineCard: FC<
               variant="outline"
             />
             <ActionButton
-              to={`claims/new?use=preauthorization&coverage_eligibility=${request.id}`}
+              to={buildClaimNewUrl({
+                use: "preauthorization",
+                coverageEligibilityId: request.id,
+                latestClaimId,
+              })}
               label="Start Pre-Auth"
               icon={<ArrowRightIcon className="h-4 w-4" />}
             />
@@ -297,6 +327,8 @@ interface ClaimTimelineCardProps extends BaseProps {
   claim: Claim;
   /** The most recent CE to wire as a query param when redirecting back to /coverages/new. */
   latestCoverageEligibilityId?: string;
+  /** The most recent claim on the encounter — always passed to /claims/new. */
+  latestClaimId?: string;
 }
 
 export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
@@ -304,6 +336,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   isCurrent,
   encounterId,
   latestCoverageEligibilityId,
+  latestClaimId,
 }) => {
   const queryClient = useQueryClient();
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -397,13 +430,23 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
       primaryActions = [
         <ActionButton
           key="claim"
-          to={`claims/new?use=claim&related=${claim.id}${ceQueryParam}`}
+          to={buildClaimNewUrl({
+            use: "claim",
+            coverageEligibilityId: latestCoverageEligibilityId,
+            latestClaimId,
+            relatedClaimId: claim.id,
+          })}
           label="Proceed to Claim"
           icon={<ArrowRightIcon className="h-4 w-4" />}
         />,
         <ActionButton
           key="enhancement"
-          to={`claims/new?use=preauthorization&related=${claim.id}${ceQueryParam}`}
+          to={buildClaimNewUrl({
+            use: "preauthorization",
+            coverageEligibilityId: latestCoverageEligibilityId,
+            latestClaimId,
+            relatedClaimId: claim.id,
+          })}
           label="Enhancement"
           icon={<PlusCircleIcon className="h-4 w-4" />}
           variant="outline"
@@ -414,7 +457,12 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
       primaryActions = [
         <ActionButton
           key="claim"
-          to={`claims/new?use=claim&related=${claim.id}${ceQueryParam}`}
+          to={buildClaimNewUrl({
+            use: "claim",
+            coverageEligibilityId: latestCoverageEligibilityId,
+            latestClaimId,
+            relatedClaimId: claim.id,
+          })}
           label="Proceed to Claim"
           icon={<ArrowRightIcon className="h-4 w-4" />}
         />,
@@ -430,7 +478,12 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
         {
           label: "Enhancement",
           icon: <PlusCircleIcon className="h-4 w-4" />,
-          to: `claims/new?use=preauthorization&related=${claim.id}${ceQueryParam}`,
+          to: buildClaimNewUrl({
+            use: "preauthorization",
+            coverageEligibilityId: latestCoverageEligibilityId,
+            latestClaimId,
+            relatedClaimId: claim.id,
+          }),
         },
         ...preauthAlwaysExtras,
       ];
@@ -449,7 +502,12 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
       primaryActions = [
         <ActionButton
           key="resubmit"
-          to={`claims/new?use=preauthorization&related=${claim.id}${ceQueryParam}`}
+          to={buildClaimNewUrl({
+            use: "preauthorization",
+            coverageEligibilityId: latestCoverageEligibilityId,
+            latestClaimId,
+            relatedClaimId: claim.id,
+          })}
           label="Resubmit"
           icon={<RotateCwIcon className="h-4 w-4" />}
         />,
@@ -490,7 +548,12 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
       primaryActions = [
         <ActionButton
           key="resubmit"
-          to={`claims/new?use=claim&related=${claim.id}${ceQueryParam}`}
+          to={buildClaimNewUrl({
+            use: "claim",
+            coverageEligibilityId: latestCoverageEligibilityId,
+            latestClaimId,
+            relatedClaimId: claim.id,
+          })}
           label="Resubmit"
           icon={<RotateCwIcon className="h-4 w-4" />}
         />,
