@@ -1,5 +1,7 @@
 import { ChargeItem } from "@/types/charge_item";
+import { ClaimDiagnosisOnAdmissionChoice } from "@/types/claim";
 import { Coding, Period } from "@/types/base";
+import { Condition } from "@/types/condition";
 import { Encounter } from "@/types/encounter";
 import { InsurancePlanBenefitDetail } from "@/types/insurance_plan";
 
@@ -92,6 +94,214 @@ export function chargeItemLabel(ci: ChargeItem): string {
  * Collect the unique cost qualifiers from an IPB benefit detail and project
  * them as the `Coding[]` shape used by the form's `modifier` field.
  */
+export type ClaimPrefillDiagnosis = {
+  sequence: number;
+  type: Coding[];
+  diagnosis_reference?: string;
+  diagnosis_code?: Coding;
+  on_admission?: ClaimDiagnosisOnAdmissionChoice;
+};
+
+export type ClaimPrefillCareTeam = {
+  sequence: number;
+  provider: string;
+  responsible?: boolean;
+  role?: Coding;
+};
+
+export function codingKey(coding: Coding | undefined): string | null {
+  const code = coding?.code?.trim();
+  if (!code) return null;
+  return code;
+}
+
+function careTeamUsernameKey(
+  providerId: string | undefined,
+  username: string | undefined,
+  providerUsernameById: Map<string, string>,
+): string | null {
+  const resolvedUsername =
+    username?.trim() || providerUsernameById.get(providerId ?? "")?.trim();
+  if (resolvedUsername) return resolvedUsername.toLowerCase();
+  return providerId ?? null;
+}
+
+function buildProviderUsernameMap(
+  encounter: Encounter | undefined | null,
+  extra?: Map<string, string>,
+): Map<string, string> {
+  const map = new Map(extra);
+  for (const entry of encounter?.care_team ?? []) {
+    const providerId = entry.member?.id;
+    const username = entry.member?.username?.trim();
+    if (providerId && username) {
+      map.set(providerId, username);
+    }
+  }
+  return map;
+}
+
+/** Merge existing care team with encounter members, deduplicated by username. */
+export function mergeCareTeamWithEncounter(
+  existing: ClaimPrefillCareTeam[],
+  encounter: Encounter | undefined | null,
+  providerUsernameById: Map<string, string> = new Map(),
+): ClaimPrefillCareTeam[] {
+  const usernameMap = buildProviderUsernameMap(encounter, providerUsernameById);
+  const seen = new Set<string>();
+  const result: ClaimPrefillCareTeam[] = [];
+
+  for (const member of existing) {
+    const key = careTeamUsernameKey(
+      member.provider,
+      undefined,
+      usernameMap,
+    );
+    if (key) seen.add(key);
+    result.push({ ...member });
+  }
+
+  let nextSequence = Math.max(0, ...result.map((member) => member.sequence)) + 1;
+
+  for (const entry of encounter?.care_team ?? []) {
+    const providerId = entry.member?.id;
+    const key = careTeamUsernameKey(
+      providerId,
+      entry.member?.username,
+      usernameMap,
+    );
+    if (!key || !providerId || seen.has(key)) continue;
+    seen.add(key);
+    result.push({
+      sequence: nextSequence++,
+      provider: providerId,
+      responsible: false,
+      role: entry.role,
+    });
+  }
+
+  return result;
+}
+
+/** Build deduplicated claim diagnoses from encounter conditions. */
+export function buildEncounterDiagnoses(
+  conditions: Condition[],
+): ClaimPrefillDiagnosis[] {
+  return mergeDiagnosesWithEncounter([], conditions);
+}
+
+/** Build deduplicated claim care team from encounter participants. */
+export function buildEncounterCareTeam(
+  encounter: Encounter | undefined | null,
+): ClaimPrefillCareTeam[] {
+  return mergeCareTeamWithEncounter([], encounter);
+}
+
+/** Merge existing diagnoses with encounter conditions, deduplicated by code. */
+export function mergeDiagnosesWithEncounter(
+  existing: ClaimPrefillDiagnosis[],
+  encounterDiagnoses: Condition[],
+  additional: Array<{
+    diagnosis_code?: Coding;
+    type?: Coding[];
+    on_admission?: ClaimDiagnosisOnAdmissionChoice;
+  }> = [],
+): ClaimPrefillDiagnosis[] {
+  const seen = new Set<string>();
+  const result: ClaimPrefillDiagnosis[] = [];
+
+  for (const entry of existing) {
+    const key = codingKey(entry.diagnosis_code);
+    if (key) seen.add(key);
+    result.push({ ...entry });
+  }
+
+  let nextSequence = Math.max(0, ...result.map((entry) => entry.sequence)) + 1;
+
+  const add = (entry: {
+    diagnosis_code?: Coding;
+    type?: Coding[];
+    on_admission?: ClaimDiagnosisOnAdmissionChoice;
+  }) => {
+    const key = codingKey(entry.diagnosis_code);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    result.push({
+      sequence: nextSequence++,
+      type: entry.type?.length ? entry.type : [DEFAULT_DIAGNOSIS_TYPE],
+      diagnosis_code: entry.diagnosis_code,
+      on_admission: entry.on_admission ?? "unknown",
+    });
+  };
+
+  for (const condition of encounterDiagnoses) {
+    add({ diagnosis_code: condition.code });
+  }
+  for (const entry of additional) {
+    add(entry);
+  }
+
+  return result;
+}
+
+function uniqueSequences(sequences: number[]): number[] {
+  return [...new Set(sequences)];
+}
+
+/** Add encounter care team and diagnoses on top of existing form values. */
+export function applyEncounterPrefill<
+  T extends {
+    care_team: ClaimPrefillCareTeam[];
+    diagnosis: ClaimPrefillDiagnosis[];
+    item: Array<{
+      care_team_sequence: number[];
+      diagnosis_sequence: number[];
+    }>;
+  },
+>(
+  values: T,
+  encounter: Encounter | undefined | null,
+  encounterDiagnoses: Condition[],
+  options: {
+    extraDiagnoses?: Array<{
+      diagnosis_code?: Coding;
+      type?: Coding[];
+      on_admission?: ClaimDiagnosisOnAdmissionChoice;
+    }>;
+    providerUsernameById?: Map<string, string>;
+  } = {},
+): T {
+  const care_team = mergeCareTeamWithEncounter(
+    values.care_team ?? [],
+    encounter,
+    options.providerUsernameById,
+  );
+  const diagnosis = mergeDiagnosesWithEncounter(
+    values.diagnosis ?? [],
+    encounterDiagnoses,
+    options.extraDiagnoses ?? [],
+  );
+  const careTeamSequences = care_team.map((member) => member.sequence);
+  const diagnosisSequences = diagnosis.map((entry) => entry.sequence);
+
+  return {
+    ...values,
+    care_team,
+    diagnosis,
+    item: values.item.map((item) => ({
+      ...item,
+      care_team_sequence: uniqueSequences([
+        ...(item.care_team_sequence ?? []),
+        ...careTeamSequences,
+      ]),
+      diagnosis_sequence: uniqueSequences([
+        ...(item.diagnosis_sequence ?? []),
+        ...diagnosisSequences,
+      ]),
+    })),
+  } as T;
+}
+
 export function modifiersFromBenefit(
   benefit: InsurancePlanBenefitDetail | undefined
 ): Coding[] {

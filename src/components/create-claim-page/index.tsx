@@ -2,20 +2,22 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   CLAIM_USE_CHOICES,
   Claim,
-  ClaimDiagnosisOnAdmissionChoice,
   ClaimUseChoice,
 } from "@/types/claim";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { Condition, ConditionCategory } from "@/types/condition";
 import {
-  DEFAULT_DIAGNOSIS_TYPE,
   DEFAULT_ITEM_CATEGORY,
   DEFAULT_PROGRAM_CODE,
   DEFAULT_RELATED_RELATIONSHIP,
   DEFAULT_SUPPORTING_INFO_CATEGORY,
   DEFAULT_SUPPORTING_INFO_CODE,
+  applyEncounterPrefill,
+  buildEncounterCareTeam,
+  buildEncounterDiagnoses,
   chargeItemHasCoding,
   encounterServicedPeriod,
+  mergeDiagnosesWithEncounter,
   mergeServicedPeriod,
   parsePositiveNumber,
 } from "@/lib/prefill";
@@ -36,7 +38,7 @@ import { ClaimInsuranceSection } from "./claim-insurance-section";
 import { ClaimItemSection } from "./claim-item-section";
 import { ClaimOtherSection } from "./claim-other-section";
 import { ClaimRelatedSection } from "./claim-related-section";
-import { EncounterClass } from "@/types/encounter";
+import { Encounter, EncounterClass } from "@/types/encounter";
 import { FileUploadModel } from "@/types/file_upload";
 import { Form } from "@/components/ui/form";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
@@ -64,6 +66,14 @@ function parseStringParam(value: unknown): string | undefined {
 }
 
 type ClaimFormValues = z.infer<typeof createClaimFormSchema>;
+
+function claimProviderUsernameMap(claim: Claim): Map<string, string> {
+  return new Map(
+    (claim.care_team ?? [])
+      .filter((member) => member.provider?.id && member.provider?.username)
+      .map((member) => [member.provider.id, member.provider.username] as const),
+  );
+}
 
 function mapClaimInsurance(
   insurance: Claim["insurance"],
@@ -128,8 +138,10 @@ function mapClaimToFormValues(
   lockedUse: ClaimUseChoice | null,
   relatedClaimId?: string,
   encounterPeriod?: ReturnType<typeof encounterServicedPeriod>,
+  encounter?: Encounter | null,
+  encounterDiagnoses?: Condition[],
 ): ClaimFormValues {
-  return {
+  const baseValues: ClaimFormValues = {
     facility: current.facility,
     patient: current.patient,
     encounter: current.encounter,
@@ -182,6 +194,13 @@ function mapClaimToFormValues(
       item: qr.item,
     })),
   };
+
+  return applyEncounterPrefill(
+    baseValues,
+    encounter,
+    encounterDiagnoses ?? [],
+    { providerUsernameById: claimProviderUsernameMap(claim) },
+  );
 }
 
 function buildCePrefillValues(
@@ -189,28 +208,20 @@ function buildCePrefillValues(
   current: ClaimFormValues,
   lockedUse: ClaimUseChoice | null,
   encounterPeriod?: ReturnType<typeof encounterServicedPeriod>,
+  encounter?: Encounter | null,
+  encounterDiagnoses?: Condition[],
 ): ClaimFormValues {
   const ceItems = coverageEligibilityRequest.item ?? [];
   const ceSupportingInfo = coverageEligibilityRequest.supporting_info ?? [];
   const ceInsurance = coverageEligibilityRequest.insurance ?? [];
 
-  const seenDiagnoses = new Map<string, number>();
-  const diagnoses: ClaimFormValues["diagnosis"] = [];
-  let diagnosisSeq = 1;
-  for (const it of ceItems) {
-    for (const d of it.diagnosis ?? []) {
-      const codeKey = d.diagnosis_code?.code;
-      if (!codeKey || seenDiagnoses.has(codeKey)) continue;
-      seenDiagnoses.set(codeKey, diagnosisSeq);
-      diagnoses.push({
-        sequence: diagnosisSeq++,
-        type: [DEFAULT_DIAGNOSIS_TYPE],
-        diagnosis_reference: undefined,
-        diagnosis_code: d.diagnosis_code,
-        on_admission: "unknown",
-      });
-    }
-  }
+  const ceExtraDiagnoses = ceItems.flatMap((it) =>
+    (it.diagnosis ?? []).map((d) => ({
+      diagnosis_code: d.diagnosis_code,
+    })),
+  );
+
+  const ceDiagnosis = mergeDiagnosesWithEncounter([], [], ceExtraDiagnoses);
 
   const supportingInfo: ClaimFormValues["supporting_info"] = ceSupportingInfo
     .filter((s) => s.value_string || s.value_attachment)
@@ -226,16 +237,13 @@ function buildCePrefillValues(
   const validSiSeqs = new Set(supportingInfo.map((s) => s.sequence));
 
   const items: ClaimFormValues["item"] = ceItems.map((it, idx) => {
-    const dxSeqs = (it.diagnosis ?? [])
-      .map((d) => seenDiagnoses.get(d.diagnosis_code?.code ?? ""))
-      .filter((s): s is number => typeof s === "number");
     const infoSeqs = (it.supporting_info_sequence ?? []).filter((s) =>
       validSiSeqs.has(s),
     );
     return {
       sequence: idx + 1,
       care_team_sequence: [],
-      diagnosis_sequence: dxSeqs,
+      diagnosis_sequence: [],
       procedure_sequence: [],
       information_sequence: infoSeqs,
       category: it.category ?? DEFAULT_ITEM_CATEGORY,
@@ -253,26 +261,32 @@ function buildCePrefillValues(
     };
   });
 
-  return {
-    ...current,
-    status: "active",
-    use: lockedUse ?? current.use,
-    priority: current.priority ?? "normal",
-    related: current.related ?? [],
-    care_team: [],
-    procedure: [],
-    diagnosis: diagnoses,
-    supporting_info: supportingInfo,
-    insurance: mapClaimInsurance(ceInsurance),
-    item: items,
-    questionnaire_responses: [],
-  };
+  return applyEncounterPrefill(
+    {
+      ...current,
+      status: "active",
+      use: lockedUse ?? current.use,
+      priority: current.priority ?? "normal",
+      related: current.related ?? [],
+      care_team: [],
+      procedure: [],
+      diagnosis: ceDiagnosis,
+      supporting_info: supportingInfo,
+      insurance: mapClaimInsurance(ceInsurance),
+      item: items,
+      questionnaire_responses: [],
+    },
+    encounter,
+    encounterDiagnoses ?? [],
+  );
 }
 
 function overlayClaimOnCePrefill(
   ceValues: ClaimFormValues,
   claim: Claim,
   relatedClaimId?: string,
+  encounter?: Encounter | null,
+  encounterDiagnoses?: Condition[],
 ): ClaimFormValues {
   const claimItemsByCode = new Map(
     (claim.item ?? [])
@@ -287,7 +301,10 @@ function overlayClaimOnCePrefill(
 
     return {
       ...ceItem,
-      care_team_sequence: claimItem.care_team_sequence || [],
+      care_team_sequence:
+        claimItem.care_team_sequence?.length > 0
+          ? claimItem.care_team_sequence
+          : ceItem.care_team_sequence,
       diagnosis_sequence:
         claimItem.diagnosis_sequence?.length > 0
           ? claimItem.diagnosis_sequence
@@ -314,53 +331,58 @@ function overlayClaimOnCePrefill(
     };
   });
 
-  return {
-    ...ceValues,
-    priority: claim.priority,
-    type: claim.type,
-    billable_period: claim.billable_period,
-    care_team:
-      (claim.care_team || []).map((m) => ({
-        sequence: m.sequence,
-        provider: m.provider?.id,
-        responsible: m.responsible ?? false,
-        role: m.role,
-      })) || [],
-    procedure: (claim.procedure || []).map((p) => ({
-      sequence: p.sequence,
-      type: p.type || [],
-      date: p.date,
-      procedure_reference: undefined,
-      procedure_code: p.procedure_code,
-    })),
-    diagnosis: (claim.diagnosis || []).map((d) => ({
-      sequence: d.sequence,
-      type: d.type || [],
-      diagnosis_reference: undefined,
-      diagnosis_code: d.diagnosis_code,
-      on_admission: d.on_admission,
-    })),
-    supporting_info: mapClaimSupportingInfo(claim),
-    accident: claim.accident ?? undefined,
-    questionnaire_responses: (claim.questionnaire_responses ?? []).map((qr) => ({
-      sequence: 0,
-      questionnaire: qr.questionnaire,
-      category: qr.category,
-      code: qr.code,
-      item: qr.item,
-    })),
-    related: (ceValues.related || []).map((r) =>
-      r.claim === relatedClaimId
-        ? {
-            ...r,
-            relationship: r.relationship ?? DEFAULT_RELATED_RELATIONSHIP,
-            reference:
-              r.reference || claim.latest_response?.pre_auth_ref || "",
-          }
-        : r,
-    ),
-    item: mergedItems,
-  };
+  return applyEncounterPrefill(
+    {
+      ...ceValues,
+      priority: claim.priority,
+      type: claim.type,
+      billable_period: claim.billable_period,
+      care_team:
+        (claim.care_team || []).map((member) => ({
+          sequence: member.sequence,
+          provider: member.provider?.id,
+          responsible: member.responsible ?? false,
+          role: member.role,
+        })) || [],
+      diagnosis: (claim.diagnosis || []).map((entry) => ({
+        sequence: entry.sequence,
+        type: entry.type || [],
+        diagnosis_reference: undefined,
+        diagnosis_code: entry.diagnosis_code,
+        on_admission: entry.on_admission,
+      })),
+      procedure: (claim.procedure || []).map((p) => ({
+        sequence: p.sequence,
+        type: p.type || [],
+        date: p.date,
+        procedure_reference: undefined,
+        procedure_code: p.procedure_code,
+      })),
+      supporting_info: mapClaimSupportingInfo(claim),
+      accident: claim.accident ?? undefined,
+      questionnaire_responses: (claim.questionnaire_responses ?? []).map((qr) => ({
+        sequence: 0,
+        questionnaire: qr.questionnaire,
+        category: qr.category,
+        code: qr.code,
+        item: qr.item,
+      })),
+      related: (ceValues.related || []).map((r) =>
+        r.claim === relatedClaimId
+          ? {
+              ...r,
+              relationship: r.relationship ?? DEFAULT_RELATED_RELATIONSHIP,
+              reference:
+                r.reference || claim.latest_response?.pre_auth_ref || "",
+            }
+          : r,
+      ),
+      item: mergedItems,
+    },
+    encounter,
+    encounterDiagnoses ?? [],
+    { providerUsernameById: claimProviderUsernameMap(claim) },
+  );
 }
 
 export type CreateClaimPageProps = {
@@ -503,7 +525,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         });
         return res.results || [];
       },
-      enabled: !!patientId && !!encounterId && !isGuidedFlow,
+      enabled: !!patientId && !!encounterId,
       staleTime: 60 * 1000,
     });
 
@@ -662,13 +684,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
     didPrefillEncounterRef.current = true;
 
-    const diagnosis = (encounterDiagnoses || []).map((c, idx) => ({
-      sequence: idx + 1,
-      type: [DEFAULT_DIAGNOSIS_TYPE],
-      diagnosis_reference: undefined,
-      diagnosis_code: c.code,
-      on_admission: "unknown" as ClaimDiagnosisOnAdmissionChoice,
-    }));
+    const diagnosis = buildEncounterDiagnoses(encounterDiagnoses || []);
     const diagnosisSequences = diagnosis.map((d) => d.sequence);
 
     const supportingInfo = (encounterFiles || []).map((file, idx) => ({
@@ -682,15 +698,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     }));
     const informationSequences = supportingInfo.map((info) => info.sequence);
 
-    const care_team =
-      encounter?.care_team
-        ?.filter((entry) => entry.member?.id)
-        .map((entry, idx) => ({
-          sequence: idx + 1,
-          provider: entry.member.id,
-          responsible: false,
-          role: entry.role,
-        })) || [];
+    const care_team = buildEncounterCareTeam(encounter);
     const careTeamSequences = care_team.map((m) => m.sequence);
 
     const codedChargeItems = (encounterChargeItems || []).filter(
@@ -766,11 +774,12 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   useEffect(() => {
     if (!isGuidedFlow) return;
     if (didPrefillGuidedRef.current) return;
-    if (!encounterFetched) return;
+    if (!encounterFetched || !encounterDiagnosesFetched) return;
 
     const current = form.getValues();
     const effectiveUse = lockedUse ?? current.use;
     const encounterPeriod = encounterServicedPeriod(encounter);
+    const encounterDiagnosisList = encounterDiagnoses ?? [];
 
     if (effectiveUse === "claim") {
       if (!prefilledClaimId) return;
@@ -785,6 +794,8 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
           lockedUse,
           relatedClaimId,
           encounterPeriod,
+          encounter,
+          encounterDiagnosisList,
         ),
         { keepDefaultValues: false },
       );
@@ -804,10 +815,18 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         current,
         lockedUse,
         encounterPeriod,
+        encounter,
+        encounterDiagnosisList,
       );
       const finalValues =
         prefilledClaim && prefilledClaimId
-          ? overlayClaimOnCePrefill(ceValues, prefilledClaim, relatedClaimId)
+          ? overlayClaimOnCePrefill(
+              ceValues,
+              prefilledClaim,
+              relatedClaimId,
+              encounter,
+              encounterDiagnosisList,
+            )
           : ceValues;
 
       form.reset(finalValues, { keepDefaultValues: false });
@@ -822,6 +841,8 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     prefilledClaimId,
     prefilledClaimFetched,
     encounter,
+    encounterDiagnoses,
+    encounterDiagnosesFetched,
     encounterFetched,
     form,
     relatedClaimId,
@@ -991,11 +1012,13 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
     if (isGuidedFlow) {
       const effectiveUse = lockedUse ?? formUse;
+      const waitingDiagnoses =
+        !!patientId && !!encounterId && !encounterDiagnosesFetched;
 
       if (effectiveUse === "claim") {
         return (
-          !!prefilledClaimId &&
-          (!prefilledClaimFetched || !prefilledClaim)
+          waitingDiagnoses ||
+          (!!prefilledClaimId && (!prefilledClaimFetched || !prefilledClaim))
         );
       }
 
@@ -1007,7 +1030,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         return true;
       }
 
-      return !!coverageEligibilityId;
+      return waitingDiagnoses || !!coverageEligibilityId;
     }
 
     const waitingDiagnoses =
