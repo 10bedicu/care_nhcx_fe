@@ -426,6 +426,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
   const form = useForm<z.infer<typeof createClaimFormSchema>>({
     resolver: zodResolver(createClaimFormSchema),
+    mode: "onChange",
     defaultValues: {
       facility: facilityId,
       patient: patientId,
@@ -436,7 +437,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     },
   });
 
-  const { isDirty } = useFormState({ control: form.control });
+  const { isDirty, isValid } = useFormState({ control: form.control });
   const [hasBulkPrefill, setHasBulkPrefill] = useState(false);
   const isUnchangedPrefill = hasBulkPrefill && !isDirty;
 
@@ -1194,7 +1195,12 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                   size="lg"
                   type="submit"
                   loading={isSubmitting}
-                  disabled={isUnchangedPrefill || isFormPrefillLoading}
+                  disabled={
+                    isUnchangedPrefill ||
+                    isFormPrefillLoading ||
+                    !isValid ||
+                    !!form.watch("_total_amount_cap_error")
+                  }
                 >
                   Create Claim
                 </Button>

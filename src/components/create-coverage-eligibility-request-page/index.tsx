@@ -74,6 +74,7 @@ const CreateCoverageEligibilityRequestPage: FC<
     z.infer<typeof createCoverageEligibilityRequestFormSchema>
   >({
     resolver: zodResolver(createCoverageEligibilityRequestFormSchema),
+    mode: "onChange",
     defaultValues: {
       facility: facilityId,
       patient: patientId,
@@ -84,7 +85,7 @@ const CreateCoverageEligibilityRequestPage: FC<
     },
   });
 
-  const { isDirty } = useFormState({ control: form.control });
+  const { isDirty, isValid } = useFormState({ control: form.control });
   const [hasLinkedCePrefill, setHasLinkedCePrefill] = useState(false);
   const isUnchangedPrefill = hasLinkedCePrefill && !isDirty;
 
@@ -403,7 +404,9 @@ const CreateCoverageEligibilityRequestPage: FC<
                   size="lg"
                   type="submit"
                   loading={isSubmitting}
-                  disabled={isUnchangedPrefill || isFormPrefillLoading}
+                  disabled={
+                    isUnchangedPrefill || isFormPrefillLoading || !isValid
+                  }
                 >
                   Check Coverage Eligibility
                 </Button>
