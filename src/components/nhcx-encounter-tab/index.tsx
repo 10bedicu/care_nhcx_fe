@@ -5,6 +5,10 @@ import {
   CoverageEligibilityTimelineCard,
 } from "./timeline-cards";
 import {
+  EncounterPrereqsSkeleton,
+  TimelineSkeleton,
+} from "@/components/common/timeline-skeleton";
+import {
   buildTimeline,
   deriveValidationOutcome,
   findLatestClaim,
@@ -14,10 +18,6 @@ import {
 } from "./flow";
 
 import { Button } from "@/components/ui/button";
-import {
-  EncounterPrereqsSkeleton,
-  TimelineSkeleton,
-} from "@/components/common/timeline-skeleton";
 import { Encounter } from "@/types/encounter";
 import { FC } from "react";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
@@ -36,7 +36,7 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
     queryKey: ["coverage-eligibility-requests", encounter?.id],
     queryFn: () =>
       apis.coverageEligibilityRequest.list({
-        // encounter: encounter?.id, // FIXME: re-enable once backend accepts encounter filter consistently
+        encounter: encounter?.id,
       }),
     enabled: !!encounter?.id,
   });
@@ -55,7 +55,7 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
       queryKey: ["healthFacility", encounter?.facility.id],
       queryFn: () => apis.healthFacility.get(encounter?.facility.id),
       enabled: !!encounter?.facility.id,
-    }
+    },
   );
 
   const { data: provider, isLoading: isProviderLoading } = useQuery({
@@ -69,23 +69,17 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
   const hasProvider = !!provider;
   const isLoadingTimeline = isLoadingCoverages || isLoadingClaims;
 
-  const timeline = buildTimeline(
-    coverages?.results ?? [],
-    claims?.results ?? []
-  );
+  const encounterCoverages = coverages?.results ?? [];
 
   // Determine guided headline state. The CTA is shown when no CE:V exists yet,
   // or when the latest validation request hard-stops the flow (so the user can
   // start a fresh check after fixing the underlying issue).
-  const validationRequests = (coverages?.results ?? []).filter(
-    hasValidationPurpose
-  );
+  const validationRequests = encounterCoverages.filter(hasValidationPurpose);
   const latestValidation = validationRequests
     .slice()
     .sort(
       (a, b) =>
-        new Date(b.created_date).getTime() -
-        new Date(a.created_date).getTime()
+        new Date(b.created_date).getTime() - new Date(a.created_date).getTime(),
     )[0];
   const validationOutcome = latestValidation
     ? deriveValidationOutcome(latestValidation)
@@ -98,18 +92,19 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
   const showInitialCTA = !latestValidation;
 
   // Track the most recent CE id so we can propagate it through claim actions.
-  const latestCoverageEligibilityId = (coverages?.results ?? [])
+  const latestCoverageEligibilityId = encounterCoverages
     .slice()
     .sort(
       (a, b) =>
-        new Date(b.created_date).getTime() -
-        new Date(a.created_date).getTime()
+        new Date(b.created_date).getTime() - new Date(a.created_date).getTime(),
     )[0]?.id;
 
   const encounterClaims = claims?.results ?? [];
   const latestClaimId = findLatestClaim(encounterClaims)?.id;
   const latestSuccessfulClaimId =
     findLatestClaimWithSuccessfulResponse(encounterClaims)?.id;
+
+  const timeline = buildTimeline(encounterCoverages, encounterClaims);
 
   return (
     <GlobalStoreProvider
@@ -226,11 +221,13 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
             <div className="space-y-4">
               {isLoadingTimeline && <TimelineSkeleton count={3} />}
 
-              {!isLoadingTimeline && timeline.length === 0 && !showInitialCTA && (
-                <div className="text-center py-8 text-gray-500">
-                  No activity yet.
-                </div>
-              )}
+              {!isLoadingTimeline &&
+                timeline.length === 0 &&
+                !showInitialCTA && (
+                  <div className="text-center py-8 text-gray-500">
+                    No activity yet.
+                  </div>
+                )}
 
               {timeline.map((entry) => {
                 const isCurrent = isLatestRecord(timeline, entry);
