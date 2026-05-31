@@ -7,8 +7,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { FC, ReactNode, useEffect, useState } from "react";
+import {
+  NdhmReasonCodeOption,
+  toNdhmReasonCode,
+} from "@/lib/ndhm-reason-codes";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import { Button } from "@/components/ui/button";
+import { Coding } from "@/types/base";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -18,17 +30,22 @@ export interface ReasonDialogProps {
   title: string;
   description?: string;
   reasonLabel?: string;
-  placeholder?: string;
+  descriptionLabel?: string;
+  reasonPlaceholder?: string;
+  descriptionPlaceholder?: string;
   submitLabel?: string;
   variant?: "default" | "destructive";
   loading?: boolean;
-  onSubmit: (reason: string) => void;
+  reasonCodes: readonly NdhmReasonCodeOption[];
+  onSubmit: (payload: { reason_code?: Coding; description?: string }) => void;
   trigger?: ReactNode;
 }
 
+const NONE_REASON_VALUE = "__none__";
+
 /**
- * Modal that collects a free-text reason before invoking the supplied action.
- * Used for Cancel and Dispute flows.
+ * Modal that collects an optional NDHM reason code and description before
+ * invoking cancel or reprocess actions.
  */
 export const ReasonDialog: FC<ReasonDialogProps> = ({
   open,
@@ -36,22 +53,42 @@ export const ReasonDialog: FC<ReasonDialogProps> = ({
   title,
   description,
   reasonLabel = "Reason",
-  placeholder = "Enter a reason…",
+  descriptionLabel = "Description",
+  reasonPlaceholder = "Select a reason (optional)",
+  descriptionPlaceholder = "Add details for the payer (optional)…",
   submitLabel = "Submit",
   variant = "default",
   loading,
+  reasonCodes,
   onSubmit,
 }) => {
-  const [reason, setReason] = useState("");
+  const [selectedCode, setSelectedCode] = useState<string>(NONE_REASON_VALUE);
+  const [taskDescription, setTaskDescription] = useState("");
 
   useEffect(() => {
-    if (!open) setReason("");
+    if (!open) {
+      setSelectedCode(NONE_REASON_VALUE);
+      setTaskDescription("");
+    }
   }, [open]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reason.trim()) return;
-    onSubmit(reason.trim());
+    const payload = {
+      reason_code: undefined as Coding | undefined,
+      description: undefined as string | undefined,
+    };
+    if (selectedCode !== NONE_REASON_VALUE) {
+      const option = reasonCodes.find((c) => c.code === selectedCode);
+      if (option) {
+        payload.reason_code = toNdhmReasonCode(option);
+      }
+    }
+    const trimmedDescription = taskDescription.trim();
+    if (trimmedDescription) {
+      payload.description = trimmedDescription;
+    }
+    onSubmit(payload);
   };
 
   return (
@@ -59,25 +96,37 @@ export const ReasonDialog: FC<ReasonDialogProps> = ({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          {description && (
-            <DialogDescription>{description}</DialogDescription>
-          )}
+          {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="reason">
-              {reasonLabel}
-              <span className="text-red-500 text-sm ml-0.5">*</span>
-            </Label>
+            <Label htmlFor="reason-code">{reasonLabel}</Label>
+            <Select value={selectedCode} onValueChange={setSelectedCode}>
+              <SelectTrigger id="reason-code">
+                <SelectValue placeholder={reasonPlaceholder} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE_REASON_VALUE}>
+                  No specific reason
+                </SelectItem>
+                {reasonCodes.map((option) => (
+                  <SelectItem key={option.code} value={option.code}>
+                    {option.display}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="task-description">{descriptionLabel}</Label>
             <Textarea
-              id="reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder={placeholder}
+              id="task-description"
+              value={taskDescription}
+              onChange={(e) => setTaskDescription(e.target.value)}
+              placeholder={descriptionPlaceholder}
               rows={4}
-              required
-              autoFocus
             />
           </div>
 
@@ -88,13 +137,13 @@ export const ReasonDialog: FC<ReasonDialogProps> = ({
               onClick={() => onOpenChange(false)}
               disabled={loading}
             >
-              Cancel
+              Close
             </Button>
             <Button
               type="submit"
               variant={variant === "destructive" ? "destructive" : "default"}
               loading={loading}
-              disabled={!reason.trim() || loading}
+              disabled={loading}
             >
               {submitLabel}
             </Button>

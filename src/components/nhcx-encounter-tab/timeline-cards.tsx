@@ -30,6 +30,10 @@ import { Claim } from "@/types/claim";
 import ClaimCard from "../claim-encounter-tab/claim-card";
 import CoverageEligibilityCard from "../coverage-encounter-tab/coverage-eligibility-card";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
+import {
+  NDHM_CANCEL_REASON_CODES,
+  NDHM_REPROCESS_REASON_CODES,
+} from "@/lib/ndhm-reason-codes";
 import { ReasonDialog } from "./reason-dialog";
 import { apis } from "@/apis";
 import { cn, toast } from "@/lib/utils";
@@ -648,27 +652,31 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
             ? "Cancel Pre-Authorization"
             : "Cancel Claim"
         }
-        description="Please provide a reason for cancelling. The cancellation will be sent to the payer."
+        description="Optionally choose an NDHM reason and add details. The cancellation will be sent to the payer."
         reasonLabel="Cancellation reason"
-        placeholder="e.g. Patient withdrew consent, billing error…"
+        descriptionLabel="Additional details"
+        descriptionPlaceholder="e.g. Cancel preauth — patient discharged early"
         submitLabel="Confirm cancellation"
         variant="destructive"
+        reasonCodes={NDHM_CANCEL_REASON_CODES}
         loading={cancelMutation.isPending}
-        onSubmit={(reason) =>
-          cancelMutation.mutate({ id: claim.id, reason })
+        onSubmit={(body) =>
+          cancelMutation.mutate({ id: claim.id, ...body })
         }
       />
       <ReasonDialog
         open={disputeOpen}
         onOpenChange={setDisputeOpen}
         title="Raise Dispute"
-        description="Tell the payer why you’re disputing this decision so it can be re-adjudicated."
+        description="Optionally choose an NDHM reason and add details so the payer can re-adjudicate."
         reasonLabel="Dispute reason"
-        placeholder="e.g. Procedure incorrectly rejected, supporting documents attached…"
+        descriptionLabel="Additional details"
+        descriptionPlaceholder="e.g. Procedure incorrectly rejected, supporting documents attached"
         submitLabel="Send dispute"
+        reasonCodes={NDHM_REPROCESS_REASON_CODES}
         loading={disputeMutation.isPending}
-        onSubmit={(reason) =>
-          disputeMutation.mutate({ id: claim.id, reason })
+        onSubmit={(body) =>
+          disputeMutation.mutate({ id: claim.id, ...body })
         }
       />
     </>

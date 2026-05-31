@@ -3,17 +3,6 @@ import {
   CreateFileResponse,
   FileUploadModel,
 } from "@/types/file_upload";
-import { queryString, request } from "@/apis/request";
-
-import { AbhaNumber } from "@/types/abha_number";
-import { ChargeItem } from "@/types/charge_item";
-import { Claim } from "@/types/claim";
-import { Coding } from "@/types/base";
-import { Communication } from "@/types/communication";
-import { Condition } from "@/types/condition";
-import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
-import { Encounter } from "@/types/encounter";
-import { HealthFacility } from "@/types/health_facility";
 import {
   InsurancePlan,
   InsurancePlanBenefit,
@@ -25,6 +14,17 @@ import {
   InsurancePlanSupportingInfoRequirement,
   InsurancePlanTier,
 } from "@/types/insurance_plan";
+import { queryString, request } from "@/apis/request";
+
+import { AbhaNumber } from "@/types/abha_number";
+import { ChargeItem } from "@/types/charge_item";
+import { Claim } from "@/types/claim";
+import { Coding } from "@/types/base";
+import { Communication } from "@/types/communication";
+import { Condition } from "@/types/condition";
+import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
+import { Encounter } from "@/types/encounter";
+import { HealthFacility } from "@/types/health_facility";
 import { MemberBiometricAuth } from "@/types/member_biometric_auth";
 import { PaginatedResponse } from "./types";
 import { PaymentReconciliation } from "@/types/payment";
@@ -53,7 +53,7 @@ export const apis = {
         encounter?: string;
         limit?: number;
         offset?: number;
-      }
+      },
     ) => {
       const queryParams = {
         ordering: query?.ordering,
@@ -67,7 +67,7 @@ export const apis = {
       };
 
       return await request<PaginatedResponse<Condition>>(
-        `/api/v1/patient/${patientId}/diagnosis/` + queryString(queryParams)
+        `/api/v1/patient/${patientId}/diagnosis/` + queryString(queryParams),
       );
     },
   },
@@ -75,7 +75,7 @@ export const apis = {
   encounter: {
     get: async (facilityId: string, encounterId: string) => {
       return await request<Encounter>(
-        `/api/v1/encounter/${encounterId}/?facility=${facilityId}`
+        `/api/v1/encounter/${encounterId}/?facility=${facilityId}`,
       );
     },
   },
@@ -90,31 +90,31 @@ export const apis = {
         | "-modified_date";
     }) => {
       return await request<PaginatedResponse<CoverageEligibilityRequest>>(
-        "/api/nhcx/coverage-eligibility-request/" + queryString(query)
+        "/api/nhcx/coverage-eligibility-request/" + queryString(query),
       );
     },
 
     get: async (id: string) => {
       return await request<CoverageEligibilityRequest>(
-        `/api/nhcx/coverage-eligibility-request/${id}/`
+        `/api/nhcx/coverage-eligibility-request/${id}/`,
       );
     },
 
     latest: async (query?: { encounter?: string; purpose?: string }) => {
       return await request<CoverageEligibilityRequest>(
-        `/api/nhcx/coverage-eligibility-request/latest` + queryString(query)
+        `/api/nhcx/coverage-eligibility-request/latest` + queryString(query),
       );
     },
 
     create: async (
-      body: z.infer<typeof createCoverageEligibilityRequestFormSchema>
+      body: z.infer<typeof createCoverageEligibilityRequestFormSchema>,
     ) => {
       return await request<CoverageEligibilityRequest>(
         "/api/nhcx/coverage-eligibility-request/",
         {
           method: "POST",
           body: JSON.stringify(body),
-        }
+        },
       );
     },
 
@@ -123,7 +123,7 @@ export const apis = {
         `/api/nhcx/coverage-eligibility-request/${id}/check/`,
         {
           method: "POST",
-        }
+        },
       );
     },
   },
@@ -138,13 +138,13 @@ export const apis = {
         | "-modified_date";
     }) => {
       return await request<PaginatedResponse<Claim>>(
-        "/api/nhcx/claim/" + queryString(query)
+        "/api/nhcx/claim/" + queryString(query),
       );
     },
 
     latest: async (query?: { encounter?: string }) => {
       return await request<Claim>(
-        "/api/nhcx/claim/latest" + queryString(query)
+        "/api/nhcx/claim/latest" + queryString(query),
       );
     },
 
@@ -165,23 +165,35 @@ export const apis = {
       });
     },
 
-    cancel: async (params: { id: string; reason?: string }) => {
-      return await request<Claim>(`/api/nhcx/claim/${params.id}/cancel/`, {
+    cancel: async (
+      id: string,
+      body: {
+        reason_code?: Coding;
+        description?: string;
+      },
+    ) => {
+      return await request<Claim>(`/api/nhcx/claim/${id}/cancel/`, {
         method: "POST",
-        body: JSON.stringify({ reason: params.reason ?? undefined }),
+        body: JSON.stringify(body),
       });
     },
 
-    reprocess: async (params: { id: string; reason?: string }) => {
-      return await request<Claim>(`/api/nhcx/claim/${params.id}/reprocess/`, {
+    reprocess: async (
+      id: string,
+      body: {
+        reason_code?: Coding;
+        description?: string;
+      },
+    ) => {
+      return await request<Claim>(`/api/nhcx/claim/${id}/reprocess/`, {
         method: "POST",
-        body: JSON.stringify({ reason: params.reason ?? undefined }),
+        body: JSON.stringify(body),
       });
     },
 
     tasks: async (id: string) => {
       return await request<PaginatedResponse<Task>>(
-        `/api/nhcx/claim/${id}/tasks/`
+        `/api/nhcx/claim/${id}/tasks/`,
       );
     },
   },
@@ -199,7 +211,7 @@ export const apis = {
         `/api/v1/files/${id}/mark_upload_completed/`,
         {
           method: "POST",
-        }
+        },
       );
     },
 
@@ -215,7 +227,7 @@ export const apis = {
       offset?: number;
     }) => {
       return await request<PaginatedResponse<FileUploadModel>>(
-        `/api/v1/files/` + queryString(query)
+        `/api/v1/files/` + queryString(query),
       );
     },
   },
@@ -269,7 +281,7 @@ export const apis = {
             process: body.process ?? "Preauth",
             ...body,
           }),
-        }
+        },
       );
     },
   },
@@ -292,7 +304,7 @@ export const apis = {
           queryString({
             payer_id: params.payer_id,
             encounter_id: params.encounter_id,
-          })
+          }),
       );
     },
   },
@@ -306,7 +318,7 @@ export const apis = {
   healthFacility: {
     get: async (facilityId: string) => {
       return await request<HealthFacility>(
-        `/api/abdm/health_facility/${facilityId}/`
+        `/api/abdm/health_facility/${facilityId}/`,
       );
     },
   },
@@ -317,14 +329,14 @@ export const apis = {
       body?: {
         search?: string;
         count?: number;
-      }
+      },
     ) => {
       return await request<{ results: Coding[] }>(
         `/api/v1/valueset/${system}/expand/`,
         {
           method: "POST",
           body: JSON.stringify(body),
-        }
+        },
       );
     },
   },
@@ -336,13 +348,13 @@ export const apis = {
         limit?: string;
         offset?: string;
         search_text?: string;
-      }
+      },
     ) => {
       return await request<PaginatedResponse<User>>(
         `/api/v1/facility/${facilityId}/users/` + queryString(query),
         {
           method: "GET",
-        }
+        },
       );
     },
   },
@@ -360,7 +372,7 @@ export const apis = {
         `/api/nhcx/communication/${id}/send/`,
         {
           method: "POST",
-        }
+        },
       );
     },
   },
@@ -369,7 +381,7 @@ export const apis = {
     acknowledge: async (id: string) => {
       return await request<PaymentReconciliation>(
         `/api/nhcx/payment/${id}/acknowledge/`,
-        { method: "POST" }
+        { method: "POST" },
       );
     },
   },
@@ -382,7 +394,7 @@ export const apis = {
       ordering?: string;
     }) => {
       return await request<PaginatedResponse<InsurancePlan>>(
-        `/api/nhcx/insurance-plan/` + queryString(query)
+        `/api/nhcx/insurance-plan/` + queryString(query),
       );
     },
 
@@ -392,19 +404,19 @@ export const apis = {
 
     plans: async (id: string) => {
       return await request<InsurancePlanTier[]>(
-        `/api/nhcx/insurance-plan/${id}/plans/`
+        `/api/nhcx/insurance-plan/${id}/plans/`,
       );
     },
 
     coverages: async (id: string) => {
       return await request<InsurancePlanCoverageSection[]>(
-        `/api/nhcx/insurance-plan/${id}/coverages/`
+        `/api/nhcx/insurance-plan/${id}/coverages/`,
       );
     },
 
     extensions: async (id: string) => {
       return await request<InsurancePlanExtensions>(
-        `/api/nhcx/insurance-plan/${id}/extensions/`
+        `/api/nhcx/insurance-plan/${id}/extensions/`,
       );
     },
 
@@ -414,13 +426,13 @@ export const apis = {
         {
           method: "POST",
           body: JSON.stringify(body),
-        }
+        },
       );
     },
 
     questionnaires: async (id: string) => {
       return await request<InsurancePlanQuestionnaireDetail[]>(
-        `/api/nhcx/insurance-plan/${id}/questionnaires/`
+        `/api/nhcx/insurance-plan/${id}/questionnaires/`,
       );
     },
   },
@@ -455,13 +467,13 @@ export const apis = {
       offset?: number;
     }) => {
       return await request<PaginatedResponse<InsurancePlanBenefit>>(
-        `/api/nhcx/insurance-plan-benefit/` + queryString(query)
+        `/api/nhcx/insurance-plan-benefit/` + queryString(query),
       );
     },
 
     get: async (id: string) => {
       return await request<InsurancePlanBenefitDetail>(
-        `/api/nhcx/insurance-plan-benefit/${id}/`
+        `/api/nhcx/insurance-plan-benefit/${id}/`,
       );
     },
 
@@ -476,25 +488,25 @@ export const apis = {
         {
           method: "POST",
           body: JSON.stringify(body),
-        }
+        },
       );
     },
 
     requirements: async (id: string) => {
       return await request<InsurancePlanSupportingInfoRequirement[]>(
-        `/api/nhcx/insurance-plan-benefit/${id}/requirements/`
+        `/api/nhcx/insurance-plan-benefit/${id}/requirements/`,
       );
     },
 
     questionnaires: async (id: string) => {
       return await request<InsurancePlanQuestionnaire[]>(
-        `/api/nhcx/insurance-plan-benefit/${id}/questionnaires/`
+        `/api/nhcx/insurance-plan-benefit/${id}/questionnaires/`,
       );
     },
 
     extensions: async (id: string) => {
       return await request<InsurancePlanExtensions>(
-        `/api/nhcx/insurance-plan-benefit/${id}/extensions/`
+        `/api/nhcx/insurance-plan-benefit/${id}/extensions/`,
       );
     },
   },
@@ -502,7 +514,7 @@ export const apis = {
   insurancePlanQuestionnaire: {
     get: async (id: string) => {
       return await request<InsurancePlanQuestionnaireDetail>(
-        `/api/nhcx/insurance-plan-questionnaire/${id}/`
+        `/api/nhcx/insurance-plan-questionnaire/${id}/`,
       );
     },
   },
@@ -540,10 +552,10 @@ export const apis = {
         ordering?: "created_date" | "-created_date";
         limit?: number;
         offset?: number;
-      }
+      },
     ) => {
       return await request<PaginatedResponse<ChargeItem>>(
-        `/api/v1/facility/${facilityId}/charge_item/` + queryString(query)
+        `/api/v1/facility/${facilityId}/charge_item/` + queryString(query),
       );
     },
   },
