@@ -197,16 +197,24 @@ export function CoverageEligibilityRequestItemSection({
                             insurancePlanId={planId}
                             value={field.value}
                             onSelect={(benefit) => {
-                              form.setValue(`item.${index}.product_or_service`, {
-                                system: PROCEDURE_CODE_SYSTEM,
-                                code: benefit.type_code,
-                                display: benefit.type_display,
-                              });
-                              form.setValue(`item.${index}.category`, {
-                                system: BENEFIT_CATEGORY_SYSTEM,
-                                code: benefit.coverage_type_code,
-                                display: benefit.coverage_type_display,
-                              });
+                              form.setValue(
+                                `item.${index}.product_or_service`,
+                                {
+                                  system: PROCEDURE_CODE_SYSTEM,
+                                  code: benefit.type_code,
+                                  display: benefit.type_display,
+                                },
+                                { shouldValidate: true, shouldDirty: true }
+                              );
+                              form.setValue(
+                                `item.${index}.category`,
+                                {
+                                  system: BENEFIT_CATEGORY_SYSTEM,
+                                  code: benefit.coverage_type_code,
+                                  display: benefit.coverage_type_display,
+                                },
+                                { shouldValidate: true, shouldDirty: true }
+                              );
                             }}
                             disabled={isProductLocked}
                           />
@@ -224,6 +232,7 @@ export function CoverageEligibilityRequestItemSection({
                         size="icon"
                         onClick={() => {
                           remove(index);
+                          void form.trigger("item");
                         }}
                         className="mt-6"
                       >
@@ -253,7 +262,10 @@ export function CoverageEligibilityRequestItemSection({
                           system="system-coverage-eligibility-request-item-category"
                           value={field.value}
                           onSelect={(value) => {
-                            form.setValue(`item.${index}.category`, value);
+                            form.setValue(`item.${index}.category`, value, {
+                              shouldValidate: true,
+                              shouldDirty: true,
+                            });
                           }}
                           disabled={hasProduct}
                         />
@@ -291,7 +303,8 @@ export function CoverageEligibilityRequestItemSection({
                           onChange={(e) => {
                             form.setValue(
                               `item.${index}.quantity.value`,
-                              e.target.value ? parseFloat(e.target.value) : 0
+                              e.target.value ? parseFloat(e.target.value) : 0,
+                              { shouldValidate: true, shouldDirty: true }
                             );
                           }}
                           placeholder="Enter quantity"
@@ -313,7 +326,10 @@ export function CoverageEligibilityRequestItemSection({
                           system="system-ucum-units"
                           value={field.value}
                           onSelect={(value) => {
-                            form.setValue(`item.${index}.quantity.unit`, value);
+                            form.setValue(`item.${index}.quantity.unit`, value, {
+                              shouldValidate: true,
+                              shouldDirty: true,
+                            });
                           }}
                         />
                       </FormControl>
@@ -377,6 +393,7 @@ export function CoverageEligibilityRequestItemSection({
                       diagnosis: defaultItemDiagnoses.map((d) => ({ ...d })),
                       supporting_info_sequence: allSequences,
                     });
+                    void form.trigger("item");
                   }}
                 >
                   <PlusIcon className="w-5 h-5" />
@@ -458,10 +475,11 @@ function ModifierField({
                   if (!qualifier) return;
                   const existing = field.value ?? [];
                   if (existing.some((c) => c.code === qualifier.code)) return;
-                  form.setValue(`item.${index}.modifier`, [
-                    ...existing,
-                    qualifier,
-                  ]);
+                  form.setValue(
+                    `item.${index}.modifier`,
+                    [...existing, qualifier],
+                    { shouldValidate: true, shouldDirty: true }
+                  );
                 }}
                 disabled={!productCode || isLoading}
                 placeholder={
@@ -491,7 +509,8 @@ function ModifierField({
                       onClick={() => {
                         form.setValue(
                           `item.${index}.modifier`,
-                          field.value.filter((c) => c.code !== code.code)
+                          field.value.filter((c) => c.code !== code.code),
+                          { shouldValidate: true, shouldDirty: true }
                         );
                       }}
                     />
@@ -559,7 +578,7 @@ function CEItemValidationEffects({
     if (currentError !== nextError) {
       form.setValue(`item.${index}._condition_errors`, nextError, {
         shouldDirty: false,
-        shouldValidate: false,
+        shouldValidate: true,
       });
     }
   }, [
@@ -592,10 +611,11 @@ function AddDiagnosisSection({
       diagnosis_reference: undefined,
       diagnosis_code: undefined,
     };
-    form.setValue(`item.${index}.diagnosis`, [
-      ...currentDiagnoses,
-      newDiagnosis,
-    ]);
+    form.setValue(
+      `item.${index}.diagnosis`,
+      [...currentDiagnoses, newDiagnosis],
+      { shouldValidate: true, shouldDirty: true }
+    );
   };
 
   const removeDiagnosis = (diagnosisIndex: number) => {
@@ -603,7 +623,10 @@ function AddDiagnosisSection({
     const updatedDiagnoses = currentDiagnoses.filter(
       (_, i) => i !== diagnosisIndex
     );
-    form.setValue(`item.${index}.diagnosis`, updatedDiagnoses);
+    form.setValue(`item.${index}.diagnosis`, updatedDiagnoses, {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
   };
 
   return (
@@ -649,7 +672,8 @@ function AddDiagnosisSection({
                             onSelect={(value) => {
                               form.setValue(
                                 `item.${index}.diagnosis.${diagnosisIndex}.diagnosis_code`,
-                                value
+                                value,
+                                { shouldValidate: true, shouldDirty: true }
                               );
                             }}
                           />
@@ -715,14 +739,19 @@ function AddSupportingInfoSection({
       value_file: undefined,
     };
 
-    form.setValue("supporting_info", [...currentSupportingInfo, newSupportingInfo]);
+    form.setValue(
+      "supporting_info",
+      [...currentSupportingInfo, newSupportingInfo],
+      { shouldValidate: true, shouldDirty: true }
+    );
 
     const currentSequences =
       form.getValues(`item.${index}.supporting_info_sequence`) || [];
-    form.setValue(`item.${index}.supporting_info_sequence`, [
-      ...currentSequences,
-      newSequence,
-    ]);
+    form.setValue(
+      `item.${index}.supporting_info_sequence`,
+      [...currentSequences, newSequence],
+      { shouldValidate: true, shouldDirty: true }
+    );
   };
 
   return (
@@ -767,7 +796,11 @@ function AddSupportingInfoSection({
                           currentSupportingInfo.filter(
                             (_, i) => i !== mainInfoIndex
                           );
-                        form.setValue("supporting_info", updatedSupportingInfo);
+                        form.setValue(
+                          "supporting_info",
+                          updatedSupportingInfo,
+                          { shouldValidate: true, shouldDirty: true }
+                        );
 
                         const items = form.getValues("item") || [];
                         items.forEach((item, itemIndex) => {
@@ -778,7 +811,8 @@ function AddSupportingInfoSection({
                           );
                           form.setValue(
                             `item.${itemIndex}.supporting_info_sequence`,
-                            updatedSequences
+                            updatedSequences,
+                            { shouldValidate: true, shouldDirty: true }
                           );
                         });
                       }}
@@ -803,11 +837,13 @@ function AddSupportingInfoSection({
                             onChange={(e) => {
                               form.setValue(
                                 `supporting_info.${mainInfoIndex}.value_string`,
-                                e.target.value || undefined
+                                e.target.value || undefined,
+                                { shouldValidate: true, shouldDirty: true }
                               );
                               form.setValue(
                                 `supporting_info.${mainInfoIndex}.value_attachment`,
-                                undefined
+                                undefined,
+                                { shouldValidate: true, shouldDirty: true }
                               );
                             }}
                             placeholder="Enter supporting info value"
@@ -861,13 +897,23 @@ function SupportingInfoFileUpload({
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      form.setValue(`supporting_info.${mainInfoIndex}.value_file`, file);
-      form.setValue(`supporting_info.${mainInfoIndex}.value_string`, undefined);
+      form.setValue(`supporting_info.${mainInfoIndex}.value_file`, file, {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
+      form.setValue(
+        `supporting_info.${mainInfoIndex}.value_string`,
+        undefined,
+        { shouldValidate: true, shouldDirty: true }
+      );
     }
   };
 
   const handleRemoveFile = () => {
-    form.setValue(`supporting_info.${mainInfoIndex}.value_file`, undefined);
+    form.setValue(`supporting_info.${mainInfoIndex}.value_file`, undefined, {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
   };
 
   return (

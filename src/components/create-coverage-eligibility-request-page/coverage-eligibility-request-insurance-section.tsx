@@ -290,17 +290,22 @@ const PolicyCard = ({ policy, index, form }: PolicyCardProps) => {
         "insurance",
         form
           .getValues("insurance")
-          .filter((insurance) => insurance.sequence !== index)
+          .filter((insurance) => insurance.sequence !== index),
+        { shouldValidate: true, shouldDirty: true }
       );
     } else {
-      form.setValue("insurance", [
-        ...(form.getValues("insurance") ?? []),
-        {
-          sequence: index,
-          policy: policy,
-          focal: false,
-        },
-      ]);
+      form.setValue(
+        "insurance",
+        [
+          ...(form.getValues("insurance") ?? []),
+          {
+            sequence: index,
+            policy: policy,
+            focal: false,
+          },
+        ],
+        { shouldValidate: true, shouldDirty: true }
+      );
     }
   };
 
@@ -313,7 +318,8 @@ const PolicyCard = ({ policy, index, form }: PolicyCardProps) => {
           insurance.sequence === index
             ? { ...insurance, focal }
             : { ...insurance, focal: focal ? false : insurance.focal }
-        )
+        ),
+      { shouldValidate: true, shouldDirty: true }
     );
   };
 
