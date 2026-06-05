@@ -46,6 +46,9 @@ type SearchParams = {
   identifiervalue: string;
 };
 
+/** Sequence offset for manually entered policies so they never collide with API-result indices. */
+const MANUAL_POLICY_INDEX_OFFSET = 10_000;
+
 export function CoverageEligibilityRequestInsuranceSection({
   form,
   readOnly = false,
@@ -54,6 +57,7 @@ export function CoverageEligibilityRequestInsuranceSection({
   const [mobileInput, setMobileInput] = useState("");
   const [memberIdInput, setMemberIdInput] = useState("SBXSTG007");
   const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
+  const [manualPolicies, setManualPolicies] = useState<Policy[]>([]);
 
   const { data: abhaNumber, isFetching: isAbhaLoading } = useQuery({
     queryKey: ["abhaNumber", form.getValues("patient")],
@@ -168,6 +172,9 @@ export function CoverageEligibilityRequestInsuranceSection({
         onTabChange={handleTabChange}
         onSearch={handleSearch}
         isLoading={isPoliciesLoading || isAbhaLoading}
+        onManualAdd={(policy) =>
+          setManualPolicies((prev) => [...prev, policy])
+        }
       />
 
       {isPoliciesLoading && (
@@ -185,9 +192,17 @@ export function CoverageEligibilityRequestInsuranceSection({
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     {policies?.map((policy, index) => (
                       <PolicyCard
-                        key={index}
+                        key={`api-${index}`}
                         policy={policy}
                         index={index + 1}
+                        form={form}
+                      />
+                    ))}
+                    {manualPolicies.map((policy, index) => (
+                      <PolicyCard
+                        key={`manual-${policy.sno}`}
+                        policy={policy}
+                        index={MANUAL_POLICY_INDEX_OFFSET + index + 1}
                         form={form}
                       />
                     ))}
@@ -195,7 +210,8 @@ export function CoverageEligibilityRequestInsuranceSection({
                 </FormControl>
                 {!isPoliciesLoading &&
                   !!searchParams &&
-                  policies?.length === 0 && (
+                  policies?.length === 0 &&
+                  manualPolicies.length === 0 && (
                     <p className="text-sm text-muted-foreground mt-2">
                       No policies found
                     </p>

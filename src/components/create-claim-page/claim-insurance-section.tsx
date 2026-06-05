@@ -49,6 +49,7 @@ export function ClaimInsuranceSection({ form, readOnly = false }: ClaimInsurance
   const [mobileInput, setMobileInput] = useState("");
   const [memberIdInput, setMemberIdInput] = useState("SBXSTG007");
   const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
+  const [manualPolicies, setManualPolicies] = useState<Policy[]>([]);
 
   const { data: abhaNumber, isFetching: isAbhaLoading } = useQuery({
     queryKey: ["abhaNumber", form.getValues("patient")],
@@ -156,7 +157,13 @@ export function ClaimInsuranceSection({ form, readOnly = false }: ClaimInsurance
     .map((ins) => ins.policy)
     .filter((policy) => !policies?.some((p) => p.sno === policy.sno));
 
-  const displayedPolicies = [...(policies ?? []), ...prefilledPolicies];
+  const displayedPolicies = [
+    ...(policies ?? []),
+    ...prefilledPolicies.filter(
+      (p) => !manualPolicies.some((m) => m.sno === p.sno),
+    ),
+    ...manualPolicies,
+  ];
 
   return (
     <div className="space-y-6">
@@ -182,6 +189,9 @@ export function ClaimInsuranceSection({ form, readOnly = false }: ClaimInsurance
         onTabChange={handleTabChange}
         onSearch={handleSearch}
         isLoading={isPoliciesLoading || isAbhaLoading}
+        onManualAdd={(policy) =>
+          setManualPolicies((prev) => [...prev, policy])
+        }
       />
 
       {isPoliciesLoading && (

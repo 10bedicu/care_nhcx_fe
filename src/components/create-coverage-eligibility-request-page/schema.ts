@@ -54,6 +54,10 @@ export const policySchema = z.object({
   productid: z.string(),
   productname: z.string(),
   processingid: z.string(),
+  policy_period: z
+    .object({ start: z.string(), end: z.string() })
+    .nullable()
+    .optional(),
 });
 
 export const coverageEligibilityRequestInsuranceSchema = z.object({
