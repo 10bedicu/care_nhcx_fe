@@ -116,34 +116,102 @@ export function deriveClaimOutcome(claim: Claim): ClaimOutcome {
   const response = claim.latest_response;
   if (!response) return "pending";
 
-  // Adjudication-based status (preferred when present)
   const statusEntry = response.adjudication?.find(
-    (a) => a.category?.coding?.[0]?.code === "status"
+    (a) => a.category?.coding?.[0]?.code === "status",
   );
   const adjCode = statusEntry?.reason?.coding?.[0]?.code?.toLowerCase();
-  if (adjCode === "approved") return "approved";
+
+  // "approved" reason — refine by comparing requested vs approved amounts.
+  if (adjCode === "approved") {
+    const totalRequested = getRequestedTotal(claim);
+    const totalApproved = getApprovedTotal(claim);
+
+    if (totalApproved === 0) return "rejected";
+    if (totalApproved < totalRequested) return "partially-approved";
+    return "approved";
+  }
+
+  if (adjCode?.includes("partial")) {
+    return "partially-approved";
+  }
   if (adjCode === "queried") return "queried";
   if (adjCode === "rejected") return "rejected";
 
-  // Outcome fallback
-  if (response.outcome === "queued") return "queried";
+  // outcome === "queued" means the payer has acknowledged but not yet
+  // adjudicated — treat as still pending, not queried.
+  if (response.outcome === "queued") return "pending";
 
-  // Amount-based fallback
-  const totalRequested =
-    claim.item?.reduce(
-      (sum, item) => sum + item.unit_price * item.quantity.value,
-      0
-    ) ?? 0;
-
-  const totalApproved =
-    response.item?.reduce(
-      (sum, item) => sum + (item.adjudication?.[0]?.amount?.value ?? 0),
-      0
-    ) ?? 0;
+  // Amount-based fallback when adjudication has no recognised status reason.
+  const totalRequested = getRequestedTotal(claim);
+  const totalApproved = getApprovedTotal(claim);
 
   if (totalApproved === 0) return "rejected";
   if (totalApproved >= totalRequested) return "approved";
   return "partially-approved";
+}
+
+/** Sum a specific adjudication category across `response.item[*].adjudication`. */
+function sumItemAdjudicationByCode(
+  response: Claim["latest_response"],
+  code: string,
+): number {
+  return (
+    response?.item?.reduce((sum, item) => {
+      const entry = item.adjudication?.find(
+        (a) => a.category?.coding?.[0]?.code === code,
+      );
+      return sum + (entry?.amount?.value ?? 0);
+    }, 0) ?? 0
+  );
+}
+
+/** Look up a total at the response level by its category code. */
+function getResponseTotal(
+  response: Claim["latest_response"],
+  code: string,
+): number | null {
+  const entry = response?.total?.find(
+    (t) => t.category?.coding?.[0]?.code === code,
+  );
+  return entry?.amount?.value ?? null;
+}
+
+/**
+ * Amount requested by the provider. Prefers the payer's echoed
+ * `total[submitted]`, then the per-item submitted adjudication sum, and
+ * finally the local claim line math (unit_price × quantity).
+ */
+function getRequestedTotal(claim: Claim): number {
+  const response = claim.latest_response;
+  const fromTotal = getResponseTotal(response, "submitted");
+  if (fromTotal !== null) return fromTotal;
+
+  const fromItems = sumItemAdjudicationByCode(response, "submitted");
+  if (fromItems > 0) return fromItems;
+
+  return (
+    claim.item?.reduce(
+      (sum, item) => sum + item.unit_price * item.quantity.value,
+      0,
+    ) ?? 0
+  );
+}
+
+/**
+ * Amount approved (payable) by the payer. Prefers the response-level
+ * `total[benefit]` (the amount the payer will actually pay), then
+ * `total[eligible]`, then per-item `eligible` adjudication sums.
+ */
+function getApprovedTotal(claim: Claim): number {
+  const response = claim.latest_response;
+
+  const benefit = getResponseTotal(response, "benefit");
+  if (benefit !== null) return benefit;
+
+  const eligible = getResponseTotal(response, "eligible");
+  if (eligible !== null) return eligible;
+
+  return sumItemAdjudicationByCode(response, "eligible");
 }
 
 export type TimelineRecord =

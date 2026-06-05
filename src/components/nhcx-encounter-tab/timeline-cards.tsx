@@ -7,6 +7,7 @@ import {
   MoreHorizontalIcon,
   PlusCircleIcon,
   RotateCwIcon,
+  SendIcon,
   ShieldAlertIcon,
   XCircleIcon,
 } from "lucide-react";
@@ -27,6 +28,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Claim } from "@/types/claim";
+import { Coding } from "@/types/base";
 import ClaimCard from "../claim-encounter-tab/claim-card";
 import CoverageEligibilityCard from "../coverage-encounter-tab/coverage-eligibility-card";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
@@ -54,6 +56,7 @@ function ActionButton({
   variant = "default",
   size = "sm",
   onClick,
+  disabled,
 }: {
   to?: string;
   label: ReactNode;
@@ -67,6 +70,7 @@ function ActionButton({
     | "link";
   size?: "sm" | "default";
   onClick?: () => void;
+  disabled?: boolean;
 }) {
   const inner = (
     <>
@@ -77,13 +81,13 @@ function ActionButton({
 
   if (to) {
     return (
-      <Button asChild variant={variant} size={size}>
+      <Button asChild variant={variant} size={size} disabled={disabled}>
         <a href={to}>{inner}</a>
       </Button>
     );
   }
   return (
-    <Button variant={variant} size={size} onClick={onClick}>
+    <Button variant={variant} size={size} onClick={onClick} disabled={disabled}>
       {inner}
     </Button>
   );
@@ -103,20 +107,28 @@ interface MenuItem {
  */
 function PendingResponseBanner({ message }: { message: string }) {
   return (
-    <Alert className="border-yellow-300 bg-yellow-50 text-yellow-800">
-      <ClockIcon className="h-4 w-4 text-yellow-600 animate-pulse" />
-      <AlertTitle>Waiting for payer response</AlertTitle>
-      <AlertDescription>{message}</AlertDescription>
+    <Alert className="border-yellow-300 bg-yellow-50 text-yellow-800 [&>svg]:hidden [&>svg~*]:pl-0">
+      <div className="flex items-start gap-3">
+        <ClockIcon className="h-5 w-5 shrink-0 text-yellow-600 animate-pulse mt-0.5" />
+        <div className="flex-1 space-y-1">
+          <AlertTitle className="mb-0">Waiting for payer response</AlertTitle>
+          <AlertDescription>{message}</AlertDescription>
+        </div>
+      </div>
     </Alert>
   );
 }
 
 function ResponseErrorBanner({ message }: { message: string }) {
   return (
-    <Alert className="border-red-300 bg-red-50 text-red-800">
-      <XCircleIcon className="h-4 w-4 text-red-600" />
-      <AlertTitle>Payer returned an error</AlertTitle>
-      <AlertDescription>{message}</AlertDescription>
+    <Alert className="border-red-300 bg-red-50 text-red-800 [&>svg]:hidden [&>svg~*]:pl-0">
+      <div className="flex items-start gap-3">
+        <XCircleIcon className="h-5 w-5 shrink-0 text-red-600 mt-0.5" />
+        <div className="flex-1 space-y-1">
+          <AlertTitle className="mb-0">Payer returned an error</AlertTitle>
+          <AlertDescription>{message}</AlertDescription>
+        </div>
+      </div>
     </Alert>
   );
 }
@@ -372,7 +384,13 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   const [disputeOpen, setDisputeOpen] = useState(false);
 
   const cancelMutation = useMutation({
-    mutationFn: apis.claim.cancel,
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: { reason_code?: Coding; description?: string };
+    }) => apis.claim.cancel(id, body),
     onSuccess: () => {
       toast.success(
         claim.use === "preauthorization"
@@ -388,7 +406,13 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   });
 
   const disputeMutation = useMutation({
-    mutationFn: apis.claim.reprocess,
+    mutationFn: ({
+      id,
+      body,
+    }: {
+      id: string;
+      body: { reason_code?: Coding; description?: string };
+    }) => apis.claim.reprocess(id, body),
     onSuccess: () => {
       toast.success("Dispute raised successfully");
       queryClient.invalidateQueries({ queryKey: ["claims", encounterId] });
@@ -399,10 +423,25 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
     },
   });
 
+  const submitMutation = useMutation({
+    mutationFn: (id: string) => apis.claim.submit(id),
+    onSuccess: () => {
+      toast.success(
+        claim.use === "preauthorization"
+          ? "Pre-authorization submitted"
+          : "Claim submitted",
+      );
+      queryClient.invalidateQueries({ queryKey: ["claims", encounterId] });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to submit");
+    },
+  });
+
   const outcome = deriveClaimOutcome(claim);
   const isPreauth = claim.use === "preauthorization";
   const isClaim = claim.use === "claim";
-  const isDispatchError = claim.dispatch_status === "error";
+  const dispatchStatus = claim.dispatch_status;
 
   const ceQueryParam = latestCoverageEligibilityId
     ? `&coverage_eligibility=${latestCoverageEligibilityId}`
@@ -417,43 +456,20 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   let extraMenuItems: MenuItem[] = [];
   let headerBanner: ReactNode = null;
 
-  if (isCurrent && outcome === "pending") {
-    if (claim.dispatch_status === "error") {
-      headerBanner = (
-        <ResponseErrorBanner
-          message={
-            claim.dispatch_error ||
-            "Failed to submit to the payer. Please try resubmitting."
-          }
-        />
-      );
-    } else {
-      headerBanner = (
-        <PendingResponseBanner
-          message={
-            isPreauth
-              ? "Waiting for the payer to adjudicate this pre-authorisation. You can still cancel or check auth requirements while you wait."
-              : "Waiting for the payer to adjudicate this claim. Next steps appear once a response arrives."
-          }
-        />
-      );
-    }
-  }
-
   // Add more items + Cancel are available on the latest pre-authorization card
-  // so the user can course-correct while waiting. Queried and cancelled records
-  // skip Add more items; cancelled also skips Cancel.
-  const preauthAlwaysExtras: MenuItem[] = [];
+  // once a payer response is in (so the user can course-correct). Queried
+  // records skip Add more items; cancelled records skip Cancel.
+  const preauthResponseExtras: MenuItem[] = [];
   if (isCurrent && isPreauth) {
     if (outcome !== "queried") {
-      preauthAlwaysExtras.push({
+      preauthResponseExtras.push({
         label: "Add more items",
         icon: <PlusCircleIcon className="h-4 w-4" />,
         to: `coverages/new?purpose=auth-requirements${ceQueryParam}`,
       });
     }
     if (outcome !== "cancelled") {
-      preauthAlwaysExtras.push({
+      preauthResponseExtras.push({
         label: "Cancel Pre-Auth",
         icon: <BanIcon className="h-4 w-4" />,
         onClick: () => setCancelOpen(true),
@@ -462,136 +478,67 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
     }
   }
 
-  if (isCurrent && isPreauth) {
-    if (outcome === "approved") {
-      primaryActions = [
-        <ActionButton
-          key="claim"
-          to={buildClaimNewUrl({
-            use: "claim",
-            coverageEligibilityId: latestCoverageEligibilityId,
-            ...claimRedirectParams,
-          })}
-          label="Proceed to Claim"
-          icon={<ArrowRightIcon className="h-4 w-4" />}
-        />,
-      ];
-      extraMenuItems = [
-        {
-          label: "Enhancement",
-          icon: <PlusCircleIcon className="h-4 w-4" />,
-          to: buildClaimNewUrl({
-            use: "preauthorization",
-            coverageEligibilityId: latestCoverageEligibilityId,
-            ...claimRedirectParams,
-          }),
-        },
-        ...preauthAlwaysExtras,
-      ];
-    } else if (outcome === "partially-approved") {
-      primaryActions = [
-        <ActionButton
-          key="claim"
-          to={buildClaimNewUrl({
-            use: "claim",
-            coverageEligibilityId: latestCoverageEligibilityId,
-            ...claimRedirectParams,
-          })}
-          label="Proceed to Claim"
-          icon={<ArrowRightIcon className="h-4 w-4" />}
-        />,
-      ];
-      extraMenuItems = [
-        {
-          label: "Enhancement",
-          icon: <PlusCircleIcon className="h-4 w-4" />,
-          to: buildClaimNewUrl({
-            use: "preauthorization",
-            coverageEligibilityId: latestCoverageEligibilityId,
-            ...claimRedirectParams,
-          }),
-        },
-        ...preauthAlwaysExtras,
-      ];
-    } else if (outcome === "rejected") {
-      primaryActions = [
-        <ActionButton
-          key="resubmit"
-          to={buildClaimNewUrl({
-            use: "preauthorization",
-            coverageEligibilityId: latestCoverageEligibilityId,
-            ...claimRedirectParams,
-          })}
-          label="Resubmit"
-          icon={<RotateCwIcon className="h-4 w-4" />}
-        />,
-      ];
-      extraMenuItems = [...preauthAlwaysExtras];
-    } else if (outcome === "queried") {
-      primaryActions = [
-        <ActionButton
-          key="resubmit"
-          to={buildClaimNewUrl({
-            use: "preauthorization",
-            coverageEligibilityId: latestCoverageEligibilityId,
-            ...claimRedirectParams,
-          })}
-          label="Resubmit"
-          icon={<RotateCwIcon className="h-4 w-4" />}
-        />,
-      ];
-      extraMenuItems = [...preauthAlwaysExtras];
-    } else if (outcome === "cancelled") {
-      primaryActions = [
-        <ActionButton
-          key="raise-new"
-          to={buildClaimNewUrl({
-            use: "preauthorization",
-            coverageEligibilityId: latestCoverageEligibilityId,
-          })}
-          label="Raise new Pre-auth"
-          icon={<PlusCircleIcon className="h-4 w-4" />}
-        />,
-      ];
-      extraMenuItems = [...preauthAlwaysExtras];
-    } else if (isDispatchError) {
-      primaryActions = [
-        <ActionButton
-          key="retry"
-          to={buildClaimNewUrl({
-            use: "preauthorization",
-            coverageEligibilityId: latestCoverageEligibilityId,
-            ...claimRedirectParams,
-          })}
-          label="Retry again"
-          icon={<RotateCwIcon className="h-4 w-4" />}
-        />,
-      ];
-      extraMenuItems = [...preauthAlwaysExtras];
-    } else {
-      // Pending / unknown — no primary actions, but add-more-items + cancel are
-      // still exposed via the always-extras list below.
-      extraMenuItems = [...preauthAlwaysExtras];
-    }
-  }
+  const submitAction = (
+    <ActionButton
+      key="submit"
+      label={
+        submitMutation.isPending
+          ? "Submitting…"
+          : isPreauth
+            ? "Submit Pre-Auth"
+            : "Submit Claim"
+      }
+      icon={<SendIcon className="h-4 w-4" />}
+      onClick={() => submitMutation.mutate(claim.id)}
+      disabled={submitMutation.isPending}
+    />
+  );
 
-  if (isCurrent && isClaim) {
-    if (outcome === "approved") {
-      primaryActions = [
-        <span
-          key="approved"
-          className="inline-flex items-center gap-1.5 rounded-md bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 border border-green-200"
-        >
-          <CheckCircle2Icon className="h-3.5 w-3.5" />
-          Claim Approved
-        </span>,
-      ];
-    } else if (isDispatchError) {
+  if (isCurrent && (isPreauth || isClaim)) {
+    // Cancelled state takes priority — render terminal/recovery actions
+    // regardless of dispatch_status.
+    if (outcome === "cancelled") {
+      if (isPreauth) {
+        primaryActions = [
+          <ActionButton
+            key="raise-new"
+            to={buildClaimNewUrl({
+              use: "preauthorization",
+              coverageEligibilityId: latestCoverageEligibilityId,
+            })}
+            label="Raise new Pre-auth"
+            icon={<PlusCircleIcon className="h-4 w-4" />}
+          />,
+        ];
+      }
+    } else if (dispatchStatus === "pending") {
+      // Created but not yet submitted to the payer.
+      primaryActions = [submitAction];
+    } else if (dispatchStatus === "awaiting") {
+      // Submitted; waiting for the payer. No actions.
+      headerBanner = (
+        <PendingResponseBanner
+          message={
+            isPreauth
+              ? "Waiting for the payer to adjudicate this pre-authorisation."
+              : "Waiting for the payer to adjudicate this claim."
+          }
+        />
+      );
+    } else if (dispatchStatus === "error") {
+      headerBanner = (
+        <ResponseErrorBanner
+          message={
+            claim.dispatch_error ||
+            "Failed to submit to the payer. Please try resubmitting."
+          }
+        />
+      );
       primaryActions = [
         <ActionButton
           key="retry"
           to={buildClaimNewUrl({
-            use: "claim",
+            use: isPreauth ? "preauthorization" : "claim",
             coverageEligibilityId: latestCoverageEligibilityId,
             ...claimRedirectParams,
           })}
@@ -599,32 +546,100 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
           icon={<RotateCwIcon className="h-4 w-4" />}
         />,
       ];
-    } else if (
-      outcome === "partially-approved" ||
-      outcome === "rejected"
-    ) {
-      primaryActions = [
-        <ActionButton
-          key="dispute"
-          label="Dispute"
-          icon={<AlertCircleIcon className="h-4 w-4" />}
-          onClick={() => setDisputeOpen(true)}
-          variant="outline"
-        />,
-      ];
-    } else if (outcome === "queried") {
-      primaryActions = [
-        <ActionButton
-          key="resubmit"
-          to={buildClaimNewUrl({
-            use: "claim",
-            coverageEligibilityId: latestCoverageEligibilityId,
-            ...claimRedirectParams,
-          })}
-          label="Resubmit"
-          icon={<RotateCwIcon className="h-4 w-4" />}
-        />,
-      ];
+      if (isPreauth) {
+        extraMenuItems = [...preauthResponseExtras];
+      }
+    } else {
+      // dispatchStatus is "partial" or "complete" — derive from the response.
+      if (isPreauth) {
+        if (outcome === "approved" || outcome === "partially-approved") {
+          primaryActions = [
+            <ActionButton
+              key="claim"
+              to={buildClaimNewUrl({
+                use: "claim",
+                coverageEligibilityId: latestCoverageEligibilityId,
+                ...claimRedirectParams,
+              })}
+              label="Proceed to Claim"
+              icon={<ArrowRightIcon className="h-4 w-4" />}
+            />,
+          ];
+          extraMenuItems = [
+            {
+              label: "Enhancement",
+              icon: <PlusCircleIcon className="h-4 w-4" />,
+              to: buildClaimNewUrl({
+                use: "preauthorization",
+                coverageEligibilityId: latestCoverageEligibilityId,
+                ...claimRedirectParams,
+              }),
+            },
+            ...preauthResponseExtras,
+          ];
+        } else if (outcome === "rejected" || outcome === "queried") {
+          primaryActions = [
+            <ActionButton
+              key="resubmit"
+              to={buildClaimNewUrl({
+                use: "preauthorization",
+                coverageEligibilityId: latestCoverageEligibilityId,
+                ...claimRedirectParams,
+              })}
+              label="Resubmit"
+              icon={<RotateCwIcon className="h-4 w-4" />}
+            />,
+          ];
+          extraMenuItems = [...preauthResponseExtras];
+        } else {
+          // outcome === "pending" — response not yet finalised under a
+          // "partial" dispatch. Show a wait banner, allow course-correction.
+          headerBanner = (
+            <PendingResponseBanner message="The payer has acknowledged the request but has not yet returned a final adjudication." />
+          );
+          extraMenuItems = [...preauthResponseExtras];
+        }
+      } else if (isClaim) {
+        if (outcome === "approved") {
+          primaryActions = [
+            <span
+              key="approved"
+              className="inline-flex items-center gap-1.5 rounded-md bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 border border-green-200"
+            >
+              <CheckCircle2Icon className="h-3.5 w-3.5" />
+              Claim Approved
+            </span>,
+          ];
+        } else if (outcome === "partially-approved" || outcome === "rejected") {
+          primaryActions = [
+            <ActionButton
+              key="dispute"
+              label="Dispute"
+              icon={<AlertCircleIcon className="h-4 w-4" />}
+              onClick={() => setDisputeOpen(true)}
+              variant="outline"
+            />,
+          ];
+        } else if (outcome === "queried") {
+          primaryActions = [
+            <ActionButton
+              key="resubmit"
+              to={buildClaimNewUrl({
+                use: "claim",
+                coverageEligibilityId: latestCoverageEligibilityId,
+                ...claimRedirectParams,
+              })}
+              label="Resubmit"
+              icon={<RotateCwIcon className="h-4 w-4" />}
+            />,
+          ];
+        } else {
+          // outcome === "pending" under partial dispatch — wait.
+          headerBanner = (
+            <PendingResponseBanner message="The payer has acknowledged the claim but has not yet returned a final adjudication." />
+          );
+        }
+      }
     }
   }
 
@@ -647,11 +662,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
       <ReasonDialog
         open={cancelOpen}
         onOpenChange={setCancelOpen}
-        title={
-          isPreauth
-            ? "Cancel Pre-Authorization"
-            : "Cancel Claim"
-        }
+        title={isPreauth ? "Cancel Pre-Authorization" : "Cancel Claim"}
         description="Optionally choose an NDHM reason and add details. The cancellation will be sent to the payer."
         reasonLabel="Cancellation reason"
         descriptionLabel="Additional details"
@@ -660,9 +671,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
         variant="destructive"
         reasonCodes={NDHM_CANCEL_REASON_CODES}
         loading={cancelMutation.isPending}
-        onSubmit={(body) =>
-          cancelMutation.mutate({ id: claim.id, ...body })
-        }
+        onSubmit={(body) => cancelMutation.mutate({ id: claim.id, body })}
       />
       <ReasonDialog
         open={disputeOpen}
@@ -675,9 +684,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
         submitLabel="Send dispute"
         reasonCodes={NDHM_REPROCESS_REASON_CODES}
         loading={disputeMutation.isPending}
-        onSubmit={(body) =>
-          disputeMutation.mutate({ id: claim.id, ...body })
-        }
+        onSubmit={(body) => disputeMutation.mutate({ id: claim.id, body })}
       />
     </>
   );
