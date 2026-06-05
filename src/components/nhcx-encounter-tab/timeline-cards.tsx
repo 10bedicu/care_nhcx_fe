@@ -324,7 +324,7 @@ export const CoverageEligibilityTimelineCard: FC<
                   latestSuccessfulClaimId,
                 }),
               })}
-              label="Start Pre-Auth"
+              label="Start Pre-Authorization"
               icon={<ArrowRightIcon className="h-4 w-4" />}
             />
           </>
@@ -462,7 +462,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
     }
     if (outcome !== "cancelled") {
       preauthResponseExtras.push({
-        label: "Cancel Pre-Auth",
+        label: "Cancel Pre-Authorization",
         icon: <BanIcon className="h-4 w-4" />,
         onClick: () => setCancelOpen(true),
         destructive: true,
@@ -477,7 +477,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
         submitMutation.isPending
           ? "Submitting…"
           : isPreauth
-            ? "Submit Pre-Auth"
+            ? "Submit Pre-Authorization"
             : "Submit Claim"
       }
       icon={<SendIcon className="h-4 w-4" />}
@@ -498,7 +498,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
               use: "preauthorization",
               coverageEligibilityId: latestCoverageEligibilityId,
             })}
-            label="Raise new Pre-auth"
+            label="Raise new Pre-Authorization"
             icon={<PlusCircleIcon className="h-4 w-4" />}
           />,
         ];
@@ -658,7 +658,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
         description="Optionally choose an NDHM reason and add details. The cancellation will be sent to the payer."
         reasonLabel="Cancellation reason"
         descriptionLabel="Additional details"
-        descriptionPlaceholder="e.g. Cancel preauth — patient discharged early"
+        descriptionPlaceholder="e.g. Cancel pre-authorization — patient discharged early"
         submitLabel="Confirm cancellation"
         variant="destructive"
         reasonCodes={NDHM_CANCEL_REASON_CODES}

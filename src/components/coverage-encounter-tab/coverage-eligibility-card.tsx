@@ -64,7 +64,7 @@ const PURPOSE_DESCRIPTION: Record<
   discovery: "Who is covered?",
   validation: "What is the wallet balance?",
   benefits: "Is this procedure covered?",
-  "auth-requirements": "What is needed for pre-auth?",
+  "auth-requirements": "What is needed for pre-authorization?",
 };
 
 function formatPurposeTitle(purposes: CoverageEligibilityRequestPurposeChoice[]) {
@@ -369,7 +369,7 @@ function ProcedureHeader({ procedure }: { procedure: EligibilityProcedure }) {
         <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
           {procedure.authorization_required && (
             <Badge className="text-xs bg-amber-100 text-amber-700 border border-amber-200">
-              Pre-auth Required
+              Pre-Authorization Required
             </Badge>
           )}
         </div>
@@ -505,7 +505,7 @@ function RequiredQuestionnaires({
       {!allFilled && (
         <p className="text-xs text-amber-700 flex items-center gap-1">
           <InfoIcon className="w-3.5 h-3.5" />
-          Complete all questionnaires before submitting pre-auth
+          Complete all questionnaires before submitting pre-authorization
         </p>
       )}
     </div>

@@ -1800,14 +1800,14 @@ function ItemAmountReferences({
   }
   if (ceAllowed != null) {
     refs.push({
-      label: "CE:AR allowed amount",
+      label: "Coverage eligibility allowed amount",
       value: ceAllowed,
       warn: unitPrice > ceAllowed,
     });
   }
   if (preAuthApproved != null) {
     refs.push({
-      label: "Pre-auth approved amount",
+      label: "Pre-Authorization approved amount",
       value: preAuthApproved,
       warn: unitPrice > preAuthApproved,
     });

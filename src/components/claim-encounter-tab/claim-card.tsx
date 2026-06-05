@@ -431,7 +431,7 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                   {showPreAuthRef && (
                     <div>
                       <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                        Pre-Auth Reference
+                        Pre-Authorization Reference
                       </p>
                       <div className="mt-1 flex items-center gap-2">
                         <p className="font-mono text-sm text-gray-800 break-all">
