@@ -16,7 +16,7 @@ export type CodableConcept = {
   text?: string;
 };
 
-export type HcxError = {
+export type NhcxError = {
   code: CodableConcept;
   expression?: string;
 };

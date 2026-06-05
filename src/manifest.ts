@@ -2,12 +2,12 @@ import { lazy } from "react";
 import routes from "./routes";
 
 const manifest = {
-  plugin: "care_hcx",
+  plugin: "care_nhcx",
   routes,
   extends: [],
   components: {
     FacilityHomeActions: lazy(
-      () => import("./components/pluggables/facility-home-actions")
+      () => import("./components/pluggables/facility-home-actions"),
     ),
   },
   navItems: [],

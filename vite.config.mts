@@ -7,7 +7,7 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [
     federation({
-      name: "care_abdm",
+      name: "care_nhcx",
       filename: "remoteEntry.js",
       exposes: {
         "./manifest": "./src/manifest.ts",

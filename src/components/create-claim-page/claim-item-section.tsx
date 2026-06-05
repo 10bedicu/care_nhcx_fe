@@ -1695,12 +1695,12 @@ function ItemValidationEffects({
       form.setValue(
         `item.${index}._amount_cap_error`,
         `Charge items total ₹${chargeItemsTotal.toFixed(2)} exceeds the allowed limit of ₹${amountCap.toFixed(2)}. Amount has been capped at ₹${amountCap.toFixed(2)}.`,
-        { shouldDirty: false, shouldValidate: false }
+        { shouldDirty: false, shouldValidate: true }
       );
     } else {
       form.setValue(`item.${index}._amount_cap_error`, undefined, {
         shouldDirty: false,
-        shouldValidate: false,
+        shouldValidate: true,
       });
     }
   }, [chargeItemsTotal, amountCap, form, index]);
@@ -1718,7 +1718,7 @@ function ItemValidationEffects({
     if (currentError !== nextError) {
       form.setValue(`item.${index}._condition_errors`, nextError, {
         shouldDirty: false,
-        shouldValidate: false,
+        shouldValidate: true,
       });
     }
   }, [benefitDetail, quantityValue, modifiers, form, index]);

@@ -865,7 +865,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     if (validationBalance === null) {
       form.setValue("_total_amount_cap_error", undefined, {
         shouldDirty: false,
-        shouldValidate: false,
+        shouldValidate: true,
       });
       return;
     }
@@ -881,12 +881,12 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       form.setValue(
         "_total_amount_cap_error",
         `Total claim amount ₹${total.toFixed(2)} exceeds available wallet balance of ₹${validationBalance.toFixed(2)}`,
-        { shouldDirty: false, shouldValidate: false },
+        { shouldDirty: false, shouldValidate: true },
       );
     } else {
       form.setValue("_total_amount_cap_error", undefined, {
         shouldDirty: false,
-        shouldValidate: false,
+        shouldValidate: true,
       });
     }
   }, [watchedItemsForTotal, validationBalance, form]);
