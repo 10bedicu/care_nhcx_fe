@@ -372,15 +372,19 @@ const CreateCoverageEligibilityRequestPage: FC<
                   }
                 />
                 <Separator />
-                <CoverageEligibilityRequestItemSection
-                  form={form}
-                  defaultItemDiagnoses={
-                    isAuthRequirements ? defaultItemDiagnoses : []
-                  }
-                  requireEnhancementAllowed={requireEnhancementAllowed}
-                  prefilledItemSequences={prefilledItemSequences}
-                />
-                <Separator />
+                {lockedPurpose !== "validation" && (
+                  <>
+                    <CoverageEligibilityRequestItemSection
+                      form={form}
+                      defaultItemDiagnoses={
+                        isAuthRequirements ? defaultItemDiagnoses : []
+                      }
+                      requireEnhancementAllowed={requireEnhancementAllowed}
+                      prefilledItemSequences={prefilledItemSequences}
+                    />
+                    <Separator />
+                  </>
+                )}
                 <CoverageEligibilityRequestOtherSection
                   form={form}
                   lockedPurpose={lockedPurpose}

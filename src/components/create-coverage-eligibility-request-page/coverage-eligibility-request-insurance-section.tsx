@@ -193,6 +193,13 @@ export function CoverageEligibilityRequestInsuranceSection({
                     ))}
                   </div>
                 </FormControl>
+                {!isPoliciesLoading &&
+                  !!searchParams &&
+                  policies?.length === 0 && (
+                    <p className="text-sm text-muted-foreground mt-2">
+                      No policies found
+                    </p>
+                  )}
                 <FormMessage />
               </FormItem>
             </div>
