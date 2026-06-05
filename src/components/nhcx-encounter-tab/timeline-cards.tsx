@@ -107,28 +107,20 @@ interface MenuItem {
  */
 function PendingResponseBanner({ message }: { message: string }) {
   return (
-    <Alert className="border-yellow-300 bg-yellow-50 text-yellow-800 [&>svg]:hidden [&>svg~*]:pl-0">
-      <div className="flex items-start gap-3">
-        <ClockIcon className="h-5 w-5 shrink-0 text-yellow-600 animate-pulse mt-0.5" />
-        <div className="flex-1 space-y-1">
-          <AlertTitle className="mb-0">Waiting for payer response</AlertTitle>
-          <AlertDescription>{message}</AlertDescription>
-        </div>
-      </div>
+    <Alert className="border-yellow-300 bg-yellow-50 text-yellow-800">
+      <ClockIcon className="text-yellow-600 animate-pulse" />
+      <AlertTitle>Waiting for payer response</AlertTitle>
+      <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
 }
 
 function ResponseErrorBanner({ message }: { message: string }) {
   return (
-    <Alert className="border-red-300 bg-red-50 text-red-800 [&>svg]:hidden [&>svg~*]:pl-0">
-      <div className="flex items-start gap-3">
-        <XCircleIcon className="h-5 w-5 shrink-0 text-red-600 mt-0.5" />
-        <div className="flex-1 space-y-1">
-          <AlertTitle className="mb-0">Payer returned an error</AlertTitle>
-          <AlertDescription>{message}</AlertDescription>
-        </div>
-      </div>
+    <Alert className="border-red-300 bg-red-50 text-red-800">
+      <XCircleIcon className="text-red-600" />
+      <AlertTitle>Payer returned an error</AlertTitle>
+      <AlertDescription>{message}</AlertDescription>
     </Alert>
   );
 }
