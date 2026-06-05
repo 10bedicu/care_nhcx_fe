@@ -4,6 +4,44 @@ import {
   InsurancePlanBenefitDetail,
 } from "@/types/insurance_plan";
 
+/**
+ * Hard policy ceiling for a benefit item. Costs whose qualifiers are a subset
+ * of the selected modifiers take precedence; falls back to `limits` and then
+ * `max_limit_amount`. Returns null when no positive limit is configured.
+ */
+export function computeBenefitLimit(
+  benefitDetail: InsurancePlanBenefitDetail,
+  selectedModifierCodes: string[]
+): number | null {
+  const costs = benefitDetail.costs ?? [];
+  if (costs.length > 0) {
+    const matchingCosts = costs.filter((cost) => {
+      if (cost.qualifiers.length === 0) return true;
+      return cost.qualifiers.every((q) =>
+        selectedModifierCodes.includes(q.qualifier_code)
+      );
+    });
+    if (matchingCosts.length > 0) {
+      const maxValue = Math.max(
+        ...matchingCosts.map((c) => parseFloat(c.value_amount) || 0)
+      );
+      if (maxValue > 0) return maxValue;
+    }
+  }
+
+  if (benefitDetail.limits?.length > 0) {
+    const maxLimit = Math.max(
+      ...benefitDetail.limits.map((l) => parseFloat(l.value_amount) || 0)
+    );
+    if (maxLimit > 0) return maxLimit;
+  }
+
+  const maxLimitAmount = parseFloat(benefitDetail.max_limit_amount);
+  if (maxLimitAmount > 0) return maxLimitAmount;
+
+  return null;
+}
+
 function buildQualifierTypeMap(
   benefitDetail: InsurancePlanBenefitDetail
 ): Map<string, BenefitCostQualifierType> {

@@ -30,7 +30,7 @@ import { useForm, useFormState, useWatch } from "react-hook-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useQueryParams } from "raviger";
 
-import { AlertCircleIcon } from "lucide-react";
+import { AlertCircleIcon, WalletIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChargeItem } from "@/types/charge_item";
 import { ClaimAccidentSection } from "./claim-accident-section";
@@ -48,6 +48,7 @@ import { FormPrefillSkeleton } from "@/components/common/form-prefill-skeleton";
 import { PmjayBiometricVerificationGate } from "@/components/common/pmjay-biometric-verification-gate";
 import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
+import { cn } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
 import { toast } from "sonner";
 import { uploadFile } from "@/lib/upload-file";
@@ -861,6 +862,43 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   }, [ceValidation]);
 
   const watchedItemsForTotal = form.watch("item");
+
+  // Price lookup for charge items aggregated from every available source. Used
+  // to derive each item's effective amount when `unit_price` is still 0 (the
+  // per-item effect that fills it runs asynchronously after the form prefill).
+  const chargeItemPriceById = useMemo(() => {
+    const priceById = new Map<string, number>();
+    const addChargeItems = (items?: ChargeItem[]) => {
+      (items ?? []).forEach((ci) => {
+        if (ci?.id && !priceById.has(ci.id)) {
+          priceById.set(ci.id, parseFloat(ci.total_price ?? "0") || 0);
+        }
+      });
+    };
+    addChargeItems(encounterChargeItems);
+    (coverageEligibilityRequest?.item ?? []).forEach((it) =>
+      addChargeItems(it.charge_items),
+    );
+    (prefilledClaim?.item ?? []).forEach((it) =>
+      addChargeItems(it.charge_items),
+    );
+    return priceById;
+  }, [encounterChargeItems, coverageEligibilityRequest, prefilledClaim]);
+
+  const totalClaimAmount = useMemo(() => {
+    return (watchedItemsForTotal ?? []).reduce((sum, item) => {
+      const fallbackFromChargeItems = (item.charge_items ?? []).reduce(
+        (acc, id) => acc + (chargeItemPriceById.get(id) ?? 0),
+        0,
+      );
+      const unitPrice = item.unit_price || fallbackFromChargeItems;
+      return (
+        sum +
+        unitPrice * (item.quantity?.value || 1) * (item.factor || 1)
+      );
+    }, 0);
+  }, [watchedItemsForTotal, chargeItemPriceById]);
+
   useEffect(() => {
     if (validationBalance === null) {
       form.setValue("_total_amount_cap_error", undefined, {
@@ -869,18 +907,10 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       });
       return;
     }
-    const total = (watchedItemsForTotal ?? []).reduce((sum, item) => {
-      return (
-        sum +
-        (item.unit_price || 0) *
-          (item.quantity?.value || 1) *
-          (item.factor || 1)
-      );
-    }, 0);
-    if (total > validationBalance) {
+    if (totalClaimAmount > validationBalance) {
       form.setValue(
         "_total_amount_cap_error",
-        `Total claim amount ₹${total.toFixed(2)} exceeds available wallet balance of ₹${validationBalance.toFixed(2)}`,
+        `Total claim amount ₹${totalClaimAmount.toFixed(2)} exceeds available wallet balance of ₹${validationBalance.toFixed(2)}`,
         { shouldDirty: false, shouldValidate: true },
       );
     } else {
@@ -889,7 +919,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         shouldValidate: true,
       });
     }
-  }, [watchedItemsForTotal, validationBalance, form]);
+  }, [totalClaimAmount, validationBalance, form]);
 
   const { mutate: submitClaim, isPending: submitClaimIsPending } = useMutation({
     mutationFn: apis.claim.submit,
@@ -1125,87 +1155,90 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             {isFormPrefillLoading ? (
               <FormPrefillSkeleton />
             ) : (
-            <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(onSubmit)}
-                className="space-y-8"
-              >
-                {relatedClaimId && (
-                  <>
-                    <ClaimRelatedSection
-                      form={form}
-                      lockedClaimId={relatedClaimId}
-                    />
-                    <Separator />
-                  </>
-                )}
-                <ClaimInsuranceSection
-                  form={form}
-                  readOnly={isGuidedFlow}
-                />
-                <Separator />
-                <PlanLevelSupportingInfoSection
-                  form={form}
-                  coverageEligibilityRequest={coverageEligibilityRequest}
-                  claimUse={formUse}
-                />
-                <Separator />
-                <PlanLevelQuestionnairesSection
-                  form={form}
-                  coverageEligibilityRequest={coverageEligibilityRequest}
-                  claimUse={formUse}
-                />
-                <Separator />
-                <ClaimItemSection
-                  key={`items-${prefillNonce}`}
-                  form={form}
-                  coverageEligibilityRequest={coverageEligibilityRequest}
-                  previousClaim={prefilledClaim}
-                  encounterChargeItems={encounterChargeItems ?? []}
-                />
-                <Separator />
-                <ClaimAccidentSection form={form} />
-                <Separator />
-                <ClaimOtherSection form={form} lockedUse={lockedUse} />
-                <Separator />
-
-                {form.watch("_total_amount_cap_error") && (
-                  <Alert variant="destructive">
-                    <AlertCircleIcon className="h-4 w-4" />
-                    <AlertDescription>
-                      {form.watch("_total_amount_cap_error")}
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {isUnchangedPrefill && (
-                  <Alert
-                    variant="destructive"
-                    className="flex items-center gap-2"
-                  >
-                    <AlertCircleIcon className="h-4 w-4" />
-                    <AlertDescription>
-                      No changes noted. Please update the form before submitting.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                <Button
-                  className="w-full"
-                  size="lg"
-                  type="submit"
-                  loading={isSubmitting}
-                  disabled={
-                    isUnchangedPrefill ||
-                    isFormPrefillLoading ||
-                    !isValid ||
-                    !!form.watch("_total_amount_cap_error")
-                  }
+              <Form {...form}>
+                <form
+                  onSubmit={form.handleSubmit(onSubmit)}
+                  className="space-y-8"
                 >
-                  Create Claim
-                </Button>
-              </form>
-            </Form>
+                  {relatedClaimId && (
+                    <>
+                      <ClaimRelatedSection
+                        form={form}
+                        lockedClaimId={relatedClaimId}
+                      />
+                      <Separator />
+                    </>
+                  )}
+                  <ClaimInsuranceSection form={form} readOnly={isGuidedFlow} />
+                  <Separator />
+                  <PlanLevelSupportingInfoSection
+                    form={form}
+                    coverageEligibilityRequest={coverageEligibilityRequest}
+                    claimUse={formUse}
+                  />
+                  <Separator />
+                  <PlanLevelQuestionnairesSection
+                    form={form}
+                    coverageEligibilityRequest={coverageEligibilityRequest}
+                    claimUse={formUse}
+                  />
+                  <Separator />
+                  <ClaimItemSection
+                    key={`items-${prefillNonce}`}
+                    form={form}
+                    coverageEligibilityRequest={coverageEligibilityRequest}
+                    previousClaim={prefilledClaim}
+                    encounterChargeItems={encounterChargeItems ?? []}
+                  />
+                  <Separator />
+                  <ClaimAccidentSection form={form} />
+                  <Separator />
+                  <ClaimOtherSection form={form} lockedUse={lockedUse} />
+                  <Separator />
+
+                  <WalletBalanceSummary
+                    totalAmount={totalClaimAmount}
+                    walletBalance={validationBalance}
+                  />
+
+                  {form.watch("_total_amount_cap_error") && (
+                    <Alert variant="destructive">
+                      <AlertCircleIcon className="h-4 w-4" />
+                      <AlertDescription>
+                        {form.watch("_total_amount_cap_error")}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  {isUnchangedPrefill && (
+                    <Alert
+                      variant="destructive"
+                      className="flex items-center gap-2"
+                    >
+                      <AlertCircleIcon className="h-4 w-4" />
+                      <AlertDescription>
+                        No changes noted. Please update the form before
+                        submitting.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    type="submit"
+                    loading={isSubmitting}
+                    disabled={
+                      isUnchangedPrefill ||
+                      isFormPrefillLoading ||
+                      !isValid ||
+                      !!form.watch("_total_amount_cap_error")
+                    }
+                  >
+                    Create Claim
+                  </Button>
+                </form>
+              </Form>
             )}
           </div>
 
@@ -1219,5 +1252,50 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     </GlobalStoreProvider>
   );
 };
+
+function WalletBalanceSummary({
+  totalAmount,
+  walletBalance,
+}: {
+  totalAmount: number;
+  walletBalance: number | null;
+}) {
+  if (walletBalance === null) return null;
+  const remaining = walletBalance - totalAmount;
+  const exceeded = remaining < 0;
+  return (
+    <div className="rounded-lg border bg-card p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <WalletIcon className="h-4 w-4 text-primary" />
+        <h4 className="text-sm font-semibold">Wallet balance summary</h4>
+      </div>
+      <div className="grid grid-cols-3 gap-3 text-sm">
+        <div className="space-y-0.5">
+          <p className="text-xs text-muted-foreground">Total claim amount</p>
+          <p className="font-semibold">₹{totalAmount.toFixed(2)}</p>
+        </div>
+        <div className="space-y-0.5">
+          <p className="text-xs text-muted-foreground">
+            Available wallet balance
+          </p>
+          <p className="font-semibold">₹{walletBalance.toFixed(2)}</p>
+        </div>
+        <div className="space-y-0.5">
+          <p className="text-xs text-muted-foreground">
+            {exceeded ? "Over by" : "Remaining"}
+          </p>
+          <p
+            className={cn(
+              "font-semibold",
+              exceeded ? "text-red-600" : "text-emerald-600",
+            )}
+          >
+            ₹{Math.abs(remaining).toFixed(2)}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default CreateClaimPage;
