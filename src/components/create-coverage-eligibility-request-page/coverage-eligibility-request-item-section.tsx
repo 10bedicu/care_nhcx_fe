@@ -169,9 +169,9 @@ export function CoverageEligibilityRequestItemSection({
       <div className="space-y-4">
         {fields.map((field, index) => {
           const conditionErrors = form.watch(`item.${index}._condition_errors`);
-          const hasAnyError = !!conditionErrors;
           const crossItemErrorsKey =
             crossItemErrorsByIndex.get(index)?.join(" • ") ?? "";
+          const hasAnyError = !!conditionErrors || !!crossItemErrorsKey;
           return (
           <Card
             key={field.id}
@@ -348,6 +348,16 @@ export function CoverageEligibilityRequestItemSection({
             </CardContent>
             {hasAnyError && (
               <CardFooter className="rounded-b-xl px-6 py-3 border-t border-red-200 bg-red-50 flex-col items-start gap-2">
+                {crossItemErrorsKey &&
+                  crossItemErrorsKey.split(" • ").map((err, i) => (
+                    <div
+                      key={`cross-${i}`}
+                      className="flex items-center gap-2 text-sm font-medium text-red-600"
+                    >
+                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                      {err}
+                    </div>
+                  ))}
                 {conditionErrors &&
                   conditionErrors.split(" • ").map((err, i) => (
                     <div
@@ -604,6 +614,7 @@ function AddDiagnosisSection({
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const diagnosisFields = form.watch(`item.${index}.diagnosis`) || [];
+  const hasMissingDiagnoses = diagnosisFields.length === 0;
 
   const addNewDiagnosis = () => {
     const currentDiagnoses = form.getValues(`item.${index}.diagnosis`) || [];
@@ -632,7 +643,10 @@ function AddDiagnosisSection({
   return (
     <div className="space-y-4">
       <div
-        className="flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50"
+        className={cn(
+          "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
+          hasMissingDiagnoses && "border-red-500 bg-red-50/50"
+        )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center space-x-2">
@@ -1013,7 +1027,7 @@ function SupportingInfoFileUpload({
                         type="file"
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                         onChange={handleFileChange}
-                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json"
                       />
                     </Label>
                   </Button>

@@ -31,7 +31,7 @@ import { cn } from "@/lib/utils";
 import { useGlobalStore } from "@/hooks/use-global-store";
 import { createClaimFormSchema } from "./schema";
 import { z } from "zod";
-import { buildInitialItems } from "./questionnaire-helpers";
+import { buildInitialItems, countMissingRequiredItems } from "./questionnaire-helpers";
 import { QuestionnaireResponseCard } from "./claim-questionnaire-section";
 import { ClaimUseChoice } from "@/types/claim";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
@@ -370,7 +370,7 @@ function PlanLevelDocCard({
                     type="file"
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     onChange={handleFileChange}
-                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt"
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.json"
                   />
                 </span>
               </Button>
@@ -591,6 +591,9 @@ export function PlanLevelSupportingInfoSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requiredReqs.length, unsatisfiedCount]);
 
+  const showValidationIssue =
+    unsatisfiedCount > 0 || !!errorField.value;
+
   const addDocForReq = (req: InsurancePlanSupportingInfoRequirement) => {
     const alreadyAdded = planLevelEntries.some(
       (info) =>
@@ -641,7 +644,7 @@ export function PlanLevelSupportingInfoSection({
         type="button"
         className={cn(
           "w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-colors hover:bg-muted/50",
-          unsatisfiedCount > 0 && "border-amber-400 bg-amber-50/50"
+          showValidationIssue && "border-red-500 bg-red-50/50"
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -655,17 +658,14 @@ export function PlanLevelSupportingInfoSection({
           <span className="font-medium text-sm">
             Plan-Level Supporting Documents
           </span>
-          {planLevelEntries.length > 0 && (
+          {!showValidationIssue && planLevelEntries.length > 0 && (
             <Badge variant="secondary" className="text-xs">
               {planLevelEntries.length} added
             </Badge>
           )}
-          {unsatisfiedCount > 0 && (
-            <Badge
-              variant="outline"
-              className="text-xs border-amber-400 text-amber-700 bg-amber-50"
-            >
-              {unsatisfiedCount} required
+          {showValidationIssue && (
+            <Badge variant="destructive" className="ml-1 text-xs">
+              {unsatisfiedCount} doc{unsatisfiedCount > 1 ? "s" : ""} required
             </Badge>
           )}
         </div>
@@ -675,7 +675,7 @@ export function PlanLevelSupportingInfoSection({
       </button>
 
       {(errorFieldState.error?.message || errorField.value) && (
-        <p className="text-sm font-medium text-destructive px-1">
+        <p className="text-sm font-medium text-red-600 px-1">
           {errorFieldState.error?.message || (errorField.value as string)}
         </p>
       )}
@@ -940,9 +940,10 @@ export function PlanLevelQuestionnairesSection({
   ): "added" | "missing" => {
     const detail = getDetailForReq(req);
     if (!detail) return "missing";
-    return watchedQR.some((r) => r.questionnaire === detail.full_url)
-      ? "added"
-      : "missing";
+    const qr = watchedQR.find((r) => r.questionnaire === detail.full_url);
+    if (!qr) return "missing";
+    const missing = countMissingRequiredItems(detail.items, qr.item ?? []);
+    return missing === 0 ? "added" : "missing";
   };
 
   const requiredStatuses = useMemo(
@@ -976,6 +977,9 @@ export function PlanLevelQuestionnairesSection({
     errorField.onChange(value);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requiredReqs.length, unsatisfiedCount]);
+
+  const showValidationIssue =
+    unsatisfiedCount > 0 || !!errorField.value;
 
   const addQuestionnaireForReq = (
     req: InsurancePlanSupportingInfoRequirement
@@ -1059,7 +1063,7 @@ export function PlanLevelQuestionnairesSection({
         type="button"
         className={cn(
           "w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-colors hover:bg-muted/50",
-          unsatisfiedCount > 0 && "border-amber-400 bg-amber-50/50"
+          showValidationIssue && "border-red-500 bg-red-50/50"
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -1073,16 +1077,13 @@ export function PlanLevelQuestionnairesSection({
           <span className="font-medium text-sm">
             Plan-Level Questionnaires
           </span>
-          {planQREntries.length > 0 && (
+          {!showValidationIssue && planQREntries.length > 0 && (
             <Badge variant="secondary" className="text-xs">
               {planQREntries.length} added
             </Badge>
           )}
-          {unsatisfiedCount > 0 && (
-            <Badge
-              variant="outline"
-              className="text-xs border-amber-400 text-amber-700 bg-amber-50"
-            >
+          {showValidationIssue && (
+            <Badge variant="destructive" className="ml-1 text-xs">
               {unsatisfiedCount} required
             </Badge>
           )}
@@ -1093,7 +1094,7 @@ export function PlanLevelQuestionnairesSection({
       </button>
 
       {(errorFieldState.error?.message || errorField.value) && (
-        <p className="text-sm font-medium text-destructive px-1">
+        <p className="text-sm font-medium text-red-600 px-1">
           {errorFieldState.error?.message || (errorField.value as string)}
         </p>
       )}

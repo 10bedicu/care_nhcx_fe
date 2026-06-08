@@ -791,9 +791,24 @@ export function ClaimItemSection({
         {fields.map((field, index) => {
           const mandatoryDocsError =
             watchedItems?.[index]?._mandatory_docs_error;
+          const mandatoryQuestionnairesError =
+            watchedItems?.[index]?._mandatory_questionnaires_error;
+          const mandatoryCareTeamError =
+            watchedItems?.[index]?._mandatory_care_team_error;
+          const mandatoryDiagnosisError =
+            watchedItems?.[index]?._mandatory_diagnosis_error;
+          const mandatoryChargeItemsError =
+            watchedItems?.[index]?._mandatory_charge_items_error;
           const amountCapError = watchedItems?.[index]?._amount_cap_error;
           const conditionErrors = watchedItems?.[index]?._condition_errors;
-          const hasAnyError = mandatoryDocsError || amountCapError || conditionErrors;
+          const hasAnyError =
+            mandatoryDocsError ||
+            mandatoryQuestionnairesError ||
+            mandatoryCareTeamError ||
+            mandatoryDiagnosisError ||
+            mandatoryChargeItemsError ||
+            amountCapError ||
+            conditionErrors;
           return (
             <Card
               className={cn(hasAnyError && "overflow-hidden border-red-500")}
@@ -1212,6 +1227,30 @@ export function ClaimItemSection({
                       {mandatoryDocsError}
                     </div>
                   )}
+                  {mandatoryQuestionnairesError && (
+                    <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                      {mandatoryQuestionnairesError}
+                    </div>
+                  )}
+                  {mandatoryCareTeamError && (
+                    <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                      {mandatoryCareTeamError}
+                    </div>
+                  )}
+                  {mandatoryDiagnosisError && (
+                    <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                      {mandatoryDiagnosisError}
+                    </div>
+                  )}
+                  {mandatoryChargeItemsError && (
+                    <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                      {mandatoryChargeItemsError}
+                    </div>
+                  )}
                   {amountCapError && (
                     <div className="flex items-center gap-2 text-sm font-medium text-red-600">
                       <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
@@ -1443,12 +1482,41 @@ function AddChargeItemsSection({
     [selectedChargeItems]
   );
 
-  if (encounterChargeItems.length === 0) return null;
+  const hasMissingChargeItems = selectedIds.length === 0;
+
+  const {
+    field: mandatoryChargeItemsField,
+    fieldState: mandatoryChargeItemsFieldState,
+  } = useController({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    name: `item.${index}._mandatory_charge_items_error` as any,
+    control: form.control,
+  });
+
+  useEffect(() => {
+    if (hasMissingChargeItems) {
+      mandatoryChargeItemsField.onChange(
+        encounterChargeItems.length === 0
+          ? "No charge items are available for this encounter. At least one charge item is required."
+          : "At least one charge item is required"
+      );
+    } else {
+      mandatoryChargeItemsField.onChange(undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    mandatoryChargeItemsField.onChange,
+    encounterChargeItems.length,
+    hasMissingChargeItems,
+  ]);
 
   return (
     <div className="space-y-4">
       <div
-        className="flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50"
+        className={cn(
+          "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
+          hasMissingChargeItems && "border-red-500 bg-red-50/50"
+        )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center space-x-2">
@@ -1458,10 +1526,18 @@ function AddChargeItemsSection({
             <ChevronRightIcon className="w-4 h-4" />
           )}
           <ReceiptIcon className="w-4 h-4 text-muted-foreground" />
-          <span className="font-medium">Charge Items</span>
-          {selectedIds.length > 0 && (
+          <span className="font-medium">
+            Charge Items
+            <span className="text-red-500 text-sm ml-0.5">*</span>
+          </span>
+          {!hasMissingChargeItems && selectedIds.length > 0 && (
             <Badge variant="secondary" className="ml-2">
               {selectedIds.length}
+            </Badge>
+          )}
+          {hasMissingChargeItems && (
+            <Badge variant="destructive" className="ml-1 text-xs">
+              1 required
             </Badge>
           )}
         </div>
@@ -1472,81 +1548,102 @@ function AddChargeItemsSection({
         )}
       </div>
 
+      {(mandatoryChargeItemsFieldState.error?.message ||
+        mandatoryChargeItemsField.value) && (
+        <p className="text-sm font-medium text-red-600 px-1">
+          {mandatoryChargeItemsFieldState.error?.message ||
+            mandatoryChargeItemsField.value}
+        </p>
+      )}
+
       {isExpanded && (
         <div className="space-y-3 pl-4">
-          <Autocomplete
-            options={availableToAdd.map((ci) => ({
-              label: `${chargeItemLabel(ci)}${ci.code?.code ? ` (${ci.code.code})` : ""} — ₹${parseFloat(ci.total_price || "0").toFixed(2)}`,
-              value: ci.id,
-            }))}
-            value={undefined}
-            onChange={(id) => {
-              if (!selectedIds.includes(id)) {
-                form.setValue(`item.${index}.charge_items`, [
-                  ...selectedIds,
-                  id,
-                ]);
-              }
-            }}
-            placeholder={
-              availableToAdd.length === 0
-                ? "No charge items available"
-                : "Search and select a charge item…"
-            }
-            noOptionsMessage="No charge items available"
-          />
+          {encounterChargeItems.length === 0 ? (
+            <div className="rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground flex items-start gap-2">
+              <InfoIcon className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-600" />
+              <span>
+                No charge items are linked to this encounter yet. Add charge
+                items to the encounter before submitting the claim.
+              </span>
+            </div>
+          ) : (
+            <>
+              <Autocomplete
+                options={availableToAdd.map((ci) => ({
+                  label: `${chargeItemLabel(ci)}${ci.code?.code ? ` (${ci.code.code})` : ""} — ₹${parseFloat(ci.total_price || "0").toFixed(2)}`,
+                  value: ci.id,
+                }))}
+                value={undefined}
+                onChange={(id) => {
+                  if (!selectedIds.includes(id)) {
+                    form.setValue(`item.${index}.charge_items`, [
+                      ...selectedIds,
+                      id,
+                    ]);
+                  }
+                }}
+                placeholder={
+                  availableToAdd.length === 0
+                    ? "No charge items available"
+                    : "Search and select a charge item…"
+                }
+                noOptionsMessage="No charge items available"
+              />
 
-          {selectedChargeItems.length > 0 && (
-            <div className="space-y-2">
-              {selectedChargeItems.map((ci) => (
-                <div
-                  key={ci.id}
-                  className="flex items-center justify-between p-2.5 border rounded-lg bg-muted/30"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {chargeItemLabel(ci)}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      {ci.code?.code && (
-                        <span className="text-xs text-muted-foreground font-mono">
-                          {ci.code.code}
-                        </span>
-                      )}
-                      <span className="text-xs font-medium text-foreground">
-                        ₹{parseFloat(ci.total_price || "0").toFixed(2)}
-                      </span>
+              {selectedChargeItems.length > 0 && (
+                <div className="space-y-2">
+                  {selectedChargeItems.map((ci) => (
+                    <div
+                      key={ci.id}
+                      className="flex items-center justify-between p-2.5 border rounded-lg bg-muted/30"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {chargeItemLabel(ci)}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {ci.code?.code && (
+                            <span className="text-xs text-muted-foreground font-mono">
+                              {ci.code.code}
+                            </span>
+                          )}
+                          <span className="text-xs font-medium text-foreground">
+                            ₹{parseFloat(ci.total_price || "0").toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="flex-shrink-0 h-7 w-7"
+                        onClick={() => {
+                          form.setValue(
+                            `item.${index}.charge_items`,
+                            selectedIds.filter((id) => id !== ci.id)
+                          );
+                        }}
+                      >
+                        <XIcon className="h-4 w-4" />
+                      </Button>
                     </div>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="flex-shrink-0 h-7 w-7"
-                    onClick={() => {
-                      form.setValue(
-                        `item.${index}.charge_items`,
-                        selectedIds.filter((id) => id !== ci.id)
-                      );
-                    }}
-                  >
-                    <XIcon className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
+                  ))}
 
-              {selectedChargeItems.length > 1 && (
-                <div className="flex justify-end text-sm text-muted-foreground px-1">
-                  Total: ₹{totalSelected.toFixed(2)}
+                  {selectedChargeItems.length > 1 && (
+                    <div className="flex justify-end text-sm text-muted-foreground px-1">
+                      Total: ₹{totalSelected.toFixed(2)}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
 
-          {selectedIds.length === 0 && (
-            <p className="text-xs text-muted-foreground py-1">
-              No charge items selected. Select charge items to auto-calculate the unit price.
-            </p>
+              {selectedIds.length === 0 && (
+                <p className="text-xs text-muted-foreground py-1">
+                  No charge items selected. Select charge items to auto-calculate
+                  the unit price.
+                </p>
+              )}
+            </>
           )}
         </div>
       )}
@@ -1704,7 +1801,7 @@ function ItemValidationEffects({
     if (benefitLimit != null && chargeItemsTotal > benefitLimit) {
       form.setValue(
         `item.${index}._amount_cap_error`,
-        `Charge items total ₹${chargeItemsTotal.toFixed(2)} exceeds the benefit limit of ₹${benefitLimit.toFixed(2)}. Amount has been capped at ₹${benefitLimit.toFixed(2)}.`,
+        `The amount requested is ₹${chargeItemsTotal.toFixed(2)}, but the expected amount is ₹${benefitLimit.toFixed(2)}. The amount has been adjusted to the expected limit — please inform the patient.`,
         { shouldDirty: false, shouldValidate: true },
       );
     } else {
@@ -1873,6 +1970,40 @@ function AddDiagnosisSection({
   const itemSpecificDiagnoses = diagnosisFields.filter((diagnosis) =>
     itemDiagnosisSequences.includes(diagnosis.sequence)
   );
+  const incompleteDiagnosisCount = itemSpecificDiagnoses.filter(
+    (diagnosis) => !diagnosis.diagnosis_code && !diagnosis.diagnosis_reference
+  ).length;
+  const hasMissingDiagnoses =
+    itemSpecificDiagnoses.length === 0 || incompleteDiagnosisCount > 0;
+  const diagnosisIssueCount =
+    itemSpecificDiagnoses.length === 0 ? 1 : incompleteDiagnosisCount;
+
+  const {
+    field: mandatoryDiagnosisField,
+    fieldState: mandatoryDiagnosisFieldState,
+  } = useController({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    name: `item.${index}._mandatory_diagnosis_error` as any,
+    control: form.control,
+  });
+
+  useEffect(() => {
+    if (hasMissingDiagnoses) {
+      mandatoryDiagnosisField.onChange(
+        itemSpecificDiagnoses.length === 0
+          ? "At least one diagnosis is required"
+          : `${incompleteDiagnosisCount} diagnosis(es) must be completed`
+      );
+    } else {
+      mandatoryDiagnosisField.onChange(undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    mandatoryDiagnosisField.onChange,
+    hasMissingDiagnoses,
+    itemSpecificDiagnoses.length,
+    incompleteDiagnosisCount,
+  ]);
 
   const addNewDiagnosis = () => {
     const currentDiagnoses = form.getValues("diagnosis") || [];
@@ -1899,7 +2030,10 @@ function AddDiagnosisSection({
   return (
     <div className="space-y-4">
       <div
-        className="flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50"
+        className={cn(
+          "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
+          hasMissingDiagnoses && "border-red-500 bg-red-50/50"
+        )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center space-x-2">
@@ -1912,13 +2046,26 @@ function AddDiagnosisSection({
             Diagnoses
             <span className="text-red-500 text-sm ml-0.5">*</span>
           </span>
-          {itemSpecificDiagnoses.length > 0 && (
+          {!hasMissingDiagnoses && itemSpecificDiagnoses.length > 0 && (
             <Badge variant="secondary" className="ml-2">
               {itemSpecificDiagnoses.length}
             </Badge>
           )}
+          {hasMissingDiagnoses && (
+            <Badge variant="destructive" className="ml-1 text-xs">
+              {diagnosisIssueCount} required
+            </Badge>
+          )}
         </div>
       </div>
+
+      {(mandatoryDiagnosisFieldState.error?.message ||
+        mandatoryDiagnosisField.value) && (
+        <p className="text-sm font-medium text-red-600 px-1">
+          {mandatoryDiagnosisFieldState.error?.message ||
+            mandatoryDiagnosisField.value}
+        </p>
+      )}
 
       {isExpanded && (
         <div className="space-y-4 pl-4">
@@ -2318,6 +2465,40 @@ function AddCareTeamSection({
   const itemSpecificCareTeam = careTeamFields.filter((member) =>
     itemCareTeamSequences.includes(member.sequence)
   );
+  const incompleteCareTeamCount = itemSpecificCareTeam.filter(
+    (member) => !member.provider
+  ).length;
+  const hasMissingCareTeam =
+    itemSpecificCareTeam.length === 0 || incompleteCareTeamCount > 0;
+  const careTeamIssueCount =
+    itemSpecificCareTeam.length === 0 ? 1 : incompleteCareTeamCount;
+
+  const {
+    field: mandatoryCareTeamField,
+    fieldState: mandatoryCareTeamFieldState,
+  } = useController({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    name: `item.${index}._mandatory_care_team_error` as any,
+    control: form.control,
+  });
+
+  useEffect(() => {
+    if (hasMissingCareTeam) {
+      mandatoryCareTeamField.onChange(
+        itemSpecificCareTeam.length === 0
+          ? "At least one care team member is required"
+          : `${incompleteCareTeamCount} care team member(s) must be completed`
+      );
+    } else {
+      mandatoryCareTeamField.onChange(undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    mandatoryCareTeamField.onChange,
+    hasMissingCareTeam,
+    itemSpecificCareTeam.length,
+    incompleteCareTeamCount,
+  ]);
 
   const facilityId = form.getValues("facility");
   const { data: usersResponse, isLoading: loading } = useQuery({
@@ -2356,7 +2537,10 @@ function AddCareTeamSection({
   return (
     <div className="space-y-4">
       <div
-        className="flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50"
+        className={cn(
+          "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
+          hasMissingCareTeam && "border-red-500 bg-red-50/50"
+        )}
         onClick={() => {
           setIsExpanded(!isExpanded);
         }}
@@ -2371,13 +2555,26 @@ function AddCareTeamSection({
             Care Team
             <span className="text-red-500 text-sm ml-0.5">*</span>
           </span>
-          {itemSpecificCareTeam.length > 0 && (
+          {!hasMissingCareTeam && itemSpecificCareTeam.length > 0 && (
             <Badge variant="secondary" className="ml-2">
               {itemSpecificCareTeam.length}
             </Badge>
           )}
+          {hasMissingCareTeam && (
+            <Badge variant="destructive" className="ml-1 text-xs">
+              {careTeamIssueCount} required
+            </Badge>
+          )}
         </div>
       </div>
+
+      {(mandatoryCareTeamFieldState.error?.message ||
+        mandatoryCareTeamField.value) && (
+        <p className="text-sm font-medium text-red-600 px-1">
+          {mandatoryCareTeamFieldState.error?.message ||
+            mandatoryCareTeamField.value}
+        </p>
+      )}
 
       {isExpanded && (
         <div className="space-y-4 pl-4">
@@ -3330,7 +3527,7 @@ function SupportingInfoFileUpload({
                         type="file"
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                         onChange={handleFileChange}
-                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json"
                       />
                     </Label>
                   </Button>

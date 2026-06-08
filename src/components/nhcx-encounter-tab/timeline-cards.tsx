@@ -266,7 +266,7 @@ export const CoverageEligibilityTimelineCard: FC<
         footerActions = (
           <ActionButton
             to={`coverages/new?purpose=auth-requirements&coverage_eligibility=${request.id}`}
-            label="Check Auth Requirements"
+            label="Check Pre-Authorization Requirements"
             icon={<ShieldAlertIcon className="h-4 w-4" />}
           />
         );

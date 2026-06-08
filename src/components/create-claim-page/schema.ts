@@ -158,6 +158,9 @@ export const claimItemSchema = z
     factor: z.number().optional(),
     _mandatory_docs_error: z.string().optional(),
     _mandatory_questionnaires_error: z.string().optional(),
+    _mandatory_care_team_error: z.string().optional(),
+    _mandatory_diagnosis_error: z.string().optional(),
+    _mandatory_charge_items_error: z.string().optional(),
     _amount_cap_error: z.string().optional(),
     _condition_errors: z.string().optional(),
   })
@@ -184,6 +187,33 @@ export const claimItemSchema = z
         data._mandatory_questionnaires_error ??
         "All mandatory questionnaires must be completed",
       path: ["_mandatory_questionnaires_error"],
+    })
+  )
+  .refine(
+    (data) => !data._mandatory_care_team_error,
+    (data) => ({
+      message:
+        data._mandatory_care_team_error ??
+        "At least one care team member is required",
+      path: ["_mandatory_care_team_error"],
+    })
+  )
+  .refine(
+    (data) => !data._mandatory_diagnosis_error,
+    (data) => ({
+      message:
+        data._mandatory_diagnosis_error ??
+        "At least one diagnosis is required",
+      path: ["_mandatory_diagnosis_error"],
+    })
+  )
+  .refine(
+    (data) => !data._mandatory_charge_items_error,
+    (data) => ({
+      message:
+        data._mandatory_charge_items_error ??
+        "At least one charge item is required",
+      path: ["_mandatory_charge_items_error"],
     })
   )
   .refine(
@@ -314,7 +344,7 @@ export const createClaimFormSchema = z
     (data) => ({
       message:
         data._total_amount_cap_error ??
-        "Total claim amount exceeds available wallet balance",
+        "The amount requested exceeds the available wallet balance. Please inform the patient.",
       path: ["_total_amount_cap_error"],
     })
   )

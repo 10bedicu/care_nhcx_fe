@@ -910,7 +910,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     if (totalClaimAmount > validationBalance) {
       form.setValue(
         "_total_amount_cap_error",
-        `Total claim amount ₹${totalClaimAmount.toFixed(2)} exceeds available wallet balance of ₹${validationBalance.toFixed(2)}`,
+        `The amount requested is ₹${totalClaimAmount.toFixed(2)}, but the available wallet balance is ₹${validationBalance.toFixed(2)}. Please inform the patient before proceeding.`,
         { shouldDirty: false, shouldValidate: true },
       );
     } else {

@@ -177,17 +177,17 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
                   </div>
                   <div>
                     <h2 className="text-base font-semibold text-gray-900">
-                      Start with Coverage Validation
+                      Start with a Coverage Balance Check
                     </h2>
                     <p className="text-sm text-gray-600 mt-0.5">
                       Confirm the patient’s policy is active and has wallet
-                      balance before checking authorisation requirements.
+                      balance before checking what is needed for pre-authorisation.
                     </p>
                   </div>
                 </div>
                 <Link href="coverages/new?purpose=validation">
                   <Button size="lg" className="gap-2">
-                    Check Coverage Validation
+                    Check Coverage Balance
                     <ArrowRightIcon className="h-4 w-4" />
                   </Button>
                 </Link>
@@ -209,7 +209,7 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
                   <div>
                     <Link href="coverages/new?purpose=validation">
                       <Button variant="outline" size="sm">
-                        Re-run Coverage Validation
+                        Re-check Coverage Balance
                       </Button>
                     </Link>
                   </div>

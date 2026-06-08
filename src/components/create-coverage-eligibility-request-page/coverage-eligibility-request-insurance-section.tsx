@@ -22,6 +22,7 @@ import { InlineLoading } from "@/components/common/loading-spinner";
 import { useEffect, useState } from "react";
 
 import { Checkbox } from "../ui/checkbox";
+import { cn } from "@/lib/utils";
 import { Policy } from "@/types/policy";
 import { UseFormReturn } from "react-hook-form";
 import { apis } from "@/apis";
@@ -181,7 +182,12 @@ export function CoverageEligibilityRequestInsuranceSection({
         <InlineLoading label="Searching policies…" className="mt-2" />
       )}
 
-      <div>
+      <div
+        className={cn(
+          form.formState.errors.insurance &&
+            "rounded-lg border border-red-500 p-3"
+        )}
+      >
         <FormField
           control={form.control}
           name="insurance"

@@ -42,6 +42,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
+import { DateTimePicker } from "../ui/date-time-picker";
 import { Input } from "../ui/input";
 
 import { Textarea } from "../ui/textarea";
@@ -57,6 +58,7 @@ import {
 } from "./questionnaire-helpers";
 import { QuestionnaireResponseItemInput } from "./schema";
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 import { createClaimFormSchema } from "./schema";
 import { uploadFile } from "@/lib/upload-file";
 import { useGlobalStore } from "@/hooks/use-global-store";
@@ -329,7 +331,7 @@ function AttachmentInput({
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             onChange={handleFileChange}
             disabled={disabled || isUploading}
-            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt"
+            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.json"
           />
         </span>
       </Button>
@@ -435,22 +437,27 @@ function QuestionnaireAnswerInput({
 
   if (fhirItem.type === "date") {
     return (
-      <Input
-        type="date"
-        value={(field.value as string) ?? ""}
-        onChange={(e) => field.onChange(e.target.value || undefined)}
+      <DateTimePicker
+        showTime={false}
+        value={field.value ? new Date(field.value as string) : undefined}
+        onChange={(value) => {
+          field.onChange(value ? format(value, "yyyy-MM-dd") : undefined);
+        }}
         disabled={disabled}
+        placeholder="dd/MM/yyyy"
       />
     );
   }
 
   if (fhirItem.type === "dateTime") {
     return (
-      <Input
-        type="datetime-local"
-        value={(field.value as string) ?? ""}
-        onChange={(e) => field.onChange(e.target.value || undefined)}
+      <DateTimePicker
+        value={field.value ? new Date(field.value as string) : undefined}
+        onChange={(value) => {
+          field.onChange(value ? value.toISOString() : undefined);
+        }}
         disabled={disabled}
+        placeholder="dd/MM/yyyy hh:mm aa"
       />
     );
   }
@@ -650,7 +657,12 @@ function QuestionnaireItemRenderer({
     fhirItem.required && form.formState.isSubmitted && !hasValue;
 
   return (
-    <FormItem className="space-y-1.5">
+    <FormItem
+      className={cn(
+        "space-y-1.5",
+        showRequiredError && "rounded-md border border-red-500 p-3"
+      )}
+    >
       <FormLabel className="text-sm">
         {itemLabel(fhirItem)}
         {fhirItem.required && <span className="text-red-500 ml-0.5">*</span>}
@@ -970,9 +982,10 @@ export function AddQuestionnaireSection({
   const getQStatus = (req: InsurancePlanSupportingInfoRequirement): QStatus => {
     const detail = getDetailForReq(req);
     if (!detail) return "missing";
-    return watchedQR.some((r) => r.questionnaire === detail.full_url)
-      ? "added"
-      : "missing";
+    const qr = watchedQR.find((r) => r.questionnaire === detail.full_url);
+    if (!qr) return "missing";
+    const missing = countMissingRequiredItems(detail.items, qr.item ?? []);
+    return missing === 0 ? "added" : "missing";
   };
 
   const requiredStatuses = useMemo(
@@ -998,6 +1011,9 @@ export function AddQuestionnaireSection({
       name: `item.${index}._mandatory_questionnaires_error` as any,
       control: form.control,
     });
+
+  const showValidationIssue =
+    unsatisfiedCount > 0 || !!mandatoryQRField.value;
 
   useEffect(() => {
     if (requiredRequirements.length > 0 && unsatisfiedCount > 0) {
@@ -1109,7 +1125,7 @@ export function AddQuestionnaireSection({
       <div
         className={cn(
           "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
-          unsatisfiedCount > 0 && "border-amber-400 bg-amber-50/50"
+          showValidationIssue && "border-red-500 bg-red-50/50"
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -1120,12 +1136,12 @@ export function AddQuestionnaireSection({
             <ChevronRightIcon className="w-4 h-4" />
           )}
           <span className="font-medium">Questionnaires</span>
-          {itemQRCount > 0 && (
+          {!showValidationIssue && itemQRCount > 0 && (
             <Badge variant="secondary" className="ml-2">
               {itemQRCount}
             </Badge>
           )}
-          {unsatisfiedCount > 0 && (
+          {showValidationIssue && (
             <Badge variant="destructive" className="ml-1 text-xs">
               {unsatisfiedCount} required
             </Badge>
@@ -1137,7 +1153,7 @@ export function AddQuestionnaireSection({
       </div>
 
       {(mandatoryQRFieldState.error?.message || mandatoryQRField.value) && (
-        <p className="text-sm font-medium text-destructive px-1">
+        <p className="text-sm font-medium text-red-600 px-1">
           {mandatoryQRFieldState.error?.message || mandatoryQRField.value}
         </p>
       )}

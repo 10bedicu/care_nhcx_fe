@@ -52,9 +52,9 @@ import { Separator } from "@/components/ui/separator";
 const PURPOSE_LABEL: Record<CoverageEligibilityRequestPurposeChoice, string> =
   {
     discovery: "Discovery",
-    validation: "Validation",
+    validation: "Coverage Balance",
     benefits: "Benefits",
-    "auth-requirements": "Auth Requirements",
+    "auth-requirements": "Pre-Authorization Requirements",
   };
 
 const PURPOSE_DESCRIPTION: Record<

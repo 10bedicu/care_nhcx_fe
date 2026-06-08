@@ -324,9 +324,9 @@ const CreateCoverageEligibilityRequestPage: FC<
           <div>
             <h3 className="text-lg font-medium">
               {lockedPurpose === "auth-requirements"
-                ? "Check Auth Requirements"
+                ? "Check Pre-Authorization Requirements"
                 : lockedPurpose === "validation"
-                  ? "Coverage Validation"
+                  ? "Check Coverage Balance"
                   : lockedPurpose === "discovery"
                     ? "Coverage Discovery"
                     : lockedPurpose === "benefits"
@@ -412,7 +412,15 @@ const CreateCoverageEligibilityRequestPage: FC<
                     isUnchangedPrefill || isFormPrefillLoading || !isValid
                   }
                 >
-                  Check Coverage Eligibility
+                  {lockedPurpose === "auth-requirements"
+                    ? "Check Pre-Authorization Requirements"
+                    : lockedPurpose === "validation"
+                      ? "Check Coverage Balance"
+                      : lockedPurpose === "discovery"
+                        ? "Discover Coverage"
+                        : lockedPurpose === "benefits"
+                          ? "Check Benefits"
+                          : "Check Coverage Eligibility"}
                 </Button>
               </form>
             </Form>

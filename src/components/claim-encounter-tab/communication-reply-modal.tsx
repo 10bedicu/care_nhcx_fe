@@ -277,7 +277,7 @@ const CommunicationReplyModal: FC<CommunicationReplyModalProps> = ({
                           type="file"
                           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                           onChange={handleFileSelect}
-                          accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                          accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json"
                         />
                       </Button>
                     </Label>
