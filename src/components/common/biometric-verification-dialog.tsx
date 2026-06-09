@@ -8,6 +8,7 @@ import {
 import { FC, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { ClaimConsentStage } from "@/types/claim_consent";
 import { FingerprintIcon } from "lucide-react";
 import { apis } from "@/apis";
 import { cn } from "@/lib/utils";
@@ -24,8 +25,10 @@ export interface BiometricVerificationDialogProps {
   abhaNumber: string;
   payerId: string;
   process?: BiometricProcess;
+  stage: ClaimConsentStage;
   authMode?: BiometricAuthMode;
   onVerifySuccess?: (message: string) => void;
+  onBypass?: () => void;
 }
 
 export const BiometricVerificationDialog: FC<
@@ -37,8 +40,10 @@ export const BiometricVerificationDialog: FC<
   abhaNumber,
   payerId,
   process = "Preauth",
+  stage,
   authMode = "FINGERPRINT",
   onVerifySuccess,
+  onBypass,
 }) => {
   const [txnId, setTxnId] = useState<string | null>(null);
   const [capturedAuthData, setCapturedAuthData] = useState<string>("");
@@ -85,6 +90,7 @@ export const BiometricVerificationDialog: FC<
         payerId,
         authMode,
         process,
+        stage,
       });
     },
     onError: (error) => {
@@ -195,7 +201,7 @@ export const BiometricVerificationDialog: FC<
                 className={cn(
                   "flex h-24 w-24 items-center justify-center rounded-full bg-primary-50",
                   fingerprintStatus === "success" && "bg-green-50",
-                  fingerprintStatus === "error" && "bg-red-50"
+                  fingerprintStatus === "error" && "bg-red-50",
                 )}
               >
                 <FingerprintIcon
@@ -204,7 +210,7 @@ export const BiometricVerificationDialog: FC<
                     fingerprintStatus === "success" && "text-green-600",
                     fingerprintStatus === "error" && "text-red-600",
                     ["idle", "pending"].includes(fingerprintStatus) &&
-                      "text-primary-500"
+                      "text-primary-500",
                   )}
                 />
               </div>
@@ -247,6 +253,19 @@ export const BiometricVerificationDialog: FC<
               >
                 Scan Fingerprint
               </Button>
+              {onBypass && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    verifySucceededRef.current = true;
+                    onBypass();
+                  }}
+                >
+                  Skip Verification
+                </Button>
+              )}
             </div>
           </div>
         </div>

@@ -5,7 +5,7 @@ import {
 } from "@/types/coverage_eligibility";
 import { Condition, ConditionCategory } from "@/types/condition";
 import { FC, useEffect, useMemo, useRef, useState } from "react";
-import { useForm, useFormState, useWatch } from "react-hook-form";
+import { useForm, useFormState } from "react-hook-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useQueryParams } from "raviger";
 
@@ -18,7 +18,6 @@ import { Form } from "@/components/ui/form";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
 import { InsurancePlanDetailsPanel } from "../insurance-plan-details-panel";
 import { FormPrefillSkeleton } from "@/components/common/form-prefill-skeleton";
-import { PmjayBiometricVerificationGate } from "@/components/common/pmjay-biometric-verification-gate";
 import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
@@ -88,11 +87,6 @@ const CreateCoverageEligibilityRequestPage: FC<
   const { isDirty, isValid } = useFormState({ control: form.control });
   const [hasLinkedCePrefill, setHasLinkedCePrefill] = useState(false);
   const isUnchangedPrefill = hasLinkedCePrefill && !isDirty;
-
-  const insuranceSelection = useWatch({
-    control: form.control,
-    name: "insurance",
-  });
 
   const isAuthRequirements = lockedPurpose === "auth-requirements";
 
@@ -316,10 +310,6 @@ const CreateCoverageEligibilityRequestPage: FC<
       }}
     >
       <div className="space-y-6">
-        <PmjayBiometricVerificationGate
-          encounterId={encounterId}
-          insurance={insuranceSelection || []}
-        />
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-lg font-medium">
@@ -360,70 +350,71 @@ const CreateCoverageEligibilityRequestPage: FC<
             {isFormPrefillLoading ? (
               <FormPrefillSkeleton />
             ) : (
-            <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(onSubmit)}
-                className="space-y-8"
-              >
-                <CoverageEligibilityRequestInsuranceSection
-                  form={form}
-                  readOnly={
-                    lockedPurpose !== null && lockedPurpose !== "validation"
-                  }
-                />
-                <Separator />
-                {lockedPurpose !== "validation" && (
-                  <>
-                    <CoverageEligibilityRequestItemSection
-                      form={form}
-                      defaultItemDiagnoses={
-                        isAuthRequirements ? defaultItemDiagnoses : []
-                      }
-                      requireEnhancementAllowed={requireEnhancementAllowed}
-                      prefilledItemSequences={prefilledItemSequences}
-                    />
-                    <Separator />
-                  </>
-                )}
-                <CoverageEligibilityRequestOtherSection
-                  form={form}
-                  lockedPurpose={lockedPurpose}
-                />
-                <Separator />
-
-                {isUnchangedPrefill && (
-                  <Alert
-                    variant="destructive"
-                    className="flex items-center gap-2"
-                  >
-                    <AlertCircleIcon className="h-4 w-4" />
-                    <AlertDescription>
-                      No changes noted. Please update the form before submitting.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                <Button
-                  className="w-full"
-                  size="lg"
-                  type="submit"
-                  loading={isSubmitting}
-                  disabled={
-                    isUnchangedPrefill || isFormPrefillLoading || !isValid
-                  }
+              <Form {...form}>
+                <form
+                  onSubmit={form.handleSubmit(onSubmit)}
+                  className="space-y-8"
                 >
-                  {lockedPurpose === "auth-requirements"
-                    ? "Check Pre-Authorization Requirements"
-                    : lockedPurpose === "validation"
-                      ? "Check Coverage Balance"
-                      : lockedPurpose === "discovery"
-                        ? "Discover Coverage"
-                        : lockedPurpose === "benefits"
-                          ? "Check Benefits"
-                          : "Check Coverage Eligibility"}
-                </Button>
-              </form>
-            </Form>
+                  <CoverageEligibilityRequestInsuranceSection
+                    form={form}
+                    readOnly={
+                      lockedPurpose !== null && lockedPurpose !== "validation"
+                    }
+                  />
+                  <Separator />
+                  {lockedPurpose !== "validation" && (
+                    <>
+                      <CoverageEligibilityRequestItemSection
+                        form={form}
+                        defaultItemDiagnoses={
+                          isAuthRequirements ? defaultItemDiagnoses : []
+                        }
+                        requireEnhancementAllowed={requireEnhancementAllowed}
+                        prefilledItemSequences={prefilledItemSequences}
+                      />
+                      <Separator />
+                    </>
+                  )}
+                  <CoverageEligibilityRequestOtherSection
+                    form={form}
+                    lockedPurpose={lockedPurpose}
+                  />
+                  <Separator />
+
+                  {isUnchangedPrefill && (
+                    <Alert
+                      variant="destructive"
+                      className="flex items-center gap-2"
+                    >
+                      <AlertCircleIcon className="h-4 w-4" />
+                      <AlertDescription>
+                        No changes noted. Please update the form before
+                        submitting.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    type="submit"
+                    loading={isSubmitting}
+                    disabled={
+                      isUnchangedPrefill || isFormPrefillLoading || !isValid
+                    }
+                  >
+                    {lockedPurpose === "auth-requirements"
+                      ? "Check Pre-Authorization Requirements"
+                      : lockedPurpose === "validation"
+                        ? "Check Coverage Balance"
+                        : lockedPurpose === "discovery"
+                          ? "Discover Coverage"
+                          : lockedPurpose === "benefits"
+                            ? "Check Benefits"
+                            : "Check Coverage Eligibility"}
+                  </Button>
+                </form>
+              </Form>
             )}
           </div>
 

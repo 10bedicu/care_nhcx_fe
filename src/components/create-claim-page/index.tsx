@@ -1103,7 +1103,9 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       <div className="space-y-6">
         <PmjayBiometricVerificationGate
           encounterId={encounterId}
+          patientId={patientId}
           insurance={insuranceSelection || []}
+          stage={lockedUse === "claim" ? "claim" : "preauthorization"}
         />
         <div className="flex items-center justify-between">
           <div>

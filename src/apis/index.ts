@@ -19,13 +19,13 @@ import { queryString, request } from "@/apis/request";
 import { AbhaNumber } from "@/types/abha_number";
 import { ChargeItem } from "@/types/charge_item";
 import { Claim } from "@/types/claim";
+import { ClaimConsent, ClaimConsentStage } from "@/types/claim_consent";
 import { Coding } from "@/types/base";
 import { Communication } from "@/types/communication";
 import { Condition } from "@/types/condition";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { Encounter } from "@/types/encounter";
 import { HealthFacility } from "@/types/health_facility";
-import { MemberBiometricAuth } from "@/types/member_biometric_auth";
 import { PaginatedResponse } from "./types";
 import { PaymentReconciliation } from "@/types/payment";
 import { Policy } from "@/types/policy";
@@ -270,6 +270,7 @@ export const apis = {
       authData: string;
       payerId: string;
       process?: "Preauth" | "Discharge";
+      stage?: ClaimConsentStage;
       encounter: string;
     }) => {
       return await request<{ message: string }>(
@@ -279,6 +280,7 @@ export const apis = {
           body: JSON.stringify({
             authMode: body.authMode ?? "FINGERPRINT",
             process: body.process ?? "Preauth",
+            stage: body.stage ?? "preauthorization",
             ...body,
           }),
         },
@@ -297,13 +299,18 @@ export const apis = {
     },
   },
 
-  memberBiometricAuth: {
-    lookup: async (params: { payer_id: string; encounter_id: string }) => {
-      return await request<MemberBiometricAuth>(
-        `/api/nhcx/member-biometric-auth/lookup/` +
+  claimConsent: {
+    lookup: async (params: {
+      payer_id: string;
+      encounter_id: string;
+      stage: ClaimConsentStage;
+    }) => {
+      return await request<ClaimConsent>(
+        `/api/nhcx/claim-consent/lookup/` +
           queryString({
             payer_id: params.payer_id,
             encounter_id: params.encounter_id,
+            stage: params.stage,
           }),
       );
     },
@@ -356,6 +363,11 @@ export const apis = {
           method: "GET",
         },
       );
+    },
+    getCurrentUser: async () => {
+      return await request<User>(`/api/v1/users/getcurrentuser/`, {
+        method: "GET",
+      });
     },
   },
 

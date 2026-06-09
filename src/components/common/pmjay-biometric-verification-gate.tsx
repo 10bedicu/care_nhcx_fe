@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 
 import { BiometricVerificationDialog } from "./biometric-verification-dialog";
+import { ClaimConsentStage } from "@/types/claim_consent";
 import { Policy } from "@/types/policy";
 import { apis } from "@/apis";
 
@@ -14,36 +15,65 @@ export type PmjaySelectedInsurance = {
 
 export interface PmjayBiometricVerificationGateProps {
   encounterId: string;
+  patientId: string;
   insurance: PmjaySelectedInsurance[];
+  stage: ClaimConsentStage;
 }
+
+// Permission slug that allows a user (e.g. Medical Super Intendent / Admin) to skip the biometric claim-consent verification.
+const SKIP_CLAIM_CONSENT_PERMISSION = "can_skip_claim_consent";
 
 export function PmjayBiometricVerificationGate({
   encounterId,
+  patientId,
   insurance,
+  stage,
 }: PmjayBiometricVerificationGateProps) {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const focalPolicy = useMemo(
     () => insurance?.find((i) => i.focal),
-    [insurance]
+    [insurance],
   );
+
+  const { data: currentUser } = useQuery({
+    queryKey: ["current-user"],
+    queryFn: () => apis.user.getCurrentUser(),
+  });
+
+  const { data: abhaNumber } = useQuery({
+    queryKey: ["abhaNumber", patientId],
+    queryFn: () => apis.abhaNumber.get(patientId),
+    enabled: !!patientId,
+  });
+
+  const canSkipVerification =
+    currentUser?.permissions?.includes(SKIP_CLAIM_CONSENT_PERMISSION) ?? false;
+  const [skipped, setSkipped] = useState(false);
 
   const { data: lookupData, isFetching: lookupFetching } = useQuery({
     queryKey: [
-      "member-biometric-auth-lookup",
+      "claim-consent-lookup",
       encounterId,
       focalPolicy?.policy.payerid,
+      stage,
     ],
     queryFn: () =>
-      apis.memberBiometricAuth.lookup({
+      apis.claimConsent.lookup({
         payer_id: focalPolicy?.policy.payerid ?? "",
         encounter_id: encounterId,
+        stage,
       }),
-    enabled: !!encounterId && !!focalPolicy?.policy.payerid,
+    enabled: !!encounterId && !!focalPolicy?.policy.payerid && !skipped,
   });
 
   useEffect(() => {
+    if (skipped) {
+      setDialogOpen(false);
+      return;
+    }
+
     if (lookupFetching) {
       return;
     }
@@ -57,10 +87,19 @@ export function PmjayBiometricVerificationGate({
       setDialogOpen(false);
       return;
     }
-  }, [lookupData, lookupFetching]);
+  }, [lookupData, lookupFetching, skipped]);
 
   if (!focalPolicy) {
     return null;
+  }
+
+  if (skipped) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <CheckCircle2 className="h-4 w-4 shrink-0" />
+        Biometric verification skipped
+      </div>
+    );
   }
 
   if (lookupFetching) {
@@ -77,18 +116,21 @@ export function PmjayBiometricVerificationGate({
       encounterId={encounterId}
       open={dialogOpen}
       onOpenChange={setDialogOpen}
-      abhaNumber={"91-3625-4621-8003"} // TODO: remove this hardcoded value
+      abhaNumber={abhaNumber?.abha_number ?? ""}
       payerId={focalPolicy.policy.payerid}
       process="Preauth"
+      stage={stage}
       onVerifySuccess={() => {
         queryClient.invalidateQueries({
           queryKey: [
-            "member-biometric-auth-lookup",
+            "claim-consent-lookup",
             encounterId,
             focalPolicy.policy.payerid,
+            stage,
           ],
         });
       }}
+      onBypass={canSkipVerification ? () => setSkipped(true) : undefined}
     />
   );
 }

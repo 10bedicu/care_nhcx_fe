@@ -22,7 +22,6 @@ import { InlineLoading } from "@/components/common/loading-spinner";
 import { useEffect, useState } from "react";
 
 import { Checkbox } from "../ui/checkbox";
-import { cn } from "@/lib/utils";
 import { Policy } from "@/types/policy";
 import { UseFormReturn } from "react-hook-form";
 import { apis } from "@/apis";
@@ -190,21 +189,14 @@ export function ClaimInsuranceSection({ form, readOnly = false }: ClaimInsurance
         onTabChange={handleTabChange}
         onSearch={handleSearch}
         isLoading={isPoliciesLoading || isAbhaLoading}
-        onManualAdd={(policy) =>
-          setManualPolicies((prev) => [...prev, policy])
-        }
+        onManualAdd={(policy) => setManualPolicies((prev) => [...prev, policy])}
       />
 
       {isPoliciesLoading && (
         <InlineLoading label="Searching policies…" className="mt-2" />
       )}
 
-      <div
-        className={cn(
-          form.formState.errors.insurance &&
-            "rounded-lg border border-red-500 p-3"
-        )}
-      >
+      <div>
         <FormField
           control={form.control}
           name="insurance"
