@@ -128,7 +128,6 @@ export default function CameraCaptureDialog(props: CameraCaptureDialogProps) {
           )}
         </div>
 
-        {/* buttons for mobile and tablet screens */}
         <div className="m-4 flex justify-evenly lg:hidden">
           <div>
             {!previewImage ? (
@@ -203,7 +202,6 @@ export default function CameraCaptureDialog(props: CameraCaptureDialogProps) {
           </div>
         </div>
 
-        {/* buttons for laptop screens */}
         <div className="hidden lg:block">
           <div className="flex justify-end gap-2 p-4">
             <div>

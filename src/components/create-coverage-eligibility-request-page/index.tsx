@@ -203,7 +203,6 @@ const CreateCoverageEligibilityRequestPage: FC<
     setHasLinkedCePrefill(true);
   }, [linkedCoverageEligibilityId, linkedCoverageEligibilityRequest, form]);
 
-  // Mapped diagnosis objects ready to pre-fill into each new item
   const defaultItemDiagnoses = useMemo(
     () =>
       (encounterDiagnoses ?? []).map((c) => ({

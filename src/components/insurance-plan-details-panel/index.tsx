@@ -742,7 +742,6 @@ const BenefitBrowser: FC<BenefitBrowserProps> = ({ planId, tierId }) => {
         )}
       </div>
 
-      {/* Count */}
       {data && (
         <p className="text-xs text-muted-foreground">
           {data.count.toLocaleString()} benefit
@@ -751,7 +750,6 @@ const BenefitBrowser: FC<BenefitBrowserProps> = ({ planId, tierId }) => {
         </p>
       )}
 
-      {/* List */}
       {isLoading && !data ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (

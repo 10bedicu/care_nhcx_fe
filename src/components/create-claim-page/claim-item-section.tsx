@@ -754,7 +754,6 @@ export function ClaimItemSection({
     remove(index);
   };
 
-  // Derive the insurance plan ID from the focal (or first) selected policy
   const selectedInsurances = form.watch("insurance");
   const focalPolicy =
     selectedInsurances?.find((i) => i.focal)?.policy ??
@@ -975,21 +974,6 @@ export function ClaimItemSection({
                               );
                             }}
                           />
-
-                          {/* <ValuesetSelect
-                          system="system-claim-program-code"
-                          value={undefined}
-                          onSelect={(value) => {
-                            form.setValue(
-                              `item.${index}.program_code`,
-                              field.value
-                                .map((c) => c.code)
-                                .includes(value.code)
-                                ? field.value
-                                : [...field.value, value]
-                            );
-                          }}
-                        /> */}
 
                           <div className="flex flex-wrap gap-2">
                             {field.value.map((code) => (
@@ -1483,7 +1467,6 @@ function AddChargeItemsSection({
     [JSON.stringify(rawAllItems?.map((i) => i.charge_items))]
   );
 
-  // Charge item IDs already claimed by other item rows
   const takenByOthers = useMemo(
     () =>
       new Set(
@@ -1823,7 +1806,6 @@ function ItemValidationEffects({
     return ids.reduce((sum, id) => sum + (chargeItemPriceById.get(id) ?? 0), 0);
   }, [chargeItemIds, chargeItemPriceById, form, index]);
 
-  // Auto-set unit_price = min(sum, benefitLimit); surface informational cap notice
   useEffect(() => {
     const capped =
       benefitLimit != null
@@ -1845,7 +1827,6 @@ function ItemValidationEffects({
     }
   }, [chargeItemsTotal, benefitLimit, form, index]);
 
-  // Effect: set condition errors whenever quantity or modifiers change
   useEffect(() => {
     const errors = buildBenefitConditionErrors(
       benefitDetail,
@@ -2894,7 +2875,6 @@ function AddSupportingInfoSection({
     itemSupportingInfoSequences.includes(info.sequence)
   );
 
-  // Auto-expand once when there is pre-filled supporting info for this item.
   useEffect(() => {
     if (itemSpecificSupportingInfo.length > 0 && !didAutoExpandRef.current) {
       didAutoExpandRef.current = true;
@@ -3145,7 +3125,6 @@ function AddSupportingInfoSection({
 
       {isExpanded && (
         <div className="space-y-4 pl-4">
-          {/* Required Documents Panel */}
           {requirementStatuses.length > 0 && (
             <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -3211,7 +3190,6 @@ function AddSupportingInfoSection({
             </div>
           )}
 
-          {/* Recommended Documents Panel */}
           {recommendedStatuses.length > 0 && (
             <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -3641,7 +3619,6 @@ function SupportingInfoFileUpload({
               {!currentFile && existingFile?.read_signed_url && (
                 <div className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50/50">
                   <div className="flex-shrink-0">
-                    {/* Best-effort preview for images; otherwise show generic icon */}
                     {existingFile.extension &&
                     ["jpg", "jpeg", "png", "gif", "webp"].includes(
                       existingFile.extension.toLowerCase()

@@ -41,8 +41,6 @@ interface ClaimCardProps {
   headerBanner?: ReactNode;
 }
 
-// ─── status helpers ───────────────────────────────────────────────────────────
-
 type ResponseStatus = {
   label: string;
   colorClass: string;
@@ -192,8 +190,6 @@ function StatusIcon({
   );
 }
 
-// ─── response type label ──────────────────────────────────────────────────────
-
 function getResponseTypeLabel(use: string | null | undefined): string {
   switch (use) {
     case "preauthorization":
@@ -206,8 +202,6 @@ function getResponseTypeLabel(use: string | null | undefined): string {
       return "";
   }
 }
-
-// ─── totals ───────────────────────────────────────────────────────────────────
 
 function getTotals(response: ClaimResponse | undefined) {
   const find = (code: string) =>
@@ -222,8 +216,6 @@ function getTotals(response: ClaimResponse | undefined) {
     incentive: find("incentive"),
   };
 }
-
-// ─── item adjudication ────────────────────────────────────────────────────────
 
 function parseItemAdj(item: ClaimResponseItem) {
   const adj = item.adjudication ?? [];
@@ -264,8 +256,6 @@ function itemStatusBadgeClass(itemStatus: string | null): string {
     return "bg-red-100 text-red-700 border border-red-200";
   return "bg-gray-100 text-gray-600 border border-gray-200";
 }
-
-// ─── main card ────────────────────────────────────────────────────────────────
 
 const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -375,7 +365,6 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
         <CollapsibleContent>
           <CardContent>
             <div className="mt-6 space-y-5">
-              {/* Dispatch error section */}
               {claim.dispatch_status === "error" && (
                 <Alert className="bg-red-50 border-red-200">
                   <XCircleIcon className="h-4 w-4 text-red-600" />
@@ -392,7 +381,6 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                 </Alert>
               )}
 
-              {/* Payer info block */}
               {response && (
                 <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
                   {response.disposition && (
@@ -452,7 +440,6 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                 </div>
               )}
 
-              {/* Totals section */}
               {response?.total && response.total.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
@@ -501,7 +488,6 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                 </div>
               )}
 
-              {/* Items table */}
               <div>
                 <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
                   Items
@@ -672,7 +658,6 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                 </div>
               </div>
 
-              {/* Errors section */}
               {response?.error && response.error.length > 0 && (
                 <div>
                   <Separator className="mb-4" />

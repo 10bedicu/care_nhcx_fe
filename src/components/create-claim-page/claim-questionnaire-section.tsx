@@ -36,7 +36,7 @@ import {
   useFieldArray,
   useWatch,
 } from "react-hook-form";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { Badge } from "../ui/badge";
@@ -53,10 +53,12 @@ import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import {
   buildInitialItems,
   countMissingRequiredItems,
+  getForcedConsentQuestionnaireFhirId,
   getQuestionnaireRequirementStatus,
   hasAnswerValue,
   itemLabel,
   QuestionnaireRequirementStatus,
+  CLAIM_CONSENT_OBTAINED_STORE_KEY,
 } from "./questionnaire-helpers";
 import { QuestionnaireResponseItemInput } from "./schema";
 import { cn } from "@/lib/utils";
@@ -78,9 +80,6 @@ import { createClaimFormSchema } from "./schema";
 import { uploadFile } from "@/lib/upload-file";
 import { useGlobalStore } from "@/hooks/use-global-store";
 import { z } from "zod";
-
-
-// ─── Quantity input (separate component to avoid conditional hook call) ───────
 
 function QuantityInput({
   answerPath,
@@ -126,8 +125,6 @@ function QuantityInput({
     </div>
   );
 }
-
-// ─── Choice input (radio ≤ 4, dropdown > 4) ──────────────────────────────────
 
 function ChoiceInput({
   fhirItem,
@@ -268,8 +265,6 @@ function ChoiceInput({
   );
 }
 
-// ─── Attachment input ─────────────────────────────────────────────────────────
-
 function AttachmentInput({
   answerPath,
   form,
@@ -353,8 +348,6 @@ function AttachmentInput({
     </div>
   );
 }
-
-// ─── Single-answer leaf input  ────────────────────────────────────────────────
 
 function QuestionnaireAnswerInput({
   fhirItem,
@@ -528,7 +521,6 @@ function QuestionnaireAnswerInput({
     );
   }
 
-  // string / fallback
   return (
     <Input
       value={(field.value as string) ?? ""}
@@ -538,8 +530,6 @@ function QuestionnaireAnswerInput({
     />
   );
 }
-
-// ─── Repeating answers wrapper ────────────────────────────────────────────────
 
 function RepeatingAnswerField({
   fhirItem,
@@ -597,8 +587,6 @@ function RepeatingAnswerField({
     </div>
   );
 }
-
-// ─── Recursive FHIR item renderer ────────────────────────────────────────────
 
 function QuestionnaireItemRenderer({
   fhirItem,
@@ -712,8 +700,6 @@ function QuestionnaireItemRenderer({
   );
 }
 
-// ─── Single questionnaire response card ──────────────────────────────────────
-
 export function QuestionnaireResponseCard({
   detail,
   qrIdx,
@@ -808,8 +794,6 @@ export function QuestionnaireResponseCard({
   );
 }
 
-// ─── Requirement checklist row (matches supporting-info doc rows) ─────────────
-
 export function QuestionnaireRequirementRow({
   label,
   status,
@@ -889,8 +873,6 @@ export function QuestionnaireRequirementRow({
   );
 }
 
-// ─── Per-item questionnaire section (exported) ────────────────────────────────
-
 export function AddQuestionnaireSection({
   form,
   index,
@@ -915,6 +897,13 @@ export function AddQuestionnaireSection({
   const didAutoExpandRef = useRef(false);
   const { getStore } = useGlobalStore();
   const encounterId = getStore<string>("encounterId");
+  const consentObtained = getStore<boolean | undefined>(
+    CLAIM_CONSENT_OBTAINED_STORE_KEY
+  );
+  const forcedConsentFhirId = getForcedConsentQuestionnaireFhirId(
+    claimUse,
+    consentObtained
+  );
 
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
 
@@ -956,6 +945,9 @@ export function AddQuestionnaireSection({
     const filtered = ceQuestionnaireFhirIdsForItem
       ? qReqs.filter((req) => {
           const fhir = req.questionnaire?.fhir_id;
+          // Keep the consent questionnaire even when it is not part of the CE
+          // response set, since it is mandatory once consent is skipped/missing.
+          if (!!fhir && fhir === forcedConsentFhirId) return true;
           return !!fhir && ceQuestionnaireFhirIdsForItem.has(fhir);
         })
       : qReqs;
@@ -967,16 +959,27 @@ export function AddQuestionnaireSection({
       seen.add(key);
       return true;
     });
-  }, [benefitDetail, ceQuestionnaireFhirIdsForItem]);
+  }, [benefitDetail, ceQuestionnaireFhirIdsForItem, forcedConsentFhirId]);
+
+  // A requirement is effectively required when the IPB marks it required, or
+  // when it is the consent questionnaire that must be filled because claim
+  // consent has been skipped or is missing.
+  const isReqEffectivelyRequired = useCallback(
+    (req: InsurancePlanSupportingInfoRequirement) =>
+      req.is_required ||
+      (!!forcedConsentFhirId &&
+        req.questionnaire?.fhir_id === forcedConsentFhirId),
+    [forcedConsentFhirId]
+  );
 
   const requiredRequirements = useMemo(
-    () => questionnaireRequirements.filter((req) => req.is_required),
-    [questionnaireRequirements]
+    () => questionnaireRequirements.filter((req) => isReqEffectivelyRequired(req)),
+    [questionnaireRequirements, isReqEffectivelyRequired]
   );
 
   const optionalRequirements = useMemo(
-    () => questionnaireRequirements.filter((req) => !req.is_required),
-    [questionnaireRequirements]
+    () => questionnaireRequirements.filter((req) => !isReqEffectivelyRequired(req)),
+    [questionnaireRequirements, isReqEffectivelyRequired]
   );
 
   // Build the list of questionnaire ids to fetch — one per unique requirement.
@@ -1034,7 +1037,6 @@ export function AddQuestionnaireSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedDetails.map((d) => d.full_url).join(), watchedQR]);
 
-  // Auto-expand once when pre-filled questionnaire responses exist for this item's plan.
   const matchedPrefillCount = useMemo(
     () =>
       loadedDetails.filter((detail) =>
@@ -1081,7 +1083,6 @@ export function AddQuestionnaireSection({
     ...optionalStatuses.map(({ status }) => ({ status, isRequired: false })),
   ]);
 
-  // Validation controller for mandatory questionnaires
   const { field: mandatoryQRField, fieldState: mandatoryQRFieldState } =
     useController({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1110,7 +1111,6 @@ export function AddQuestionnaireSection({
     requiredRequirements.length,
   ]);
 
-  // Initialise a questionnaire response entry when the user clicks Add
   const addQuestionnaireForReq = (
     req: InsurancePlanSupportingInfoRequirement
   ) => {
@@ -1169,8 +1169,6 @@ export function AddQuestionnaireSection({
     if (!isExpanded) setIsExpanded(true);
   };
 
-  // Remove a questionnaire response and unlink it from this item's
-  // information_sequence.
   const removeQuestionnaireForDetail = (
     detail: InsurancePlanQuestionnaireDetail
   ) => {
@@ -1243,7 +1241,6 @@ export function AddQuestionnaireSection({
 
       {isExpanded && (
         <div className="space-y-4 pl-4">
-          {/* Required Questionnaires Panel */}
           {requiredStatuses.length > 0 && (
             <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -1276,7 +1273,6 @@ export function AddQuestionnaireSection({
             </div>
           )}
 
-          {/* Optional Questionnaires Panel */}
           {optionalStatuses.length > 0 && (
             <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -1309,7 +1305,6 @@ export function AddQuestionnaireSection({
             </div>
           )}
 
-          {/* Questionnaire response forms for added entries */}
           {loadedDetails.length > 0 && (
             <div className="space-y-4">
               {loadedDetails.map((detail) => {

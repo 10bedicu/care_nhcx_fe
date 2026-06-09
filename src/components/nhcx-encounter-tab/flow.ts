@@ -4,7 +4,6 @@ import {
   CoverageEligibilityRequestPurposeChoice,
 } from "@/types/coverage_eligibility";
 
-/** Hard-stop reason returned by deriveValidationOutcome. */
 export type ValidationOutcome =
   | { kind: "pending" }
   | { kind: "error" }
@@ -12,10 +11,6 @@ export type ValidationOutcome =
   | { kind: "policy-inactive"; message: string }
   | { kind: "no-balance"; message: string };
 
-/**
- * Inspect a Coverage Eligibility (validation) request and decide whether
- * the patient can move forward in the flow.
- */
 export function deriveValidationOutcome(
   request: CoverageEligibilityRequest
 ): ValidationOutcome {
@@ -71,7 +66,6 @@ export function isPrimaryPurpose(
   return request.purpose.length === 1 && request.purpose[0] === purpose;
 }
 
-/** Claim adjudication outcome derived from latest_response totals. */
 export type ClaimOutcome =
   | "pending"
   | "approved"
@@ -98,12 +92,10 @@ function sortClaimsByCreatedDesc(claims: Claim[]): Claim[] {
     );
 }
 
-/** Most recent claim on the encounter (by created_date). */
 export function findLatestClaim(claims: Claim[]): Claim | undefined {
   return sortClaimsByCreatedDesc(claims)[0];
 }
 
-/** Most recent claim that received a successful payer response. */
 export function findLatestClaimWithSuccessfulResponse(
   claims: Claim[]
 ): Claim | undefined {
@@ -150,7 +142,6 @@ export function deriveClaimOutcome(claim: Claim): ClaimOutcome {
   return "partially-approved";
 }
 
-/** Sum a specific adjudication category across `response.item[*].adjudication`. */
 function sumItemAdjudicationByCode(
   response: Claim["latest_response"],
   code: string,
@@ -165,7 +156,6 @@ function sumItemAdjudicationByCode(
   );
 }
 
-/** Look up a total at the response level by its category code. */
 function getResponseTotal(
   response: Claim["latest_response"],
   code: string,

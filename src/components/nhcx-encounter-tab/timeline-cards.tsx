@@ -40,15 +40,12 @@ import { ReasonDialog } from "./reason-dialog";
 import { apis } from "@/apis";
 import { cn, toast } from "@/lib/utils";
 
-// ─── shared helpers ──────────────────────────────────────────────────────────
-
 interface BaseProps {
   encounterId: string;
   /** True when this card represents the latest record in the timeline. */
   isCurrent: boolean;
 }
 
-/** Linkable button rendered as either primary or secondary actions. */
 function ActionButton({
   to,
   label,
@@ -101,10 +98,6 @@ interface MenuItem {
   destructive?: boolean;
 }
 
-/**
- * Subtle banner that explains why no actions are available yet. Shown on the
- * latest card whenever we're still waiting on a payer response.
- */
 function PendingResponseBanner({ message }: { message: string }) {
   return (
     <Alert className="border-yellow-300 bg-yellow-50 text-yellow-800">
@@ -181,7 +174,6 @@ function MoreActionsMenu({ items }: { items: MenuItem[] }) {
   );
 }
 
-/** Build a `/claims/new` URL with the standard guided-flow query params. */
 function buildClaimNewUrl({
   use,
   coverageEligibilityId,
@@ -213,7 +205,6 @@ interface ClaimRedirectParams {
   latestSuccessfulClaimId?: string;
 }
 
-/** Standard claim/related wiring used by all guided claim redirects. */
 function standardClaimRedirectParams({
   latestClaimId,
   latestSuccessfulClaimId,
@@ -223,8 +214,6 @@ function standardClaimRedirectParams({
     relatedClaimId: latestSuccessfulClaimId,
   };
 }
-
-// ─── Coverage Eligibility actions ────────────────────────────────────────────
 
 interface CoverageEligibilityTimelineCardProps extends BaseProps {
   request: CoverageEligibilityRequest;
@@ -259,7 +248,6 @@ export const CoverageEligibilityTimelineCard: FC<
     );
   }
 
-  // ─── Next-step state for the latest card ───
   if (isCurrent) {
     if (isValidation) {
       if (validationOutcome?.kind === "ok") {
@@ -350,8 +338,6 @@ export const CoverageEligibilityTimelineCard: FC<
     />
   );
 };
-
-// ─── Claim actions ───────────────────────────────────────────────────────────
 
 interface ClaimTimelineCardProps extends BaseProps {
   claim: Claim;

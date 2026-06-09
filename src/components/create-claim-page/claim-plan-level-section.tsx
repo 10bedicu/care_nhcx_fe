@@ -24,10 +24,12 @@ import {
   QuestionnaireRequirementStatus,
   buildInitialItems,
   countMissingRequiredItems,
+  getForcedConsentQuestionnaireFhirId,
   getQuestionnaireRequirementStatus,
+  CLAIM_CONSENT_OBTAINED_STORE_KEY,
 } from "./questionnaire-helpers";
 import { SectionValidationBadges } from "@/components/common/form-card-error";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 
 import { Badge } from "@/components/ui/badge";
@@ -51,8 +53,6 @@ import {
 } from "@/lib/form-card-validation";
 import { useGlobalStore } from "@/hooks/use-global-store";
 import { z } from "zod";
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function reqLabel(req: InsurancePlanSupportingInfoRequirement): string {
   return (
@@ -91,8 +91,6 @@ function usePlanId(
 
   return planListData?.results?.[0]?.id ?? null;
 }
-
-// ─── CE-leftover hook (used by both plan-level sections) ──────────────────────
 
 /**
  * For PA-via-CE:AR, compute which CE-required documents and questionnaires
@@ -218,8 +216,6 @@ function useCELeftover({
     benefitsFingerprint,
   ]);
 }
-
-// ─── Plan-Level Doc Entry Card ────────────────────────────────────────────────
 
 function PlanLevelDocCard({
   mainInfoIndex,
@@ -398,8 +394,6 @@ function PlanLevelDocCard({
   );
 }
 
-// ─── Status Row Helper ────────────────────────────────────────────────────────
-
 function DocStatusRow({
   req,
   status,
@@ -476,8 +470,6 @@ function DocStatusRow({
   );
 }
 
-// ─── Plan-Level Supporting Info Section ───────────────────────────────────────
-
 export function PlanLevelSupportingInfoSection({
   form,
   coverageEligibilityRequest,
@@ -512,7 +504,6 @@ export function PlanLevelSupportingInfoSection({
     staleTime: 5 * 60 * 1000,
   });
 
-  // Non-questionnaire requirements (documentation_url is null)
   const allRequirements = useMemo(() => {
     const all = extensions?.supporting_info_requirements ?? [];
     const filtered = all.filter((req) => !req.documentation_url);
@@ -554,7 +545,6 @@ export function PlanLevelSupportingInfoSection({
     [supportingInfoWatch]
   );
 
-  // Auto-expand once when there is pre-filled plan-level data.
   useEffect(() => {
     if (planLevelEntries.length > 0 && !didAutoExpandRef.current) {
       didAutoExpandRef.current = true;
@@ -610,7 +600,6 @@ export function PlanLevelSupportingInfoSection({
   );
   const showValidationIssue = hasSectionValidationIssue(planDocValidation);
 
-  // Validation
   const { field: errorField, fieldState: errorFieldState } = useController({
     name: "_mandatory_plan_docs_error" as FieldPath<
       z.infer<typeof createClaimFormSchema>
@@ -725,7 +714,6 @@ export function PlanLevelSupportingInfoSection({
 
       {isExpanded && (
         <div className="space-y-4 pl-4 border-l-2 border-muted ml-2">
-          {/* Required Documents */}
           {requiredStatuses.length > 0 && (
             <div className="rounded-lg border bg-card p-3 space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -744,7 +732,6 @@ export function PlanLevelSupportingInfoSection({
             </div>
           )}
 
-          {/* Optional Documents */}
           {optionalStatuses.length > 0 && (
             <div className="rounded-lg border bg-card p-3 space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -763,7 +750,6 @@ export function PlanLevelSupportingInfoSection({
             </div>
           )}
 
-          {/* Entry Cards */}
           {planLevelEntries.length > 0 && (
             <div className="space-y-3">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -796,8 +782,6 @@ export function PlanLevelSupportingInfoSection({
   );
 }
 
-// ─── Plan-Level Questionnaires Section ────────────────────────────────────────
-
 export function PlanLevelQuestionnairesSection({
   form,
   coverageEligibilityRequest,
@@ -818,6 +802,13 @@ export function PlanLevelQuestionnairesSection({
   const didAutoExpandRef = useRef(false);
   const { getStore } = useGlobalStore();
   const encounterId = getStore<string>("encounterId") ?? "";
+  const consentObtained = getStore<boolean | undefined>(
+    CLAIM_CONSENT_OBTAINED_STORE_KEY
+  );
+  const forcedConsentFhirId = getForcedConsentQuestionnaireFhirId(
+    claimUse,
+    consentObtained
+  );
   const planId = usePlanId(form);
   const ceLeftover = useCELeftover({
     form,
@@ -832,6 +823,17 @@ export function PlanLevelQuestionnairesSection({
     enabled: Boolean(planId),
     staleTime: 5 * 60 * 1000,
   });
+
+  // A requirement is effectively required when the IPB marks it required, or
+  // when it is the consent questionnaire that must be filled because claim
+  // consent has been skipped or is missing.
+  const isReqEffectivelyRequired = useCallback(
+    (req: InsurancePlanSupportingInfoRequirement) =>
+      req.is_required ||
+      (!!forcedConsentFhirId &&
+        req.questionnaire?.fhir_id === forcedConsentFhirId),
+    [forcedConsentFhirId]
+  );
 
   // Questionnaire requirements (documentation_url is NOT null), with optional
   // CE-leftover filtering applied to optional reqs only. Per the schema:
@@ -849,20 +851,20 @@ export function PlanLevelQuestionnairesSection({
     });
     if (!ceLeftover) return deduped;
     return deduped.filter((r) => {
-      if (r.is_required) return true;
+      if (isReqEffectivelyRequired(r)) return true;
       const fhir = r.questionnaire?.fhir_id;
       if (!fhir) return false;
       return ceLeftover.questionnaireIds.has(fhir);
     });
-  }, [extensions, ceLeftover]);
+  }, [extensions, ceLeftover, isReqEffectivelyRequired]);
 
   const requiredReqs = useMemo(
-    () => questionnaireReqs.filter((r) => r.is_required),
-    [questionnaireReqs]
+    () => questionnaireReqs.filter((r) => isReqEffectivelyRequired(r)),
+    [questionnaireReqs, isReqEffectivelyRequired]
   );
   const optionalReqs = useMemo(
-    () => questionnaireReqs.filter((r) => !r.is_required),
-    [questionnaireReqs]
+    () => questionnaireReqs.filter((r) => !isReqEffectivelyRequired(r)),
+    [questionnaireReqs, isReqEffectivelyRequired]
   );
 
   // Unique questionnaire ids to fetch details for. The `id` is now carried
@@ -944,7 +946,6 @@ export function PlanLevelQuestionnairesSection({
     ...optionalStatuses.map(({ status }) => ({ status, isRequired: false })),
   ]);
 
-  // Validation
   const { field: errorField, fieldState: errorFieldState } = useController({
     name: "_mandatory_plan_questionnaires_error" as FieldPath<
       z.infer<typeof createClaimFormSchema>
@@ -1024,7 +1025,6 @@ export function PlanLevelQuestionnairesSection({
     );
   };
 
-  // QR entries that belong to plan-level requirements
   const planQREntries = useMemo(() => {
     const planDetailUrls = new Set(
       [...detailById.values()].map((d) => d.full_url)
@@ -1034,7 +1034,6 @@ export function PlanLevelQuestionnairesSection({
     );
   }, [watchedQuestionnaireResponses, detailById]);
 
-  // Auto-expand once when pre-filled questionnaire responses are detected.
   useEffect(() => {
     if (planQREntries.length > 0 && !didAutoExpandRef.current) {
       didAutoExpandRef.current = true;
@@ -1090,7 +1089,6 @@ export function PlanLevelQuestionnairesSection({
 
       {isExpanded && (
         <div className="space-y-4 pl-4 border-l-2 border-muted ml-2">
-          {/* Required Questionnaires */}
           {requiredStatuses.length > 0 && (
             <div className="rounded-lg border bg-card p-3 space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -1111,7 +1109,6 @@ export function PlanLevelQuestionnairesSection({
             </div>
           )}
 
-          {/* Optional Questionnaires */}
           {optionalStatuses.length > 0 && (
             <div className="rounded-lg border bg-card p-3 space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -1132,7 +1129,6 @@ export function PlanLevelQuestionnairesSection({
             </div>
           )}
 
-          {/* Added Questionnaire Response Cards */}
           {planQREntries.length > 0 && (
             <div className="space-y-4">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">

@@ -86,7 +86,6 @@ export function CoverageEligibilityRequestItemSection({
     control: form.control,
   });
 
-  // Derive the insurance plan ID from the focal (or first) selected policy
   const selectedInsurances = form.watch("insurance");
   const focalPolicy =
     selectedInsurances?.find((i) => i.focal)?.policy ??
@@ -568,9 +567,6 @@ function ModifierField({
   );
 }
 
-/**
- * For CE:AR items — validates condition rules against selected modifiers and quantity.
- */
 function CEItemValidationEffects({
   form,
   index,

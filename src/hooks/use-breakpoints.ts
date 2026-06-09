@@ -14,13 +14,6 @@ const BREAKPOINT_WIDTH: Record<Breakpoints, number> = {
   "4k": 3840,
 };
 
-/**
- * Returns the value mapped to the current breakpoint. Mobile-first.
- *
- * @param map A map of breakpoints to values.
- * @param defaultValue The default value.
- * @returns The value mapped to the current breakpoint.
- */
 export default function useBreakpoints<T>(
   map: Partial<Record<Breakpoints, T>> & { default: T }
 ) {

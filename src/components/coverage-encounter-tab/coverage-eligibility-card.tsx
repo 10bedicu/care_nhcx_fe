@@ -47,8 +47,6 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
 const PURPOSE_LABEL: Record<CoverageEligibilityRequestPurposeChoice, string> =
   {
     discovery: "Discovery",
@@ -70,8 +68,6 @@ const PURPOSE_DESCRIPTION: Record<
 function formatPurposeTitle(purposes: CoverageEligibilityRequestPurposeChoice[]) {
   return purposes.map((p) => PURPOSE_LABEL[p]).join(" & ");
 }
-
-// ─── status helpers ───────────────────────────────────────────────────────────
 
 type CardStatus =
   | "not-submitted"
@@ -140,8 +136,6 @@ const STATUS_TEXT_COLOR: Record<CardStatus, string> = {
   pending: "text-yellow-600",
 };
 
-// ─── shared sub-components ────────────────────────────────────────────────────
-
 function DispositionBanner({
   disposition,
   inforce,
@@ -206,7 +200,6 @@ function MemberCard({
           : "border-gray-200"
       )}
     >
-      {/* member header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <div
@@ -253,7 +246,6 @@ function MemberCard({
         </div>
       )}
 
-      {/* IDs */}
       <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
         <div>
           <span className="text-gray-500">PMJAY ID</span>
@@ -271,7 +263,6 @@ function MemberCard({
         )}
       </div>
 
-      {/* plan info */}
       {(entry.plan_name || entry.plan_id) && (
         <>
           <Separator />
@@ -512,8 +503,6 @@ function RequiredQuestionnaires({
   );
 }
 
-// ─── purpose views ────────────────────────────────────────────────────────────
-
 function DiscoveryView({
   insurances,
   disposition,
@@ -551,7 +540,6 @@ function ValidationView({
 
   return (
     <div className="space-y-4">
-      {/* family wallet summary */}
       {insurances[0]?.balance && (
         <div className="rounded-xl border-2 border-blue-200 bg-blue-50 p-4 space-y-3">
           <div className="flex items-center gap-2">
@@ -662,8 +650,6 @@ function BenefitsView({
   );
 }
 
-// ─── pending / error / empty states ──────────────────────────────────────────
-
 function NotSubmittedState() {
   return (
     <div className="flex flex-col items-center justify-center py-8 text-center space-y-2">
@@ -740,8 +726,6 @@ function EmptyInsurancesState() {
   );
 }
 
-// ─── purpose response content ─────────────────────────────────────────────────
-
 function PurposeResponseContent({
   purpose,
   insurances,
@@ -772,8 +756,6 @@ function PurposeResponseContent({
       );
   }
 }
-
-// ─── main card ────────────────────────────────────────────────────────────────
 
 interface CoverageEligibilityCardProps {
   coverageEligibilityRequest: CoverageEligibilityRequest;

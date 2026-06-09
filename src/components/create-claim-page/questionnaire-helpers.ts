@@ -1,10 +1,26 @@
 import { QuestionnaireItem } from "@/types/insurance_plan";
+import { ClaimUseChoice } from "@/types/claim";
 import { QuestionnaireResponseItemInput } from "./schema";
 
 export type QuestionnaireRequirementStatus =
   | "missing"
   | "incomplete"
   | "complete";
+
+export const AUTHENTICATION_CONSENT_QUESTIONNAIRE = "100024";
+export const DISCHARGE_CONSENT_QUESTIONNAIRE = "100466";
+
+export const CLAIM_CONSENT_OBTAINED_STORE_KEY = "claimConsentObtained";
+
+export function getForcedConsentQuestionnaireFhirId(
+  claimUse: ClaimUseChoice | undefined,
+  consentObtained: boolean | undefined,
+): string | null {
+  if (consentObtained !== false) return null;
+  return claimUse === "claim"
+    ? DISCHARGE_CONSENT_QUESTIONNAIRE
+    : AUTHENTICATION_CONSENT_QUESTIONNAIRE;
+}
 
 export function getQuestionnaireRequirementStatus(
   detail: { full_url: string; items: QuestionnaireItem[] } | undefined,
@@ -17,7 +33,6 @@ export function getQuestionnaireRequirementStatus(
   return missing === 0 ? "complete" : "incomplete";
 }
 
-/** Returns true if the answer object has at least one meaningful value set. */
 export function hasAnswerValue(
   answer: Record<string, unknown> | null | undefined
 ): boolean {
@@ -43,10 +58,6 @@ export function hasAnswerValue(
   return false;
 }
 
-/**
- * Recursively counts FHIR questionnaire items that are required but have no
- * answer in the corresponding response items.
- */
 export function countMissingRequiredItems(
   fhirItems: QuestionnaireItem[],
   responseItems: QuestionnaireResponseItemInput[] | undefined
@@ -73,7 +84,6 @@ export function countMissingRequiredItems(
           missing++;
       }
     }
-    // Recurse into nested sub-items
     if (fhirItem.item?.length) {
       missing += countMissingRequiredItems(fhirItem.item, responseItem?.item);
     }

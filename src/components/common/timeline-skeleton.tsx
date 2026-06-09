@@ -3,7 +3,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 function TimelineCardSkeleton() {
   return (
     <div className="rounded-xl border bg-white shadow-sm overflow-hidden">
-      {/* Header */}
       <div className="flex items-start justify-between gap-4 p-5">
         <div className="flex items-start gap-3 flex-1 min-w-0">
           <Skeleton className="h-10 w-10 rounded-lg shrink-0" />
@@ -15,7 +14,6 @@ function TimelineCardSkeleton() {
         <Skeleton className="h-6 w-24 rounded-full shrink-0" />
       </div>
 
-      {/* Meta row */}
       <div className="px-5 pb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
         <div className="space-y-1.5">
           <Skeleton className="h-3 w-16" />
@@ -31,7 +29,6 @@ function TimelineCardSkeleton() {
         </div>
       </div>
 
-      {/* Footer / actions */}
       <div className="flex items-center justify-between gap-3 border-t bg-gray-50/60 px-5 py-3">
         <Skeleton className="h-4 w-32" />
         <div className="flex gap-2">
@@ -67,13 +64,11 @@ export function EncounterPrereqsSkeleton() {
       aria-busy="true"
       aria-label="Loading encounter"
     >
-      {/* Page heading */}
       <div className="space-y-2">
         <Skeleton className="h-7 w-56" />
         <Skeleton className="h-4 w-full max-w-md" />
       </div>
 
-      {/* Guided CTA banner */}
       <div className="rounded-lg border bg-white p-6 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <Skeleton className="h-11 w-11 rounded-full shrink-0" />

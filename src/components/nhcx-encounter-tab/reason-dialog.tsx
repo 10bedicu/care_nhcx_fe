@@ -43,10 +43,6 @@ export interface ReasonDialogProps {
 
 const NONE_REASON_VALUE = "__none__";
 
-/**
- * Modal that collects an optional NDHM reason code and description before
- * invoking cancel or reprocess actions.
- */
 export const ReasonDialog: FC<ReasonDialogProps> = ({
   open,
   onOpenChange,

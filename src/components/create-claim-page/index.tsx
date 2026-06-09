@@ -652,8 +652,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     }
   }, [encounter, form]);
 
-  // ─── Fresh encounter-based prefill ─────────────────────────────────────────
-  //
   // Only used when the form is not seeded from either a previous claim or a
   // coverage-eligibility request. New items are now expected to flow through
   // CE:AR; this branch is preserved as a defensive fallback so the form is not
@@ -772,7 +770,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     form,
   ]);
 
-  // ─── Guided prefill (CE base + optional claim overlay, or direct claim fill) ─
   useEffect(() => {
     if (!isGuidedFlow) return;
     if (didPrefillGuidedRef.current) return;
@@ -850,7 +847,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     relatedClaimId,
   ]);
 
-  // ─── Total wallet-balance cap from CE:validation ───────────────────────────
   const validationBalance = useMemo(() => {
     const insurances = ceValidation?.latest_response?.insurances;
     if (!insurances?.length) return null;

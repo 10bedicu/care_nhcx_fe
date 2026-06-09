@@ -5,7 +5,6 @@ import { Invoice } from "@/types/invoice";
 import { User } from "@/types/user";
 
 export enum ChargeItemStatus {
-  // planned = "planned",
   billable = "billable",
   not_billable = "not_billable",
   aborted = "aborted",

@@ -7,7 +7,7 @@ const useVoiceRecorder = (handleMicPermission: (allowed: boolean) => void) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
   const [blob, setBlob] = useState<Blob | null>(null);
-  const [waveform, setWaveform] = useState<number[]>([]); // Decibel waveform
+  const [waveform, setWaveform] = useState<number[]>([]);
 
   let audioContext: AudioContext | null = null;
   let analyser: AnalyserNode | null = null;

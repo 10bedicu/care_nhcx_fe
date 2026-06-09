@@ -38,7 +38,6 @@ export const NDHM_REASON_CODES: readonly NdhmReasonCodeOption[] = [
   },
 ] as const;
 
-/** Codes commonly used when cancelling a pre-auth or claim. */
 export const NDHM_CANCEL_REASON_CODES: readonly NdhmReasonCodeOption[] = [
   NDHM_REASON_CODES[3], // referred
   NDHM_REASON_CODES[4], // erroneousregistration
@@ -46,7 +45,6 @@ export const NDHM_CANCEL_REASON_CODES: readonly NdhmReasonCodeOption[] = [
   NDHM_REASON_CODES[6], // treatmentplanchanged
 ];
 
-/** Codes for claim reprocess / dispute requests. */
 export const NDHM_REPROCESS_REASON_CODES: readonly NdhmReasonCodeOption[] = [
   NDHM_REASON_CODES[0], // partialpayment
   NDHM_REASON_CODES[1], // erroneousclaim

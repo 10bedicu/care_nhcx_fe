@@ -168,7 +168,6 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
               </div>
             </div>
 
-            {/* ─── Initial CTA when there's no validation request yet ─── */}
             {!isLoadingTimeline && showInitialCTA && (
               <div className="rounded-lg border border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10 p-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                 <div className="flex items-start gap-3">
@@ -194,7 +193,6 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
               </div>
             )}
 
-            {/* ─── Hard stop banner: validation says policy/balance is bad ─── */}
             {!isLoadingTimeline && isHardStop && (
               <Alert className="border-red-300 bg-red-50 text-red-800">
                 <AlertTitle>Flow blocked</AlertTitle>
@@ -217,7 +215,6 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
               </Alert>
             )}
 
-            {/* ─── Timeline ─── */}
             <div className="space-y-4">
               {isLoadingTimeline && <TimelineSkeleton count={3} />}
 

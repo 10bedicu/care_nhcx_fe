@@ -29,7 +29,6 @@ export default function BenefitSearchSelect({
 }: BenefitSearchSelectProps) {
   const [search, setSearch] = useState("");
 
-  // Stable caches: id → benefit, typeCode → benefit
   const byId = useRef<Map<string, InsurancePlanBenefit>>(new Map());
   const byCode = useRef<Map<string, InsurancePlanBenefit>>(new Map());
 
@@ -54,13 +53,11 @@ export default function BenefitSearchSelect({
 
   const results = data?.results ?? [];
 
-  // Build combobox options using benefit.id as the value key
   const options = results.map((b) => ({
     label: `${b.type_code} · ${b.type_display}`,
     value: b.id,
   }));
 
-  // Resolve currently selected id from the stored Coding (keyed by type_code)
   const selectedId =
     value?.code ? (results.find((b) => b.type_code === value.code)?.id ?? null) : null;
 

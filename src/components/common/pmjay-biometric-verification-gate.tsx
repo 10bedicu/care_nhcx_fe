@@ -5,6 +5,8 @@ import { CheckCircle2, Loader2 } from "lucide-react";
 import { BiometricVerificationDialog } from "./biometric-verification-dialog";
 import { Policy } from "@/types/policy";
 import { apis } from "@/apis";
+import { useGlobalStore } from "@/hooks/use-global-store";
+import { CLAIM_CONSENT_OBTAINED_STORE_KEY } from "@/components/create-claim-page/questionnaire-helpers";
 
 export type PmjaySelectedInsurance = {
   sequence: number;
@@ -29,6 +31,7 @@ export function PmjayBiometricVerificationGate({
   process,
 }: PmjayBiometricVerificationGateProps) {
   const queryClient = useQueryClient();
+  const { setStore } = useGlobalStore();
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const focalPolicy = useMemo(
@@ -87,6 +90,23 @@ export function PmjayBiometricVerificationGate({
       return;
     }
   }, [lookupData, lookupFetching, skipped]);
+
+  // Consent is considered obtained only when biometric verification has been
+  // recorded (lookupData.id present) and the user has not bypassed it. When it
+  // is skipped or missing, the relevant consent questionnaire becomes mandatory
+  // in the claim form (see getForcedConsentQuestionnaireFhirId). `undefined`
+  // means unknown / not applicable (no focal policy or still loading).
+  const consentObtained = useMemo<boolean | undefined>(() => {
+    if (!focalPolicy) return undefined;
+    if (skipped) return false;
+    if (lookupFetching) return undefined;
+    return lookupData?.id ? true : false;
+  }, [focalPolicy, skipped, lookupFetching, lookupData]);
+
+  useEffect(() => {
+    setStore(CLAIM_CONSENT_OBTAINED_STORE_KEY, consentObtained);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [consentObtained]);
 
   if (!focalPolicy) {
     return null;
