@@ -17,7 +17,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { UseFormReturn, useFieldArray } from "react-hook-form";
+import { UseFormReturn, useController, useFieldArray } from "react-hook-form";
 
 import Autocomplete from "../ui/autocomplete";
 import { Badge } from "../ui/badge";
@@ -31,12 +31,27 @@ import ValuesetSelect from "../common/valueset-select";
 import { apis } from "@/apis";
 import { InlineLoading } from "@/components/common/loading-spinner";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  FormCardErrorFooter,
+  SectionErrorMessage,
+  SectionValidationBadges,
+  cardErrorBorderClass,
+  sectionErrorBorderClass,
+} from "@/components/common/form-card-error";
 import { cn } from "@/lib/utils";
 import {
   buildBenefitConditionErrors,
   buildCrossItemErrors,
   isModifierRequired,
 } from "@/lib/benefit-item-validation";
+import {
+  getCardSectionValidationCounts,
+  getCeDiagnosisCardError,
+  getCeSupportingInfoCardError,
+  getSectionVirtualErrorMessage,
+  hasSectionValidationIssue,
+  syncVirtualFormErrorFromForm,
+} from "@/lib/form-card-validation";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
@@ -111,10 +126,6 @@ export function CoverageEligibilityRequestItemSection({
     })),
   });
 
-  const benefitDetailsDataKey = productCodes
-    .map((code, index) => `${code}:${benefitDetailQueries[index]?.data?.id ?? ""}`)
-    .join("|");
-
   const benefitDetailsByCode = useMemo(() => {
     const map = new Map<
       string,
@@ -124,7 +135,7 @@ export function CoverageEligibilityRequestItemSection({
       map.set(code, benefitDetailQueries[index]?.data);
     });
     return map;
-  }, [productCodes, benefitDetailsDataKey]);
+  }, [productCodes, benefitDetailQueries]);
 
   const crossItemErrorsByIndex = useMemo(() => {
     const validationItems = fields.map((_, index) => ({
@@ -136,8 +147,7 @@ export function CoverageEligibilityRequestItemSection({
       enhancementExemptSequences: prefilledItemSequences,
     });
   }, [
-    fields.length,
-    productCodesKey,
+    fields,
     benefitDetailsByCode,
     requireEnhancementAllowed,
     prefilledItemSequences,
@@ -169,9 +179,19 @@ export function CoverageEligibilityRequestItemSection({
       <div className="space-y-4">
         {fields.map((field, index) => {
           const conditionErrors = form.watch(`item.${index}._condition_errors`);
+          const mandatoryDiagnosisError = form.watch(
+            `item.${index}._mandatory_diagnosis_error`
+          );
+          const mandatorySupportingInfoError = form.watch(
+            `item.${index}._mandatory_supporting_info_error`
+          );
           const crossItemErrorsKey =
             crossItemErrorsByIndex.get(index)?.join(" • ") ?? "";
-          const hasAnyError = !!conditionErrors || !!crossItemErrorsKey;
+          const hasAnyError =
+            !!conditionErrors ||
+            !!crossItemErrorsKey ||
+            !!mandatoryDiagnosisError ||
+            !!mandatorySupportingInfoError;
           return (
           <Card
             key={field.id}
@@ -358,6 +378,18 @@ export function CoverageEligibilityRequestItemSection({
                       {err}
                     </div>
                   ))}
+                {mandatoryDiagnosisError && (
+                  <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                    <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                    {mandatoryDiagnosisError}
+                  </div>
+                )}
+                {mandatorySupportingInfoError && (
+                  <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                    <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                    {mandatorySupportingInfoError}
+                  </div>
+                )}
                 {conditionErrors &&
                   conditionErrors.split(" • ").map((err, i) => (
                     <div
@@ -614,7 +646,43 @@ function AddDiagnosisSection({
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const diagnosisFields = form.watch(`item.${index}.diagnosis`) || [];
-  const hasMissingDiagnoses = diagnosisFields.length === 0;
+  const diagnosisValidation = getCardSectionValidationCounts(
+    diagnosisFields,
+    getCeDiagnosisCardError
+  );
+  const hasSectionError = hasSectionValidationIssue(diagnosisValidation);
+
+  const {
+    field: mandatoryDiagnosisField,
+    fieldState: mandatoryDiagnosisFieldState,
+  } = useController({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    name: `item.${index}._mandatory_diagnosis_error` as any,
+    control: form.control,
+  });
+
+  useEffect(() => {
+    const nextError = getSectionVirtualErrorMessage(
+      diagnosisValidation,
+      "diagnosis"
+    );
+    syncVirtualFormErrorFromForm(
+      form,
+      `item.${index}._mandatory_diagnosis_error`,
+      nextError
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    form,
+    index,
+    diagnosisValidation.requiredMissing,
+    diagnosisValidation.incomplete,
+    diagnosisFields.length,
+  ]);
+
+  const sectionErrorMessage =
+    mandatoryDiagnosisFieldState.error?.message ||
+    (mandatoryDiagnosisField.value as string | undefined);
 
   const addNewDiagnosis = () => {
     const currentDiagnoses = form.getValues(`item.${index}.diagnosis`) || [];
@@ -645,7 +713,7 @@ function AddDiagnosisSection({
       <div
         className={cn(
           "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
-          hasMissingDiagnoses && "border-red-500 bg-red-50/50"
+          hasSectionError && sectionErrorBorderClass
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -656,18 +724,26 @@ function AddDiagnosisSection({
             <ChevronRightIcon className="w-4 h-4" />
           )}
           <span className="font-medium">Diagnoses</span>
-          {diagnosisFields.length > 0 && (
+          {!hasSectionError && diagnosisFields.length > 0 && (
             <Badge variant="secondary" className="ml-2">
               {diagnosisFields.length}
             </Badge>
           )}
+          <SectionValidationBadges counts={diagnosisValidation} />
         </div>
       </div>
 
+      <SectionErrorMessage message={sectionErrorMessage} />
+
       {isExpanded && (
         <div className="space-y-4 pl-4">
-          {diagnosisFields.map((_diagnosis, diagnosisIndex) => (
-            <Card key={diagnosisIndex}>
+          {diagnosisFields.map((diagnosis, diagnosisIndex) => {
+            const cardError = getCeDiagnosisCardError(diagnosis);
+            return (
+            <Card
+              key={diagnosisIndex}
+              className={cn(cardError && cardErrorBorderClass)}
+            >
               <CardHeader>
                 <div className="flex justify-between items-center gap-2">
                   <FormField
@@ -707,8 +783,10 @@ function AddDiagnosisSection({
                   </Button>
                 </div>
               </CardHeader>
+              {cardError && <FormCardErrorFooter message={cardError} />}
             </Card>
-          ))}
+            );
+          })}
 
           <Button
             type="button"
@@ -741,6 +819,43 @@ function AddSupportingInfoSection({
   const itemSpecificSupportingInfo = supportingInfoFields.filter((info) =>
     itemSupportingInfoSequences.includes(info.sequence)
   );
+  const supportingInfoValidation = getCardSectionValidationCounts(
+    itemSpecificSupportingInfo,
+    getCeSupportingInfoCardError
+  );
+  const hasSectionError = hasSectionValidationIssue(supportingInfoValidation);
+
+  const {
+    field: mandatorySupportingInfoField,
+    fieldState: mandatorySupportingInfoFieldState,
+  } = useController({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    name: `item.${index}._mandatory_supporting_info_error` as any,
+    control: form.control,
+  });
+
+  useEffect(() => {
+    const nextError = getSectionVirtualErrorMessage(
+      supportingInfoValidation,
+      "supporting information entry"
+    );
+    syncVirtualFormErrorFromForm(
+      form,
+      `item.${index}._mandatory_supporting_info_error`,
+      nextError
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    form,
+    index,
+    supportingInfoValidation.requiredMissing,
+    supportingInfoValidation.incomplete,
+    itemSpecificSupportingInfo.length,
+  ]);
+
+  const sectionErrorMessage =
+    mandatorySupportingInfoFieldState.error?.message ||
+    (mandatorySupportingInfoField.value as string | undefined);
 
   const addNewSupportingInfo = () => {
     const currentSupportingInfo = form.getValues("supporting_info") || [];
@@ -771,7 +886,10 @@ function AddSupportingInfoSection({
   return (
     <div className="space-y-4">
       <div
-        className="flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50"
+        className={cn(
+          "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
+          hasSectionError && sectionErrorBorderClass
+        )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center space-x-2">
@@ -781,13 +899,16 @@ function AddSupportingInfoSection({
             <ChevronRightIcon className="w-4 h-4" />
           )}
           <span className="font-medium">Supporting Information</span>
-          {itemSpecificSupportingInfo.length > 0 && (
+          {!hasSectionError && itemSpecificSupportingInfo.length > 0 && (
             <Badge variant="secondary" className="ml-2">
               {itemSpecificSupportingInfo.length}
             </Badge>
           )}
+          <SectionValidationBadges counts={supportingInfoValidation} />
         </div>
       </div>
+
+      <SectionErrorMessage message={sectionErrorMessage} />
 
       {isExpanded && (
         <div className="space-y-4 pl-4">
@@ -795,8 +916,12 @@ function AddSupportingInfoSection({
             const mainInfoIndex = supportingInfoFields.findIndex(
               (i) => i.sequence === info.sequence
             );
+            const cardError = getCeSupportingInfoCardError(info);
             return (
-              <Card key={infoIndex}>
+              <Card
+                key={infoIndex}
+                className={cn(cardError && cardErrorBorderClass)}
+              >
                 <CardContent className="space-y-4 pt-6">
                   <div className="flex justify-end">
                     <Button
@@ -869,6 +994,7 @@ function AddSupportingInfoSection({
                     )}
                   />
                 </CardContent>
+                {cardError && <FormCardErrorFooter message={cardError} />}
               </Card>
             );
           })}

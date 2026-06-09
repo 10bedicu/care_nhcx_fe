@@ -161,6 +161,8 @@ export const claimItemSchema = z
     _mandatory_care_team_error: z.string().optional(),
     _mandatory_diagnosis_error: z.string().optional(),
     _mandatory_charge_items_error: z.string().optional(),
+    _mandatory_procedure_error: z.string().optional(),
+    _mandatory_supporting_info_error: z.string().optional(),
     _amount_cap_error: z.string().optional(),
     _condition_errors: z.string().optional(),
   })
@@ -214,6 +216,24 @@ export const claimItemSchema = z
         data._mandatory_charge_items_error ??
         "At least one charge item is required",
       path: ["_mandatory_charge_items_error"],
+    })
+  )
+  .refine(
+    (data) => !data._mandatory_procedure_error,
+    (data) => ({
+      message:
+        data._mandatory_procedure_error ??
+        "All procedure entries must be completed",
+      path: ["_mandatory_procedure_error"],
+    })
+  )
+  .refine(
+    (data) => !data._mandatory_supporting_info_error,
+    (data) => ({
+      message:
+        data._mandatory_supporting_info_error ??
+        "All supporting information entries must be completed",
+      path: ["_mandatory_supporting_info_error"],
     })
   )
   .refine(

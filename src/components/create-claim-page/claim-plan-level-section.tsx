@@ -9,32 +9,48 @@ import {
   PlusIcon,
   TrashIcon,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import {
-  InsurancePlanQuestionnaireDetail,
-  InsurancePlanSupportingInfoRequirement,
-} from "@/types/insurance_plan";
 import {
   FieldPath,
   UseFormReturn,
   useController,
   useFieldArray,
 } from "react-hook-form";
+import {
+  InsurancePlanQuestionnaireDetail,
+  InsurancePlanSupportingInfoRequirement,
+} from "@/types/insurance_plan";
+import {
+  QuestionnaireRequirementStatus,
+  buildInitialItems,
+  countMissingRequiredItems,
+  getQuestionnaireRequirementStatus,
+} from "./questionnaire-helpers";
+import { SectionValidationBadges } from "@/components/common/form-card-error";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { apis } from "@/apis";
-import { InlineLoading } from "@/components/common/loading-spinner";
-import { cn } from "@/lib/utils";
-import { useGlobalStore } from "@/hooks/use-global-store";
-import { createClaimFormSchema } from "./schema";
-import { z } from "zod";
-import { buildInitialItems, countMissingRequiredItems } from "./questionnaire-helpers";
-import { QuestionnaireResponseCard } from "./claim-questionnaire-section";
+
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ClaimUseChoice } from "@/types/claim";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
+import { InlineLoading } from "@/components/common/loading-spinner";
+import { Input } from "@/components/ui/input";
+import { QuestionnaireResponseCard, QuestionnaireRequirementRow } from "./claim-questionnaire-section";
+import { apis } from "@/apis";
+import { cn } from "@/lib/utils";
+import { createClaimFormSchema } from "./schema";
+import {
+  getCardSectionValidationCounts,
+  getChecklistValidationCounts,
+  getClaimSupportingInfoCardError,
+  getSectionVirtualErrorMessage,
+  hasSectionValidationIssue,
+  mergeValidationCounts,
+  syncVirtualFormErrorFromForm,
+} from "@/lib/form-card-validation";
+import { useGlobalStore } from "@/hooks/use-global-store";
+import { z } from "zod";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -404,7 +420,7 @@ function DocStatusRow({
         status === "satisfied" && "bg-green-50 text-green-800",
         status !== "satisfied" &&
           isRequired &&
-          "bg-amber-50 text-amber-800",
+          "bg-red-50 text-red-800",
         status !== "satisfied" &&
           !isRequired &&
           "bg-blue-50 text-blue-800"
@@ -417,7 +433,7 @@ function DocStatusRow({
           <AlertCircleIcon
             className={cn(
               "w-3.5 h-3.5 flex-shrink-0",
-              isRequired ? "text-amber-500" : "text-blue-500"
+              isRequired ? "text-red-600" : "text-blue-500"
             )}
           />
         )}
@@ -434,7 +450,7 @@ function DocStatusRow({
           className={cn(
             "h-6 text-xs px-2 shrink-0 bg-white",
             isRequired
-              ? "border-amber-300 hover:bg-amber-50"
+              ? "border-red-300 hover:bg-red-50"
               : "border-blue-300 hover:bg-blue-50"
           )}
           onClick={(e) => {
@@ -450,10 +466,10 @@ function DocStatusRow({
         <span
           className={cn(
             "text-xs shrink-0 font-medium",
-            isRequired ? "text-amber-600" : "text-blue-600"
+            isRequired ? "text-red-600" : "text-blue-600"
           )}
         >
-          Value needed
+          Upload required
         </span>
       )}
     </div>
@@ -526,14 +542,16 @@ export function PlanLevelSupportingInfoSection({
   const { fields: siFields, append: appendSI, remove: removeSI } =
     useFieldArray({ name: "supporting_info", control: form.control });
 
-  const allSI = form.watch("supporting_info") ?? [];
+  const supportingInfoWatch = form.watch("supporting_info");
+  const allSI = supportingInfoWatch ?? [];
 
   // Plan-level entries are explicitly marked with _is_plan_level: true.
   // This avoids the race condition where the plan-level section re-renders
   // after supporting_info changes but before information_sequence is updated.
   const planLevelEntries = useMemo(
-    () => allSI.filter((info) => info._is_plan_level === true),
-    [allSI]
+    () =>
+      (supportingInfoWatch ?? []).filter((info) => info._is_plan_level === true),
+    [supportingInfoWatch]
   );
 
   // Auto-expand once when there is pre-filled plan-level data.
@@ -570,9 +588,27 @@ export function PlanLevelSupportingInfoSection({
     status: getDocStatus(req),
   }));
 
-  const unsatisfiedCount = requiredStatuses.filter(
-    ({ status }) => status !== "satisfied"
-  ).length;
+  const checklistDocValidation = getChecklistValidationCounts([
+    ...requiredStatuses.map(({ status }) => ({ status, isRequired: true })),
+    ...optionalStatuses.map(({ status }) => ({ status, isRequired: false })),
+  ]);
+  const manualPlanDocEntries = planLevelEntries.filter(
+    (info) =>
+      !allRequirements.some(
+        (req) =>
+          req.category_code === info.category?.code &&
+          req.code_code === info.code?.code
+      )
+  );
+  const manualPlanDocValidation = getCardSectionValidationCounts(
+    manualPlanDocEntries,
+    getClaimSupportingInfoCardError
+  );
+  const planDocValidation = mergeValidationCounts(
+    checklistDocValidation,
+    manualPlanDocValidation
+  );
+  const showValidationIssue = hasSectionValidationIssue(planDocValidation);
 
   // Validation
   const { field: errorField, fieldState: errorFieldState } = useController({
@@ -583,16 +619,22 @@ export function PlanLevelSupportingInfoSection({
   });
 
   useEffect(() => {
-    const value =
-      requiredReqs.length > 0 && unsatisfiedCount > 0
-        ? `${unsatisfiedCount} required plan-level document(s) must be provided`
-        : undefined;
-    errorField.onChange(value);
+    const nextError = getSectionVirtualErrorMessage(
+      planDocValidation,
+      "plan-level document"
+    );
+    syncVirtualFormErrorFromForm(
+      form,
+      "_mandatory_plan_docs_error",
+      nextError
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requiredReqs.length, unsatisfiedCount]);
-
-  const showValidationIssue =
-    unsatisfiedCount > 0 || !!errorField.value;
+  }, [
+    form,
+    planDocValidation.requiredMissing,
+    planDocValidation.incomplete,
+    requiredReqs.length,
+  ]);
 
   const addDocForReq = (req: InsurancePlanSupportingInfoRequirement) => {
     const alreadyAdded = planLevelEntries.some(
@@ -663,11 +705,12 @@ export function PlanLevelSupportingInfoSection({
               {planLevelEntries.length} added
             </Badge>
           )}
-          {showValidationIssue && (
-            <Badge variant="destructive" className="ml-1 text-xs">
-              {unsatisfiedCount} doc{unsatisfiedCount > 1 ? "s" : ""} required
-            </Badge>
-          )}
+          <SectionValidationBadges
+            counts={planDocValidation}
+            requiredLabel={(count) =>
+              `${count} doc${count > 1 ? "s" : ""} required`
+            }
+          />
         </div>
         {isExtensionsLoading && (
           <InlineLoading label="Loading requirements…" />
@@ -748,70 +791,6 @@ export function PlanLevelSupportingInfoSection({
             </div>
           )}
         </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Questionnaire Status Row ─────────────────────────────────────────────────
-
-function QStatusRow({
-  req,
-  status,
-  isLoading,
-  onAdd,
-}: {
-  req: InsurancePlanSupportingInfoRequirement;
-  status: "added" | "missing";
-  isLoading: boolean;
-  onAdd: (req: InsurancePlanSupportingInfoRequirement) => void;
-}) {
-  const isRequired = req.is_required;
-  const title = req.questionnaire?.title ?? reqLabel(req);
-
-  return (
-    <div
-      className={cn(
-        "flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm",
-        status === "added" && "bg-green-50 text-green-800",
-        status === "missing" && isRequired && "bg-amber-50 text-amber-800",
-        status === "missing" && !isRequired && "bg-blue-50 text-blue-800"
-      )}
-    >
-      <div className="flex items-center gap-1.5 min-w-0">
-        {status === "added" ? (
-          <CheckCircle2Icon className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
-        ) : (
-          <ClipboardListIcon
-            className={cn(
-              "w-3.5 h-3.5 flex-shrink-0",
-              isRequired ? "text-amber-500" : "text-blue-500"
-            )}
-          />
-        )}
-        <span className="truncate font-medium">{title}</span>
-      </div>
-      {status === "missing" && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={cn(
-            "h-6 text-xs px-2 shrink-0 bg-white",
-            isRequired
-              ? "border-amber-300 hover:bg-amber-50"
-              : "border-blue-300 hover:bg-blue-50"
-          )}
-          disabled={isLoading}
-          loading={isLoading}
-          onClick={(e) => {
-            e.stopPropagation();
-            onAdd(req);
-          }}
-        >
-          <PlusIcon className="w-3 h-3 mr-0.5" />
-          Add
-        </Button>
       )}
     </div>
   );
@@ -933,33 +912,37 @@ export function PlanLevelQuestionnairesSection({
     return detailById.get(req.questionnaire.id);
   };
 
-  const watchedQR = form.watch("questionnaire_responses") ?? [];
+  const watchedQuestionnaireResponses = form.watch("questionnaire_responses");
+  const watchedQR = watchedQuestionnaireResponses ?? [];
 
   const getQStatus = (
-    req: InsurancePlanSupportingInfoRequirement
-  ): "added" | "missing" => {
-    const detail = getDetailForReq(req);
-    if (!detail) return "missing";
-    const qr = watchedQR.find((r) => r.questionnaire === detail.full_url);
-    if (!qr) return "missing";
-    const missing = countMissingRequiredItems(detail.items, qr.item ?? []);
-    return missing === 0 ? "added" : "missing";
-  };
+    req: InsurancePlanSupportingInfoRequirement,
+  ): QuestionnaireRequirementStatus =>
+    getQuestionnaireRequirementStatus(getDetailForReq(req), watchedQR);
+
+  const qrValidationKey = watchedQR
+    .map((qr) => {
+      const detail = loadedDetails.find((d) => d.full_url === qr.questionnaire);
+      if (!detail) return `${qr.questionnaire}:?`;
+      return `${qr.questionnaire}:${countMissingRequiredItems(detail.items, qr.item ?? [])}`;
+    })
+    .join("|");
 
   const requiredStatuses = useMemo(
     () => requiredReqs.map((req) => ({ req, status: getQStatus(req) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [requiredReqs, watchedQR, detailById]
+    [requiredReqs, qrValidationKey, detailById],
   );
   const optionalStatuses = useMemo(
     () => optionalReqs.map((req) => ({ req, status: getQStatus(req) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [optionalReqs, watchedQR, detailById]
+    [optionalReqs, qrValidationKey, detailById],
   );
 
-  const unsatisfiedCount = requiredStatuses.filter(
-    ({ status }) => status !== "added"
-  ).length;
+  const questionnaireValidation = getChecklistValidationCounts([
+    ...requiredStatuses.map(({ status }) => ({ status, isRequired: true })),
+    ...optionalStatuses.map(({ status }) => ({ status, isRequired: false })),
+  ]);
 
   // Validation
   const { field: errorField, fieldState: errorFieldState } = useController({
@@ -970,16 +953,24 @@ export function PlanLevelQuestionnairesSection({
   });
 
   useEffect(() => {
-    const value =
-      requiredReqs.length > 0 && unsatisfiedCount > 0
-        ? `${unsatisfiedCount} required plan-level questionnaire(s) must be completed`
-        : undefined;
-    errorField.onChange(value);
+    const nextError = getSectionVirtualErrorMessage(
+      questionnaireValidation,
+      "plan-level questionnaire"
+    );
+    syncVirtualFormErrorFromForm(
+      form,
+      "_mandatory_plan_questionnaires_error",
+      nextError,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requiredReqs.length, unsatisfiedCount]);
+  }, [
+    form,
+    questionnaireValidation.requiredMissing,
+    questionnaireValidation.incomplete,
+    requiredReqs.length,
+  ]);
 
-  const showValidationIssue =
-    unsatisfiedCount > 0 || !!errorField.value;
+  const showValidationIssue = hasSectionValidationIssue(questionnaireValidation);
 
   const addQuestionnaireForReq = (
     req: InsurancePlanSupportingInfoRequirement
@@ -1038,8 +1029,10 @@ export function PlanLevelQuestionnairesSection({
     const planDetailUrls = new Set(
       [...detailById.values()].map((d) => d.full_url)
     );
-    return watchedQR.filter((qr) => planDetailUrls.has(qr.questionnaire));
-  }, [watchedQR, detailById]);
+    return (watchedQuestionnaireResponses ?? []).filter((qr) =>
+      planDetailUrls.has(qr.questionnaire)
+    );
+  }, [watchedQuestionnaireResponses, detailById]);
 
   // Auto-expand once when pre-filled questionnaire responses are detected.
   useEffect(() => {
@@ -1082,11 +1075,7 @@ export function PlanLevelQuestionnairesSection({
               {planQREntries.length} added
             </Badge>
           )}
-          {showValidationIssue && (
-            <Badge variant="destructive" className="ml-1 text-xs">
-              {unsatisfiedCount} required
-            </Badge>
-          )}
+          <SectionValidationBadges counts={questionnaireValidation} />
         </div>
         {isLoadingDetails && (
           <InlineLoading label="Loading questionnaires…" />
@@ -1109,12 +1098,13 @@ export function PlanLevelQuestionnairesSection({
               </p>
               <div className="space-y-1.5">
                 {requiredStatuses.map(({ req, status }) => (
-                  <QStatusRow
+                  <QuestionnaireRequirementRow
                     key={req.id}
-                    req={req}
+                    label={req.questionnaire?.title ?? reqLabel(req)}
                     status={status}
+                    isRequired
                     isLoading={!getDetailForReq(req)}
-                    onAdd={addQuestionnaireForReq}
+                    onAdd={() => addQuestionnaireForReq(req)}
                   />
                 ))}
               </div>
@@ -1129,12 +1119,13 @@ export function PlanLevelQuestionnairesSection({
               </p>
               <div className="space-y-1.5">
                 {optionalStatuses.map(({ req, status }) => (
-                  <QStatusRow
+                  <QuestionnaireRequirementRow
                     key={req.id}
-                    req={req}
+                    label={req.questionnaire?.title ?? reqLabel(req)}
                     status={status}
+                    isRequired={false}
                     isLoading={!getDetailForReq(req)}
-                    onAdd={addQuestionnaireForReq}
+                    onAdd={() => addQuestionnaireForReq(req)}
                   />
                 ))}
               </div>

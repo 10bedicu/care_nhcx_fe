@@ -95,7 +95,27 @@ export const coverageEligibilityRequestItemSchema = z
     quantity: quantitySchema,
     diagnosis: z.array(coverageEligibilityRequestDiagnosisSchema).default([]),
     _condition_errors: z.string().optional(),
+    _mandatory_diagnosis_error: z.string().optional(),
+    _mandatory_supporting_info_error: z.string().optional(),
   })
+  .refine(
+    (data) => !data._mandatory_diagnosis_error,
+    (data) => ({
+      message:
+        data._mandatory_diagnosis_error ??
+        "All diagnosis entries must be completed",
+      path: ["_mandatory_diagnosis_error"],
+    })
+  )
+  .refine(
+    (data) => !data._mandatory_supporting_info_error,
+    (data) => ({
+      message:
+        data._mandatory_supporting_info_error ??
+        "All supporting information entries must be completed",
+      path: ["_mandatory_supporting_info_error"],
+    })
+  )
   .refine(
     (data) => !data._condition_errors,
     (data) => ({

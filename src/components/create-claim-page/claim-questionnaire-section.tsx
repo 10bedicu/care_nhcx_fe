@@ -53,11 +53,26 @@ import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import {
   buildInitialItems,
   countMissingRequiredItems,
+  getQuestionnaireRequirementStatus,
   hasAnswerValue,
   itemLabel,
+  QuestionnaireRequirementStatus,
 } from "./questionnaire-helpers";
 import { QuestionnaireResponseItemInput } from "./schema";
 import { cn } from "@/lib/utils";
+import {
+  FormCardErrorFooter,
+  SectionErrorMessage,
+  SectionValidationBadges,
+  cardErrorBorderClass,
+  sectionErrorBorderClass,
+} from "@/components/common/form-card-error";
+import {
+  getChecklistValidationCounts,
+  getSectionVirtualErrorMessage,
+  hasSectionValidationIssue,
+  syncVirtualFormErrorFromForm,
+} from "@/lib/form-card-validation";
 import { format } from "date-fns";
 import { createClaimFormSchema } from "./schema";
 import { uploadFile } from "@/lib/upload-file";
@@ -591,12 +606,14 @@ function QuestionnaireItemRenderer({
   form,
   depth,
   encounterId,
+  showFieldErrors,
 }: {
   fhirItem: QuestionnaireItem;
   itemBasePath: string;
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   depth: number;
   encounterId: string;
+  showFieldErrors: boolean;
 }) {
   const [groupExpanded, setGroupExpanded] = useState(true);
 
@@ -643,6 +660,7 @@ function QuestionnaireItemRenderer({
               form={form}
               depth={depth + 1}
               encounterId={encounterId}
+              showFieldErrors={showFieldErrors}
             />
           ))}
       </div>
@@ -654,15 +672,10 @@ function QuestionnaireItemRenderer({
     ? answers.some((a) => hasAnswerValue(a))
     : hasAnswerValue(answers[0]);
   const showRequiredError =
-    fhirItem.required && form.formState.isSubmitted && !hasValue;
+    showFieldErrors && fhirItem.required && !hasValue;
 
   return (
-    <FormItem
-      className={cn(
-        "space-y-1.5",
-        showRequiredError && "rounded-md border border-red-500 p-3"
-      )}
-    >
+    <FormItem className="space-y-1.5">
       <FormLabel className="text-sm">
         {itemLabel(fhirItem)}
         {fhirItem.required && <span className="text-red-500 ml-0.5">*</span>}
@@ -719,16 +732,6 @@ export function QuestionnaireResponseCard({
     PHX: "Past / Family History",
   };
 
-  // Track required-item completeness and surface as a virtual error field so
-  // the Zod refine on claimQuestionnaireResponseSchema blocks submission.
-  const { field: requiredItemsField, fieldState: requiredItemsFieldState } =
-    useController({
-      name: `questionnaire_responses.${qrIdx}._required_items_error` as FieldPath<
-        z.infer<typeof createClaimFormSchema>
-      >,
-      control: form.control,
-    });
-
   const watchedItems = useWatch({
     control: form.control,
     name: `questionnaire_responses.${qrIdx}.item` as FieldPath<
@@ -736,47 +739,39 @@ export function QuestionnaireResponseCard({
     >,
   }) as QuestionnaireResponseItemInput[] | undefined;
 
+  const missingCount = countMissingRequiredItems(
+    detail.items,
+    watchedItems ?? []
+  );
+
+  // Sync virtual error field for Zod submit blocking.
   useEffect(() => {
-    const missing = countMissingRequiredItems(detail.items, watchedItems ?? []);
-    requiredItemsField.onChange(
-      missing > 0
-        ? `${missing} required question(s) must be answered`
-        : undefined
+    const nextError =
+      missingCount > 0
+        ? `${missingCount} required question(s) must be answered`
+        : undefined;
+    syncVirtualFormErrorFromForm(
+      form,
+      `questionnaire_responses.${qrIdx}._required_items_error`,
+      nextError
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchedItems, detail.items, requiredItemsField.onChange]);
+  }, [form, qrIdx, missingCount]);
 
   const errorMessage =
-    requiredItemsFieldState.error?.message ||
-    (requiredItemsField.value as string | undefined);
-  const hasError = !!errorMessage;
+    missingCount > 0
+      ? `${missingCount} required question(s) must be answered`
+      : undefined;
+  const hasError = missingCount > 0;
+  const showFieldErrors = form.formState.isSubmitted;
 
   return (
-    <Card
-      className={cn(
-        "border",
-        hasError
-          ? "border-destructive bg-destructive/5"
-          : "border-muted"
-      )}
-    >
+    <Card className={cn(hasError && cardErrorBorderClass)}>
       <CardHeader className="pb-3 pt-4">
         <div className="flex items-center gap-2">
-          <ClipboardListIcon
-            className={cn(
-              "w-4 h-4 shrink-0",
-              hasError ? "text-destructive" : "text-primary"
-            )}
-          />
+          <ClipboardListIcon className="w-4 h-4 shrink-0 text-primary" />
           <span className="font-semibold text-sm">{detail.title}</span>
-          {hasError && (
-            <Badge variant="destructive" className="ml-1 text-xs font-normal gap-1">
-              <AlertCircleIcon className="w-3 h-3" />
-              Incomplete
-            </Badge>
-          )}
           {detail.purpose && (
-            <Badge variant="outline" className="ml-auto text-xs font-normal">
+            <Badge variant="outline" className="text-xs font-normal">
               {PURPOSE_LABELS[detail.purpose] ?? detail.purpose}
             </Badge>
           )}
@@ -802,16 +797,95 @@ export function QuestionnaireResponseCard({
             form={form}
             depth={0}
             encounterId={encounterId}
+            showFieldErrors={showFieldErrors}
           />
         ))}
-        {hasError && (
-          <div className="flex items-center gap-1.5 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm font-medium text-destructive">
-            <AlertCircleIcon className="w-4 h-4 shrink-0" />
-            {errorMessage}
-          </div>
-        )}
       </CardContent>
+      {hasError && errorMessage && (
+        <FormCardErrorFooter message={errorMessage} />
+      )}
     </Card>
+  );
+}
+
+// ─── Requirement checklist row (matches supporting-info doc rows) ─────────────
+
+export function QuestionnaireRequirementRow({
+  label,
+  status,
+  isRequired,
+  isLoading,
+  onAdd,
+}: {
+  label: string;
+  status: QuestionnaireRequirementStatus;
+  isRequired: boolean;
+  isLoading?: boolean;
+  onAdd?: () => void;
+}) {
+  const hasIssue = status !== "complete";
+  const useRequiredStyle = isRequired && hasIssue;
+  const useOptionalStyle = !isRequired && hasIssue;
+
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm",
+        status === "complete" && "bg-green-50 text-green-800",
+        useRequiredStyle && "bg-red-50 text-red-800",
+        useOptionalStyle && "bg-blue-50 text-blue-800"
+      )}
+    >
+      <div className="flex items-center gap-1.5 min-w-0">
+        {status === "complete" ? (
+          <CheckCircle2Icon className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
+        ) : (
+          <AlertCircleIcon
+            className={cn(
+              "w-3.5 h-3.5 flex-shrink-0",
+              useRequiredStyle ? "text-red-600" : "text-blue-500"
+            )}
+          />
+        )}
+        <span className="truncate">{label}</span>
+      </div>
+      {status === "missing" && onAdd && !isLoading && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={cn(
+            "h-6 text-xs px-2 shrink-0 bg-white",
+            isRequired
+              ? "border-red-300 hover:bg-red-50"
+              : "border-blue-300 hover:bg-blue-50"
+          )}
+          onClick={(e) => {
+            e.stopPropagation();
+            onAdd();
+          }}
+        >
+          <PlusIcon className="w-3 h-3 mr-0.5" />
+          Add
+        </Button>
+      )}
+      {status === "missing" && isLoading && (
+        <InlineLoading
+          label="Loading…"
+          className={isRequired ? "text-red-600" : "text-blue-600"}
+        />
+      )}
+      {status === "incomplete" && (
+        <span
+          className={cn(
+            "text-xs shrink-0 font-medium",
+            isRequired ? "text-red-600" : "text-blue-600"
+          )}
+        >
+          Complete below
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -977,32 +1051,35 @@ export function AddQuestionnaireSection({
     }
   }, [matchedPrefillCount]);
 
-  type QStatus = "missing" | "added";
+  type QStatus = ReturnType<typeof getQuestionnaireRequirementStatus>;
 
-  const getQStatus = (req: InsurancePlanSupportingInfoRequirement): QStatus => {
-    const detail = getDetailForReq(req);
-    if (!detail) return "missing";
-    const qr = watchedQR.find((r) => r.questionnaire === detail.full_url);
-    if (!qr) return "missing";
-    const missing = countMissingRequiredItems(detail.items, qr.item ?? []);
-    return missing === 0 ? "added" : "missing";
-  };
+  const getQStatus = (req: InsurancePlanSupportingInfoRequirement): QStatus =>
+    getQuestionnaireRequirementStatus(getDetailForReq(req), watchedQR);
+
+  const qrValidationKey = watchedQR
+    .map((qr) => {
+      const detail = loadedDetails.find((d) => d.full_url === qr.questionnaire);
+      if (!detail) return `${qr.questionnaire}:?`;
+      return `${qr.questionnaire}:${countMissingRequiredItems(detail.items, qr.item ?? [])}`;
+    })
+    .join("|");
 
   const requiredStatuses = useMemo(
     () => requiredRequirements.map((req) => ({ req, status: getQStatus(req) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [requiredRequirements, watchedQR, detailById]
+    [requiredRequirements, qrValidationKey, detailById]
   );
 
   const optionalStatuses = useMemo(
     () => optionalRequirements.map((req) => ({ req, status: getQStatus(req) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [optionalRequirements, watchedQR, detailById]
+    [optionalRequirements, qrValidationKey, detailById]
   );
 
-  const unsatisfiedCount = requiredStatuses.filter(
-    ({ status }) => status !== "added"
-  ).length;
+  const questionnaireValidation = getChecklistValidationCounts([
+    ...requiredStatuses.map(({ status }) => ({ status, isRequired: true })),
+    ...optionalStatuses.map(({ status }) => ({ status, isRequired: false })),
+  ]);
 
   // Validation controller for mandatory questionnaires
   const { field: mandatoryQRField, fieldState: mandatoryQRFieldState } =
@@ -1012,19 +1089,26 @@ export function AddQuestionnaireSection({
       control: form.control,
     });
 
-  const showValidationIssue =
-    unsatisfiedCount > 0 || !!mandatoryQRField.value;
+  const showValidationIssue = hasSectionValidationIssue(questionnaireValidation);
 
   useEffect(() => {
-    if (requiredRequirements.length > 0 && unsatisfiedCount > 0) {
-      mandatoryQRField.onChange(
-        `${unsatisfiedCount} required questionnaire(s) must be completed before submitting`
-      );
-    } else {
-      mandatoryQRField.onChange(undefined);
-    }
+    const nextError = getSectionVirtualErrorMessage(
+      questionnaireValidation,
+      "questionnaire"
+    );
+    syncVirtualFormErrorFromForm(
+      form,
+      `item.${index}._mandatory_questionnaires_error`,
+      nextError
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mandatoryQRField.onChange, requiredRequirements.length, unsatisfiedCount]);
+  }, [
+    form,
+    index,
+    questionnaireValidation.requiredMissing,
+    questionnaireValidation.incomplete,
+    requiredRequirements.length,
+  ]);
 
   // Initialise a questionnaire response entry when the user clicks Add
   const addQuestionnaireForReq = (
@@ -1125,7 +1209,7 @@ export function AddQuestionnaireSection({
       <div
         className={cn(
           "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
-          showValidationIssue && "border-red-500 bg-red-50/50"
+          showValidationIssue && sectionErrorBorderClass
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -1141,11 +1225,7 @@ export function AddQuestionnaireSection({
               {itemQRCount}
             </Badge>
           )}
-          {showValidationIssue && (
-            <Badge variant="destructive" className="ml-1 text-xs">
-              {unsatisfiedCount} required
-            </Badge>
-          )}
+          <SectionValidationBadges counts={questionnaireValidation} />
         </div>
         {isLoading && (
           <InlineLoading label="Loading questionnaires…" />
@@ -1153,9 +1233,12 @@ export function AddQuestionnaireSection({
       </div>
 
       {(mandatoryQRFieldState.error?.message || mandatoryQRField.value) && (
-        <p className="text-sm font-medium text-red-600 px-1">
-          {mandatoryQRFieldState.error?.message || mandatoryQRField.value}
-        </p>
+        <SectionErrorMessage
+          message={
+            mandatoryQRFieldState.error?.message ||
+            (mandatoryQRField.value as string)
+          }
+        />
       )}
 
       {isExpanded && (
@@ -1175,44 +1258,18 @@ export function AddQuestionnaireSection({
                     req.code_code;
                   const detail = getDetailForReq(req);
                   return (
-                    <div
+                    <QuestionnaireRequirementRow
                       key={req.id}
-                      className={cn(
-                        "flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm",
-                        status === "added" && "bg-green-50 text-green-800",
-                        status === "missing" && "bg-amber-50 text-amber-800"
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        {status === "added" ? (
-                          <CheckCircle2Icon className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
-                        ) : (
-                          <AlertCircleIcon className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                        )}
-                        <span className="truncate">{label}</span>
-                      </div>
-                      {status === "missing" && detail && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-6 text-xs px-2 shrink-0 border-amber-300 bg-white hover:bg-amber-50"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            addQuestionnaireForReq(req);
-                          }}
-                        >
-                          <PlusIcon className="w-3 h-3 mr-0.5" />
-                          Add
-                        </Button>
-                      )}
-                      {status === "missing" && !detail && isLoading && (
-                        <InlineLoading
-                          label="Loading…"
-                          className="text-amber-600"
-                        />
-                      )}
-                    </div>
+                      label={label}
+                      status={status}
+                      isRequired
+                      isLoading={!detail && isLoading}
+                      onAdd={
+                        detail
+                          ? () => addQuestionnaireForReq(req)
+                          : undefined
+                      }
+                    />
                   );
                 })}
               </div>
@@ -1234,38 +1291,18 @@ export function AddQuestionnaireSection({
                     req.code_code;
                   const detail = getDetailForReq(req);
                   return (
-                    <div
+                    <QuestionnaireRequirementRow
                       key={req.id}
-                      className={cn(
-                        "flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm",
-                        status === "added" && "bg-green-50 text-green-800",
-                        status === "missing" && "bg-blue-50 text-blue-800"
-                      )}
-                    >
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        {status === "added" ? (
-                          <CheckCircle2Icon className="w-3.5 h-3.5 text-green-600 flex-shrink-0" />
-                        ) : (
-                          <AlertCircleIcon className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                        )}
-                        <span className="truncate">{label}</span>
-                      </div>
-                      {status === "missing" && detail && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-6 text-xs px-2 shrink-0 border-blue-300 bg-white hover:bg-blue-50"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            addQuestionnaireForReq(req);
-                          }}
-                        >
-                          <PlusIcon className="w-3 h-3 mr-0.5" />
-                          Add
-                        </Button>
-                      )}
-                    </div>
+                      label={label}
+                      status={status}
+                      isRequired={false}
+                      isLoading={!detail && isLoading}
+                      onAdd={
+                        detail
+                          ? () => addQuestionnaireForReq(req)
+                          : undefined
+                      }
+                    />
                   );
                 })}
               </div>

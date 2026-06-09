@@ -1,6 +1,22 @@
 import { QuestionnaireItem } from "@/types/insurance_plan";
 import { QuestionnaireResponseItemInput } from "./schema";
 
+export type QuestionnaireRequirementStatus =
+  | "missing"
+  | "incomplete"
+  | "complete";
+
+export function getQuestionnaireRequirementStatus(
+  detail: { full_url: string; items: QuestionnaireItem[] } | undefined,
+  watchedQR: { questionnaire: string; item?: QuestionnaireResponseItemInput[] }[]
+): QuestionnaireRequirementStatus {
+  if (!detail) return "missing";
+  const qr = watchedQR.find((r) => r.questionnaire === detail.full_url);
+  if (!qr) return "missing";
+  const missing = countMissingRequiredItems(detail.items, qr.item ?? []);
+  return missing === 0 ? "complete" : "incomplete";
+}
+
 /** Returns true if the answer object has at least one meaningful value set. */
 export function hasAnswerValue(
   answer: Record<string, unknown> | null | undefined
