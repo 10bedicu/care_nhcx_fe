@@ -8,7 +8,6 @@ import {
 import { FC, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { ClaimConsentStage } from "@/types/claim_consent";
 import { FingerprintIcon } from "lucide-react";
 import { apis } from "@/apis";
 import { cn } from "@/lib/utils";
@@ -25,7 +24,6 @@ export interface BiometricVerificationDialogProps {
   abhaNumber: string;
   payerId: string;
   process?: BiometricProcess;
-  stage: ClaimConsentStage;
   authMode?: BiometricAuthMode;
   onVerifySuccess?: (message: string) => void;
   onBypass?: () => void;
@@ -40,7 +38,6 @@ export const BiometricVerificationDialog: FC<
   abhaNumber,
   payerId,
   process = "Preauth",
-  stage,
   authMode = "FINGERPRINT",
   onVerifySuccess,
   onBypass,
@@ -90,7 +87,6 @@ export const BiometricVerificationDialog: FC<
         payerId,
         authMode,
         process,
-        stage,
       });
     },
     onError: (error) => {

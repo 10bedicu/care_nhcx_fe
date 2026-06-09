@@ -270,7 +270,6 @@ export const apis = {
       authData: string;
       payerId: string;
       process?: "Preauth" | "Discharge";
-      stage?: ClaimConsentStage;
       encounter: string;
     }) => {
       return await request<{ message: string }>(
@@ -280,7 +279,6 @@ export const apis = {
           body: JSON.stringify({
             authMode: body.authMode ?? "FINGERPRINT",
             process: body.process ?? "Preauth",
-            stage: body.stage ?? "preauthorization",
             ...body,
           }),
         },

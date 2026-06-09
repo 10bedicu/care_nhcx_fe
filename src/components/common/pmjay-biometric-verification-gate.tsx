@@ -3,7 +3,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2 } from "lucide-react";
 
 import { BiometricVerificationDialog } from "./biometric-verification-dialog";
-import { ClaimConsentStage } from "@/types/claim_consent";
 import { Policy } from "@/types/policy";
 import { apis } from "@/apis";
 
@@ -17,7 +16,7 @@ export interface PmjayBiometricVerificationGateProps {
   encounterId: string;
   patientId: string;
   insurance: PmjaySelectedInsurance[];
-  stage: ClaimConsentStage;
+  process: "Preauth" | "Discharge";
 }
 
 // Permission slug that allows a user (e.g. Medical Super Intendent / Admin) to skip the biometric claim-consent verification.
@@ -27,7 +26,7 @@ export function PmjayBiometricVerificationGate({
   encounterId,
   patientId,
   insurance,
-  stage,
+  process,
 }: PmjayBiometricVerificationGateProps) {
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -57,13 +56,13 @@ export function PmjayBiometricVerificationGate({
       "claim-consent-lookup",
       encounterId,
       focalPolicy?.policy.payerid,
-      stage,
+      process,
     ],
     queryFn: () =>
       apis.claimConsent.lookup({
         payer_id: focalPolicy?.policy.payerid ?? "",
         encounter_id: encounterId,
-        stage,
+        stage: process === "Preauth" ? "preauthorization" : "claim",
       }),
     enabled: !!encounterId && !!focalPolicy?.policy.payerid && !skipped,
   });
@@ -118,15 +117,14 @@ export function PmjayBiometricVerificationGate({
       onOpenChange={setDialogOpen}
       abhaNumber={abhaNumber?.abha_number ?? ""}
       payerId={focalPolicy.policy.payerid}
-      process="Preauth"
-      stage={stage}
+      process={process}
       onVerifySuccess={() => {
         queryClient.invalidateQueries({
           queryKey: [
             "claim-consent-lookup",
             encounterId,
             focalPolicy.policy.payerid,
-            stage,
+            process,
           ],
         });
       }}

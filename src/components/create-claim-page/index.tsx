@@ -1105,7 +1105,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
           encounterId={encounterId}
           patientId={patientId}
           insurance={insuranceSelection || []}
-          stage={lockedUse === "claim" ? "claim" : "preauthorization"}
+          process={lockedUse === "claim" ? "Discharge" : "Preauth"}
         />
         <div className="flex items-center justify-between">
           <div>
