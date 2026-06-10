@@ -675,7 +675,7 @@ export function PlanLevelSupportingInfoSection({
         type="button"
         className={cn(
           "w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-colors hover:bg-muted/50",
-          showValidationIssue && "border-red-500 bg-red-50/50"
+          showValidationIssue && "border-red-500 bg-red-50/50",
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -687,7 +687,7 @@ export function PlanLevelSupportingInfoSection({
           )}
           <FileTextIcon className="w-4 h-4 text-primary" />
           <span className="font-medium text-sm">
-            Plan-Level Supporting Documents
+            Plan-Level Supporting Information
           </span>
           {!showValidationIssue && planLevelEntries.length > 0 && (
             <Badge variant="secondary" className="text-xs">
@@ -701,9 +701,7 @@ export function PlanLevelSupportingInfoSection({
             }
           />
         </div>
-        {isExtensionsLoading && (
-          <InlineLoading label="Loading requirements…" />
-        )}
+        {isExtensionsLoading && <InlineLoading label="Loading requirements…" />}
       </button>
 
       {(errorFieldState.error?.message || errorField.value) && (
@@ -757,12 +755,12 @@ export function PlanLevelSupportingInfoSection({
               </p>
               {planLevelEntries.map((entry) => {
                 const mainInfoIndex = allSI.findIndex(
-                  (i) => i.sequence === entry.sequence
+                  (i) => i.sequence === entry.sequence,
                 );
                 const matchingReq = allRequirements.find(
                   (req) =>
                     req.category_code === entry.category?.code &&
-                    req.code_code === entry.code?.code
+                    req.code_code === entry.code?.code,
                 );
                 return (
                   <PlanLevelDocCard
