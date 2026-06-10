@@ -30,6 +30,7 @@ import { PaginatedResponse } from "./types";
 import { PaymentReconciliation } from "@/types/payment";
 import { Policy } from "@/types/policy";
 import { Provider } from "@/types/provider";
+import { QuestionnaireResponse } from "@/types/questionnaire_response";
 import { Task } from "@/types/task";
 import { User } from "@/types/user";
 import { createClaimFormSchema } from "@/components/create-claim-page/schema";
@@ -228,6 +229,25 @@ export const apis = {
     }) => {
       return await request<PaginatedResponse<FileUploadModel>>(
         `/api/v1/files/` + queryString(query),
+      );
+    },
+  },
+
+  questionnaireResponse: {
+    list: async (
+      patientId: string,
+      query?: {
+        questionnaire_slug?: string;
+        subject_type?: "patient" | "encounter";
+        encounter?: string;
+        status?: string;
+        limit?: number;
+        offset?: number;
+      },
+    ) => {
+      return await request<PaginatedResponse<QuestionnaireResponse>>(
+        `/api/v1/patient/${patientId}/questionnaire_response/` +
+          queryString(query),
       );
     },
   },

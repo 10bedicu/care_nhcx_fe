@@ -17,6 +17,9 @@ import {
   isLatestRecord,
 } from "./flow";
 
+import PmjayEligibilityGate from "./pmjay-eligibility-gate";
+import { usePmjayEligibility } from "./use-pmjay-eligibility";
+
 import { Button } from "@/components/ui/button";
 import { Encounter } from "@/types/encounter";
 import { FC } from "react";
@@ -68,6 +71,10 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
   const hasHealthFacility = !!healthFacility;
   const hasProvider = !!provider;
   const isLoadingTimeline = isLoadingCoverages || isLoadingClaims;
+
+  // Mandatory PMJAY prerequisites act as a hard gate: until they are all
+  // satisfied, the rest of the insurance claim flow is hidden.
+  const pmjayEligibility = usePmjayEligibility(encounter, patient);
 
   const encounterCoverages = coverages?.results ?? [];
 
@@ -168,7 +175,15 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
               </div>
             </div>
 
-            {!isLoadingTimeline && showInitialCTA && (
+            {pmjayEligibility.isLoading && <TimelineSkeleton count={2} />}
+
+            {!pmjayEligibility.isLoading && !pmjayEligibility.isSatisfied && (
+              <PmjayEligibilityGate state={pmjayEligibility} />
+            )}
+
+            {pmjayEligibility.isSatisfied && (
+              <>
+                {!isLoadingTimeline && showInitialCTA && (
               <div className="rounded-lg border border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10 p-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                 <div className="flex items-start gap-3">
                   <div className="rounded-full bg-primary/10 p-2.5">
@@ -252,7 +267,9 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
                   />
                 );
               })}
-            </div>
+                </div>
+              </>
+            )}
           </>
         )}
       </div>
