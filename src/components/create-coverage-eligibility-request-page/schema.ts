@@ -97,6 +97,14 @@ export const coverageEligibilityRequestItemSchema = z
     _condition_errors: z.string().optional(),
     _mandatory_diagnosis_error: z.string().optional(),
     _mandatory_supporting_info_error: z.string().optional(),
+    /**
+     * Internal marker set on auto-generated implant line items. Holds the
+     * sequence of the parent item whose implant modifier generated this item.
+     * Stripped/ignored by the backend.
+     */
+    _implant_parent_sequence: z.number().int().positive().optional(),
+    /** Internal: the implant modifier code that generated this line item. */
+    _implant_code: z.string().optional(),
   })
   .refine(
     (data) => !data._mandatory_diagnosis_error,
@@ -105,7 +113,7 @@ export const coverageEligibilityRequestItemSchema = z
         data._mandatory_diagnosis_error ??
         "All diagnosis entries must be completed",
       path: ["_mandatory_diagnosis_error"],
-    })
+    }),
   )
   .refine(
     (data) => !data._mandatory_supporting_info_error,
@@ -114,14 +122,14 @@ export const coverageEligibilityRequestItemSchema = z
         data._mandatory_supporting_info_error ??
         "All supporting information entries must be completed",
       path: ["_mandatory_supporting_info_error"],
-    })
+    }),
   )
   .refine(
     (data) => !data._condition_errors,
     (data) => ({
       message: data._condition_errors ?? "Condition validation failed",
       path: ["_condition_errors"],
-    })
+    }),
   );
 
 export const createCoverageEligibilityRequestFormSchema = z.object({

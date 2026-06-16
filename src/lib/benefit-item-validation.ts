@@ -54,6 +54,18 @@ function buildQualifierTypeMap(
   return map;
 }
 
+/**
+ * Maps every qualifier code offered by a benefit to its qualifier type
+ * (e.g. "implant", "stratification"). Returns an empty map when the benefit
+ * has no costs/qualifiers.
+ */
+export function getQualifierTypeByCode(
+  benefitDetail: InsurancePlanBenefitDetail | undefined
+): Map<string, BenefitCostQualifierType> {
+  if (!benefitDetail) return new Map();
+  return buildQualifierTypeMap(benefitDetail);
+}
+
 export function hasEnhancementAllowedCondition(
   benefitDetail: InsurancePlanBenefitDetail | undefined
 ): boolean {

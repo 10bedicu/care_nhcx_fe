@@ -42,6 +42,7 @@ import { cn } from "@/lib/utils";
 import {
   buildBenefitConditionErrors,
   buildCrossItemErrors,
+  getQualifierTypeByCode,
   isModifierRequired,
 } from "@/lib/benefit-item-validation";
 import {
@@ -104,12 +105,14 @@ export function CoverageEligibilityRequestItemSection({
   const planId = planListData?.results?.[0]?.id ?? null;
 
   const productCodesKey = fields
-    .map((_, index) => form.watch(`item.${index}.product_or_service`)?.code ?? "")
+    .map(
+      (_, index) => form.watch(`item.${index}.product_or_service`)?.code ?? "",
+    )
     .join("|");
 
   const productCodes = useMemo(
     () => [...new Set(productCodesKey.split("|").filter(Boolean))],
-    [productCodesKey]
+    [productCodesKey],
   );
 
   const benefitDetailQueries = useQueries({
@@ -153,6 +156,73 @@ export function CoverageEligibilityRequestItemSection({
     form,
   ]);
 
+  // Adds an auto-generated, locked line item for a selected implant modifier.
+  // The implant code becomes the new item's product/service; the item is
+  // linked back to its parent so it can be swapped/removed when the parent's
+  // implant modifier changes.
+  const addImplantLineItem = (parentIndex: number, implant: Coding) => {
+    const parentSequence = form.getValues(`item.${parentIndex}.sequence`);
+    const parentCategory = form.getValues(`item.${parentIndex}.category`);
+    const allItems = form.getValues("item") ?? [];
+    if (
+      allItems.some(
+        (it) =>
+          it._implant_parent_sequence === parentSequence &&
+          it._implant_code === implant.code,
+      )
+    ) {
+      return;
+    }
+    const nextSequence =
+      Math.max(0, ...allItems.map((f) => f.sequence ?? 0)) + 1;
+    append({
+      sequence: nextSequence,
+      category: parentCategory,
+      product_or_service: implant,
+      modifier: [],
+      quantity: { value: 1 },
+      diagnosis: [],
+      supporting_info_sequence: [],
+      _implant_parent_sequence: parentSequence,
+      _implant_code: implant.code,
+    });
+    void form.trigger("item");
+  };
+
+  // Removes the auto-generated line item associated with a given parent item
+  // and implant modifier code (no-op when none exists).
+  const removeImplantLineItem = (
+    parentSequence: number,
+    implantCode: string,
+  ) => {
+    const allItems = form.getValues("item") ?? [];
+    const targetIndex = allItems.findIndex(
+      (it) =>
+        it._implant_parent_sequence === parentSequence &&
+        it._implant_code === implantCode,
+    );
+    if (targetIndex >= 0) {
+      remove(targetIndex);
+      void form.trigger("item");
+    }
+  };
+
+  // Removes a line item along with every implant line item it generated.
+  const removeItemAndImplants = (index: number) => {
+    const allItems = form.getValues("item") ?? [];
+    const parentSequence = allItems[index]?.sequence;
+    const indexesToRemove = new Set<number>([index]);
+    if (parentSequence != null) {
+      allItems.forEach((it, i) => {
+        if (it._implant_parent_sequence === parentSequence) {
+          indexesToRemove.add(i);
+        }
+      });
+    }
+    remove([...indexesToRemove]);
+    void form.trigger("item");
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3 mb-6">
@@ -179,229 +249,250 @@ export function CoverageEligibilityRequestItemSection({
         {fields.map((field, index) => {
           const conditionErrors = form.watch(`item.${index}._condition_errors`);
           const mandatoryDiagnosisError = form.watch(
-            `item.${index}._mandatory_diagnosis_error`
+            `item.${index}._mandatory_diagnosis_error`,
           );
           const mandatorySupportingInfoError = form.watch(
-            `item.${index}._mandatory_supporting_info_error`
+            `item.${index}._mandatory_supporting_info_error`,
           );
           const crossItemErrorsKey =
             crossItemErrorsByIndex.get(index)?.join(" • ") ?? "";
+          const isImplantItem = Boolean(
+            form.watch(`item.${index}._implant_parent_sequence`),
+          );
           const hasAnyError =
             !!conditionErrors ||
             !!crossItemErrorsKey ||
             !!mandatoryDiagnosisError ||
             !!mandatorySupportingInfoError;
           return (
-          <Card
-            key={field.id}
-            className={cn(
-              hasAnyError && "overflow-hidden border-red-500"
-            )}
-          >
-            <CardHeader>
-              <FormField
-                control={form.control}
-                name={`item.${index}.product_or_service`}
-                render={({ field }) => {
-                  const isProductLocked = !!field.value?.code;
-                  return (
-                    <div className="flex justify-between items-center gap-2">
-                      <FormItem className="space-y-1.5 w-full">
+            <Card
+              key={field.id}
+              className={cn(hasAnyError && "overflow-hidden border-red-500")}
+            >
+              <CardHeader>
+                <FormField
+                  control={form.control}
+                  name={`item.${index}.product_or_service`}
+                  render={({ field }) => {
+                    const isProductLocked = !!field.value?.code;
+                    return (
+                      <div className="flex justify-between items-center gap-2">
+                        <FormItem className="space-y-1.5 w-full">
+                          <FormLabel>
+                            Product or Service
+                            <span className="text-red-500 text-sm ml-0.5">
+                              *
+                            </span>
+                          </FormLabel>
+                          <FormControl>
+                            <BenefitSearchSelect
+                              insurancePlanId={planId}
+                              value={field.value}
+                              onSelect={(benefit) => {
+                                form.setValue(
+                                  `item.${index}.product_or_service`,
+                                  {
+                                    system: PROCEDURE_CODE_SYSTEM,
+                                    code: benefit.type_code,
+                                    display: benefit.type_display,
+                                  },
+                                  { shouldValidate: true, shouldDirty: true },
+                                );
+                                form.setValue(
+                                  `item.${index}.category`,
+                                  {
+                                    system: BENEFIT_CATEGORY_SYSTEM,
+                                    code: benefit.coverage_type_code,
+                                    display: benefit.coverage_type_display,
+                                  },
+                                  { shouldValidate: true, shouldDirty: true },
+                                );
+                              }}
+                              disabled={isProductLocked}
+                            />
+                          </FormControl>
+                          {isProductLocked && (
+                            <p className="text-xs text-muted-foreground">
+                              {isImplantItem
+                                ? "Auto-added implant. Manage it from the originating item's implant modifier."
+                                : "Product is locked. Remove this item and add a new one to change it."}
+                            </p>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            removeItemAndImplants(index);
+                          }}
+                          className={cn("mt-6", isImplantItem && "hidden")}
+                        >
+                          <CircleMinusIcon className="h-6 w-6 text-danger-500" />
+                        </Button>
+                      </div>
+                    );
+                  }}
+                />
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name={`item.${index}.category`}
+                  render={({ field }) => {
+                    const hasProduct = Boolean(
+                      form.watch(`item.${index}.product_or_service`)?.code,
+                    );
+                    return (
+                      <FormItem className="space-y-1.5">
                         <FormLabel>
-                          Product or Service
+                          Category
                           <span className="text-red-500 text-sm ml-0.5">*</span>
                         </FormLabel>
                         <FormControl>
-                          <BenefitSearchSelect
-                            insurancePlanId={planId}
+                          <ValuesetSelect
+                            system="system-coverage-eligibility-request-item-category"
                             value={field.value}
-                            onSelect={(benefit) => {
-                              form.setValue(
-                                `item.${index}.product_or_service`,
-                                {
-                                  system: PROCEDURE_CODE_SYSTEM,
-                                  code: benefit.type_code,
-                                  display: benefit.type_display,
-                                },
-                                { shouldValidate: true, shouldDirty: true }
-                              );
-                              form.setValue(
-                                `item.${index}.category`,
-                                {
-                                  system: BENEFIT_CATEGORY_SYSTEM,
-                                  code: benefit.coverage_type_code,
-                                  display: benefit.coverage_type_display,
-                                },
-                                { shouldValidate: true, shouldDirty: true }
-                              );
+                            onSelect={(value) => {
+                              form.setValue(`item.${index}.category`, value, {
+                                shouldValidate: true,
+                                shouldDirty: true,
+                              });
                             }}
-                            disabled={isProductLocked}
+                            disabled={hasProduct}
                           />
                         </FormControl>
-                        {isProductLocked && (
+                        {hasProduct && (
                           <p className="text-xs text-muted-foreground">
-                            Product is locked. Remove this item and add a new one to change it.
+                            Auto-set from selected benefit
                           </p>
                         )}
                         <FormMessage />
                       </FormItem>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          remove(index);
-                          void form.trigger("item");
-                        }}
-                        className="mt-6"
+                    );
+                  }}
+                />
+
+                <ModifierField
+                  form={form}
+                  index={index}
+                  planId={planId}
+                  disabled={isImplantItem}
+                  onImplantAdd={(implant) => addImplantLineItem(index, implant)}
+                  onImplantRemove={(parentSequence, implantCode) =>
+                    removeImplantLineItem(parentSequence, implantCode)
+                  }
+                />
+
+                {!isImplantItem && (
+                  <>
+                    <AddDiagnosisSection form={form} index={index} />
+                    <AddSupportingInfoSection form={form} index={index} />
+                  </>
+                )}
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name={`item.${index}.quantity.value`}
+                    render={({ field }) => (
+                      <FormItem className="space-y-1.5">
+                        <FormLabel>
+                          Quantity Value
+                          <span className="text-red-500 text-sm ml-0.5">*</span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            value={field.value || ""}
+                            onChange={(e) => {
+                              form.setValue(
+                                `item.${index}.quantity.value`,
+                                e.target.value ? parseFloat(e.target.value) : 0,
+                                { shouldValidate: true, shouldDirty: true },
+                              );
+                            }}
+                            placeholder="Enter quantity"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name={`item.${index}.quantity.unit`}
+                    render={({ field }) => (
+                      <FormItem className="space-y-1.5">
+                        <FormLabel>Quantity Unit</FormLabel>
+                        <FormControl>
+                          <ValuesetSelect
+                            system="system-ucum-units"
+                            value={field.value}
+                            onSelect={(value) => {
+                              form.setValue(
+                                `item.${index}.quantity.unit`,
+                                value,
+                                {
+                                  shouldValidate: true,
+                                  shouldDirty: true,
+                                },
+                              );
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <CEItemValidationEffects
+                  form={form}
+                  index={index}
+                  planId={planId}
+                  crossItemErrorsKey={crossItemErrorsKey}
+                />
+              </CardContent>
+              {hasAnyError && (
+                <CardFooter className="rounded-b-xl px-6 py-3 border-t border-red-200 bg-red-50 flex-col items-start gap-2">
+                  {crossItemErrorsKey &&
+                    crossItemErrorsKey.split(" • ").map((err, i) => (
+                      <div
+                        key={`cross-${i}`}
+                        className="flex items-center gap-2 text-sm font-medium text-red-600"
                       >
-                        <CircleMinusIcon className="h-6 w-6 text-danger-500" />
-                      </Button>
-                    </div>
-                  );
-                }}
-              />
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <FormField
-                control={form.control}
-                name={`item.${index}.category`}
-                render={({ field }) => {
-                  const hasProduct = Boolean(
-                    form.watch(`item.${index}.product_or_service`)?.code
-                  );
-                  return (
-                    <FormItem className="space-y-1.5">
-                      <FormLabel>
-                        Category
-                        <span className="text-red-500 text-sm ml-0.5">*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <ValuesetSelect
-                          system="system-coverage-eligibility-request-item-category"
-                          value={field.value}
-                          onSelect={(value) => {
-                            form.setValue(`item.${index}.category`, value, {
-                              shouldValidate: true,
-                              shouldDirty: true,
-                            });
-                          }}
-                          disabled={hasProduct}
-                        />
-                      </FormControl>
-                      {hasProduct && (
-                        <p className="text-xs text-muted-foreground">
-                          Auto-set from selected benefit
-                        </p>
-                      )}
-                      <FormMessage />
-                    </FormItem>
-                  );
-                }}
-              />
-
-              <ModifierField form={form} index={index} planId={planId} />
-
-              <AddDiagnosisSection form={form} index={index} />
-              <AddSupportingInfoSection form={form} index={index} />
-
-              <div className="grid grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name={`item.${index}.quantity.value`}
-                  render={({ field }) => (
-                    <FormItem className="space-y-1.5">
-                      <FormLabel>
-                        Quantity Value
-                        <span className="text-red-500 text-sm ml-0.5">*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          value={field.value || ""}
-                          onChange={(e) => {
-                            form.setValue(
-                              `item.${index}.quantity.value`,
-                              e.target.value ? parseFloat(e.target.value) : 0,
-                              { shouldValidate: true, shouldDirty: true }
-                            );
-                          }}
-                          placeholder="Enter quantity"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name={`item.${index}.quantity.unit`}
-                  render={({ field }) => (
-                    <FormItem className="space-y-1.5">
-                      <FormLabel>Quantity Unit</FormLabel>
-                      <FormControl>
-                        <ValuesetSelect
-                          system="system-ucum-units"
-                          value={field.value}
-                          onSelect={(value) => {
-                            form.setValue(`item.${index}.quantity.unit`, value, {
-                              shouldValidate: true,
-                              shouldDirty: true,
-                            });
-                          }}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <CEItemValidationEffects
-                form={form}
-                index={index}
-                planId={planId}
-                crossItemErrorsKey={crossItemErrorsKey}
-              />
-            </CardContent>
-            {hasAnyError && (
-              <CardFooter className="rounded-b-xl px-6 py-3 border-t border-red-200 bg-red-50 flex-col items-start gap-2">
-                {crossItemErrorsKey &&
-                  crossItemErrorsKey.split(" • ").map((err, i) => (
-                    <div
-                      key={`cross-${i}`}
-                      className="flex items-center gap-2 text-sm font-medium text-red-600"
-                    >
+                        <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                        {err}
+                      </div>
+                    ))}
+                  {mandatoryDiagnosisError && (
+                    <div className="flex items-center gap-2 text-sm font-medium text-red-600">
                       <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                      {err}
+                      {mandatoryDiagnosisError}
                     </div>
-                  ))}
-                {mandatoryDiagnosisError && (
-                  <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                    <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                    {mandatoryDiagnosisError}
-                  </div>
-                )}
-                {mandatorySupportingInfoError && (
-                  <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                    <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                    {mandatorySupportingInfoError}
-                  </div>
-                )}
-                {conditionErrors &&
-                  conditionErrors.split(" • ").map((err, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2 text-sm font-medium text-red-600"
-                    >
+                  )}
+                  {mandatorySupportingInfoError && (
+                    <div className="flex items-center gap-2 text-sm font-medium text-red-600">
                       <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                      {err}
+                      {mandatorySupportingInfoError}
                     </div>
-                  ))}
-              </CardFooter>
-            )}
-          </Card>
+                  )}
+                  {conditionErrors &&
+                    conditionErrors.split(" • ").map((err, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-2 text-sm font-medium text-red-600"
+                      >
+                        <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                        {err}
+                      </div>
+                    ))}
+                </CardFooter>
+              )}
+            </Card>
           );
         })}
 
@@ -420,7 +511,7 @@ export function CoverageEligibilityRequestItemSection({
                     const existingSupportingInfo =
                       form.getValues("supporting_info") ?? [];
                     const allSequences = existingSupportingInfo.map(
-                      (s) => s.sequence
+                      (s) => s.sequence,
                     );
                     append({
                       sequence:
@@ -454,10 +545,21 @@ function ModifierField({
   form,
   index,
   planId,
+  disabled = false,
+  onImplantAdd,
+  onImplantRemove,
 }: {
-  form: UseFormReturn<z.infer<typeof createCoverageEligibilityRequestFormSchema>>;
+  form: UseFormReturn<
+    z.infer<typeof createCoverageEligibilityRequestFormSchema>
+  >;
   index: number;
   planId: string | null;
+  /** When true (auto-generated implant line items), the modifier UI is hidden. */
+  disabled?: boolean;
+  /** Called when an implant-type modifier is selected on this item. */
+  onImplantAdd?: (implant: Coding) => void;
+  /** Called when an implant-type modifier is removed from this item. */
+  onImplantRemove?: (parentSequence: number, implantCode: string) => void;
 }) {
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
 
@@ -471,6 +573,11 @@ function ModifierField({
     enabled: Boolean(planId && productCode),
     staleTime: 5 * 60 * 1000,
   });
+
+  const qualifierTypeByCode = useMemo(
+    () => getQualifierTypeByCode(benefitDetail),
+    [benefitDetail],
+  );
 
   const qualifiers = useMemo<Coding[]>(() => {
     if (!benefitDetail?.costs) return [];
@@ -490,6 +597,8 @@ function ModifierField({
     }
     return result;
   }, [benefitDetail]);
+
+  if (disabled) return null;
 
   return (
     <FormField
@@ -519,8 +628,11 @@ function ModifierField({
                   form.setValue(
                     `item.${index}.modifier`,
                     [...existing, qualifier],
-                    { shouldValidate: true, shouldDirty: true }
+                    { shouldValidate: true, shouldDirty: true },
                   );
+                  if (qualifierTypeByCode.get(qualifier.code) === "implant") {
+                    onImplantAdd?.(qualifier);
+                  }
                 }}
                 disabled={!productCode || isLoading}
                 placeholder={
@@ -551,8 +663,14 @@ function ModifierField({
                         form.setValue(
                           `item.${index}.modifier`,
                           field.value.filter((c) => c.code !== code.code),
-                          { shouldValidate: true, shouldDirty: true }
+                          { shouldValidate: true, shouldDirty: true },
                         );
+                        if (qualifierTypeByCode.get(code.code) === "implant") {
+                          const parentSequence = form.getValues(
+                            `item.${index}.sequence`,
+                          );
+                          onImplantRemove?.(parentSequence, code.code);
+                        }
                       }}
                     />
                   </Badge>

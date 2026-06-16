@@ -50,6 +50,7 @@ import { cn } from "@/lib/utils";
 import {
   buildBenefitConditionErrors,
   computeBenefitLimit,
+  getQualifierTypeByCode,
   isModifierRequired,
 } from "@/lib/benefit-item-validation";
 import {
@@ -1349,6 +1350,19 @@ function ModifierField({
     return result;
   }, [benefitDetail]);
 
+  const qualifierTypeByCode = useMemo(
+    () => getQualifierTypeByCode(benefitDetail),
+    [benefitDetail],
+  );
+
+  // Implant modifiers are auto-filled and locked: they cannot be added or
+  // removed by the user. Only non-implant qualifiers are user-selectable.
+  const selectableQualifiers = useMemo(
+    () =>
+      qualifiers.filter((q) => qualifierTypeByCode.get(q.code) !== "implant"),
+    [qualifiers, qualifierTypeByCode],
+  );
+
   // Auto-fill modifiers from the benefit qualifiers when the form field is
   // empty. This covers prefill paths that didn't carry modifiers through
   // (e.g. older CE/Claim records). Only fires once per (item, benefit) load,
@@ -1382,13 +1396,15 @@ function ModifierField({
           <FormControl>
             <div className="grid gap-4">
               <Autocomplete
-                options={qualifiers.map((q) => ({
+                options={selectableQualifiers.map((q) => ({
                   label: q.display ? `${q.code} - ${q.display}` : q.code,
                   value: q.code,
                 }))}
                 value={undefined}
                 onChange={(code) => {
-                  const qualifier = qualifiers.find((q) => q.code === code);
+                  const qualifier = selectableQualifiers.find(
+                    (q) => q.code === code,
+                  );
                   if (!qualifier) return;
                   const existing = field.value ?? [];
                   if (existing.some((c) => c.code === qualifier.code)) return;
@@ -1403,7 +1419,7 @@ function ModifierField({
                     ? "Select a benefit first"
                     : isLoading
                       ? "Loading qualifiers…"
-                      : qualifiers.length === 0
+                      : selectableQualifiers.length === 0
                         ? "No qualifiers available"
                         : "Select a modifier"
                 }
@@ -1414,23 +1430,29 @@ function ModifierField({
                 }
               />
               <div className="flex flex-wrap gap-2">
-                {(field.value ?? []).map((code) => (
-                  <Badge key={code.code} className="flex gap-2">
-                    <span className="font-mono">{code.code}</span>
-                    {code.display && (
-                      <span className="opacity-80"> - {code.display}</span>
-                    )}
-                    <XIcon
-                      className="w-4 h-4 cursor-pointer"
-                      onClick={() => {
-                        form.setValue(
-                          `item.${index}.modifier`,
-                          field.value.filter((c) => c.code !== code.code)
-                        );
-                      }}
-                    />
-                  </Badge>
-                ))}
+                {(field.value ?? []).map((code) => {
+                  const isImplant =
+                    qualifierTypeByCode.get(code.code) === "implant";
+                  return (
+                    <Badge key={code.code} className="flex gap-2">
+                      <span className="font-mono">{code.code}</span>
+                      {code.display && (
+                        <span className="opacity-80"> - {code.display}</span>
+                      )}
+                      {!isImplant && (
+                        <XIcon
+                          className="w-4 h-4 cursor-pointer"
+                          onClick={() => {
+                            form.setValue(
+                              `item.${index}.modifier`,
+                              field.value.filter((c) => c.code !== code.code),
+                            );
+                          }}
+                        />
+                      )}
+                    </Badge>
+                  );
+                })}
               </div>
             </div>
           </FormControl>
