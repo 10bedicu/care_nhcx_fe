@@ -85,6 +85,9 @@ import { createClaimFormSchema } from "./schema";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 
+/** Marks user-driven updates so prefilled claim forms enable submit. */
+const USER_EDIT = { shouldDirty: true, shouldValidate: true } as const;
+
 interface ClaimItemSectionProps {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   coverageEligibilityRequest?: CoverageEligibilityRequest;
@@ -732,14 +735,12 @@ export function ClaimItemSection({
         "supporting_info",
         (form.getValues("supporting_info") ?? []).filter(
           (info) => !orphanedInfoSeqs.includes(info.sequence),
-        ),
-      );
+        ), USER_EDIT);
       form.setValue(
         "questionnaire_responses",
         (form.getValues("questionnaire_responses") ?? []).filter(
           (qr) => !orphanedInfoSeqs.includes(qr.sequence),
-        ),
-      );
+        ), USER_EDIT);
     }
 
     const orphanedCTSeqs = [...careTeamSeqs].filter(
@@ -750,8 +751,7 @@ export function ClaimItemSection({
         "care_team",
         (form.getValues("care_team") ?? []).filter(
           (ct) => !orphanedCTSeqs.includes(ct.sequence),
-        ),
-      );
+        ), USER_EDIT);
     }
 
     const orphanedDxSeqs = [...diagnosisSeqs].filter(
@@ -762,8 +762,7 @@ export function ClaimItemSection({
         "diagnosis",
         (form.getValues("diagnosis") ?? []).filter(
           (dx) => !orphanedDxSeqs.includes(dx.sequence),
-        ),
-      );
+        ), USER_EDIT);
     }
 
     const orphanedProcSeqs = [...procedureSeqs].filter(
@@ -774,8 +773,7 @@ export function ClaimItemSection({
         "procedure",
         (form.getValues("procedure") ?? []).filter(
           (proc) => !orphanedProcSeqs.includes(proc.sequence),
-        ),
-      );
+        ), USER_EDIT);
     }
 
     remove(index);
@@ -907,13 +905,12 @@ export function ClaimItemSection({
                                     system: PROCEDURE_CODE_SYSTEM,
                                     code: benefit.type_code,
                                     display: benefit.type_display,
-                                  },
-                                );
+                                  }, USER_EDIT);
                                 form.setValue(`item.${index}.category`, {
                                   system: BENEFIT_CATEGORY_SYSTEM,
                                   code: benefit.coverage_type_code,
                                   display: benefit.coverage_type_display,
-                                });
+                                }, USER_EDIT);
                                 const existing =
                                   form.getValues(
                                     `item.${index}.program_code`,
@@ -924,7 +921,7 @@ export function ClaimItemSection({
                                   form.setValue(`item.${index}.program_code`, [
                                     ...existing,
                                     AB_PMJAY_CODE,
-                                  ]);
+                                  ], USER_EDIT);
                                 }
                               }}
                               disabled={isProductLocked}
@@ -990,7 +987,7 @@ export function ClaimItemSection({
                             system="system-claim-item-category"
                             value={field.value}
                             onSelect={(value) => {
-                              form.setValue(`item.${index}.category`, value);
+                              form.setValue(`item.${index}.category`, value, USER_EDIT);
                             }}
                             disabled={hasProduct}
                           />
@@ -1034,8 +1031,7 @@ export function ClaimItemSection({
                                   .map((c) => c.code)
                                   .includes(code.code)
                                   ? field.value
-                                  : [...field.value, code],
-                              );
+                                  : [...field.value, code], USER_EDIT);
                             }}
                           />
 
@@ -1050,8 +1046,7 @@ export function ClaimItemSection({
                                       `item.${index}.program_code`,
                                       field.value.filter(
                                         (c) => c.code !== code.code,
-                                      ),
-                                    );
+                                      ), USER_EDIT);
                                   }}
                                 />
                               </Badge>
@@ -1135,8 +1130,7 @@ export function ClaimItemSection({
                             onChange={(value) => {
                               form.setValue(
                                 `item.${index}.serviced_period.start`,
-                                value ? value.toISOString() : "",
-                              );
+                                value ? value.toISOString() : "", USER_EDIT);
                             }}
                             placeholder="Select start date and time"
                           />
@@ -1167,8 +1161,7 @@ export function ClaimItemSection({
                             onChange={(value) => {
                               form.setValue(
                                 `item.${index}.serviced_period.end`,
-                                value ? value.toISOString() : undefined,
-                              );
+                                value ? value.toISOString() : undefined, USER_EDIT);
                             }}
                             placeholder="Select end date and time"
                           />
@@ -1196,8 +1189,7 @@ export function ClaimItemSection({
                             onChange={(e) => {
                               form.setValue(
                                 `item.${index}.quantity.value`,
-                                e.target.value ? parseFloat(e.target.value) : 0,
-                              );
+                                e.target.value ? parseFloat(e.target.value) : 0, USER_EDIT);
                             }}
                             placeholder="Enter quantity"
                           />
@@ -1220,8 +1212,7 @@ export function ClaimItemSection({
                             onSelect={(value) => {
                               form.setValue(
                                 `item.${index}.quantity.unit`,
-                                value,
-                              );
+                                value, USER_EDIT);
                             }}
                           />
                         </FormControl>
@@ -1272,8 +1263,7 @@ export function ClaimItemSection({
                                 `item.${index}.factor`,
                                 e.target.value
                                   ? parseFloat(e.target.value)
-                                  : undefined,
-                              );
+                                  : undefined, USER_EDIT);
                             }}
                             placeholder="Enter factor"
                           />
@@ -1474,7 +1464,7 @@ function ModifierField({
                   form.setValue(`item.${index}.modifier`, [
                     ...existing,
                     qualifier,
-                  ]);
+                  ], USER_EDIT);
                 }}
                 disabled={!productCode || isLoading}
                 placeholder={
@@ -1508,8 +1498,7 @@ function ModifierField({
                           onClick={() => {
                             form.setValue(
                               `item.${index}.modifier`,
-                              field.value.filter((c) => c.code !== code.code),
-                            );
+                              field.value.filter((c) => c.code !== code.code), USER_EDIT);
                           }}
                         />
                       )}
@@ -1680,7 +1669,7 @@ function AddChargeItemsSection({
                     form.setValue(`item.${index}.charge_items`, [
                       ...selectedIds,
                       id,
-                    ]);
+                    ], USER_EDIT);
                   }
                 }}
                 placeholder={
@@ -1721,8 +1710,7 @@ function AddChargeItemsSection({
                         onClick={() => {
                           form.setValue(
                             `item.${index}.charge_items`,
-                            selectedIds.filter((id) => id !== ci.id),
-                          );
+                            selectedIds.filter((id) => id !== ci.id), USER_EDIT);
                         }}
                       >
                         <XIcon className="h-4 w-4" />
@@ -2116,14 +2104,14 @@ function AddDiagnosisSection({
       on_admission: undefined,
     };
 
-    form.setValue("diagnosis", [...currentDiagnoses, newDiagnosis]);
+    form.setValue("diagnosis", [...currentDiagnoses, newDiagnosis], USER_EDIT);
 
     const currentSequences =
       form.getValues(`item.${index}.diagnosis_sequence`) || [];
     form.setValue(`item.${index}.diagnosis_sequence`, [
       ...currentSequences,
       newSequence,
-    ]);
+    ], USER_EDIT);
   };
 
   return (
@@ -2196,8 +2184,7 @@ function AddDiagnosisSection({
                               onSelect={(value) => {
                                 form.setValue(
                                   `diagnosis.${mainDiagnosisIndex}.diagnosis_code`,
-                                  value,
-                                );
+                                  value, USER_EDIT);
                               }}
                             />
                           </FormControl>
@@ -2222,8 +2209,7 @@ function AddDiagnosisSection({
                               onChange={(value) => {
                                 form.setValue(
                                   `diagnosis.${mainDiagnosisIndex}.on_admission`,
-                                  value as "yes" | "no" | "unknown" | undefined,
-                                );
+                                  value as "yes" | "no" | "unknown" | undefined, USER_EDIT);
                               }}
                             />
                           </FormControl>
@@ -2241,7 +2227,7 @@ function AddDiagnosisSection({
                         const updatedDiagnoses = currentDiagnoses.filter(
                           (_, i) => i !== mainDiagnosisIndex,
                         );
-                        form.setValue("diagnosis", updatedDiagnoses);
+                        form.setValue("diagnosis", updatedDiagnoses, USER_EDIT);
 
                         const items = form.getValues("item") || [];
                         items.forEach((item, itemIndex) => {
@@ -2252,8 +2238,7 @@ function AddDiagnosisSection({
                           );
                           form.setValue(
                             `item.${itemIndex}.diagnosis_sequence`,
-                            updatedSequences,
-                          );
+                            updatedSequences, USER_EDIT);
                         });
                       }}
                       className="mt-6"
@@ -2284,8 +2269,7 @@ function AddDiagnosisSection({
                                     .map((c) => c.code)
                                     .includes(value.code)
                                     ? field.value
-                                    : [...field.value, value],
-                                );
+                                    : [...field.value, value], USER_EDIT);
                               }}
                             />
 
@@ -2300,8 +2284,7 @@ function AddDiagnosisSection({
                                         `diagnosis.${mainDiagnosisIndex}.type`,
                                         field.value.filter(
                                           (c) => c.code !== code.code,
-                                        ),
-                                      );
+                                        ), USER_EDIT);
                                     }}
                                   />
                                 </Badge>
@@ -2397,14 +2380,14 @@ function AddProcedureSection({
       procedure_code: undefined,
     };
 
-    form.setValue("procedure", [...currentProcedures, newProcedure]);
+    form.setValue("procedure", [...currentProcedures, newProcedure], USER_EDIT);
 
     const currentSequences =
       form.getValues(`item.${index}.procedure_sequence`) || [];
     form.setValue(`item.${index}.procedure_sequence`, [
       ...currentSequences,
       newSequence,
-    ]);
+    ], USER_EDIT);
   };
 
   return (
@@ -2466,8 +2449,7 @@ function AddProcedureSection({
                               onSelect={(value) => {
                                 form.setValue(
                                   `procedure.${mainProcedureIndex}.procedure_code`,
-                                  value,
-                                );
+                                  value, USER_EDIT);
                               }}
                             />
                           </FormControl>
@@ -2489,8 +2471,7 @@ function AddProcedureSection({
                               onChange={(value) => {
                                 form.setValue(
                                   `procedure.${mainProcedureIndex}.date`,
-                                  value ? value.toISOString() : undefined,
-                                );
+                                  value ? value.toISOString() : undefined, USER_EDIT);
                               }}
                               placeholder="Select date and time"
                             />
@@ -2509,7 +2490,7 @@ function AddProcedureSection({
                         const updatedProcedures = currentProcedures.filter(
                           (_, i) => i !== mainProcedureIndex,
                         );
-                        form.setValue("procedure", updatedProcedures);
+                        form.setValue("procedure", updatedProcedures, USER_EDIT);
 
                         const items = form.getValues("item") || [];
                         items.forEach((item, itemIndex) => {
@@ -2520,8 +2501,7 @@ function AddProcedureSection({
                           );
                           form.setValue(
                             `item.${itemIndex}.procedure_sequence`,
-                            updatedSequences,
-                          );
+                            updatedSequences, USER_EDIT);
                         });
                       }}
                       className="mt-6"
@@ -2549,8 +2529,7 @@ function AddProcedureSection({
                                     .map((c) => c.code)
                                     .includes(value.code)
                                     ? field.value
-                                    : [...field.value, value],
-                                );
+                                    : [...field.value, value], USER_EDIT);
                               }}
                             />
 
@@ -2565,8 +2544,7 @@ function AddProcedureSection({
                                         `procedure.${mainProcedureIndex}.type`,
                                         field.value.filter(
                                           (c) => c.code !== code.code,
-                                        ),
-                                      );
+                                        ), USER_EDIT);
                                     }}
                                   />
                                 </Badge>
@@ -2673,14 +2651,14 @@ function AddCareTeamSection({
       role: undefined,
     };
 
-    form.setValue("care_team", [...currentCareTeam, newCareTeamMember]);
+    form.setValue("care_team", [...currentCareTeam, newCareTeamMember], USER_EDIT);
 
     const currentSequences =
       form.getValues(`item.${index}.care_team_sequence`) || [];
     form.setValue(`item.${index}.care_team_sequence`, [
       ...currentSequences,
       newSequence,
-    ]);
+    ], USER_EDIT);
   };
 
   return (
@@ -2760,8 +2738,7 @@ function AddCareTeamSection({
                               onChange={(value) => {
                                 form.setValue(
                                   `care_team.${mainMemberIndex}.provider`,
-                                  value,
-                                );
+                                  value, USER_EDIT);
                               }}
                               placeholder="Select a provider"
                             />
@@ -2780,7 +2757,7 @@ function AddCareTeamSection({
                         const updatedCareTeam = currentCareTeam.filter(
                           (_, i) => i !== mainMemberIndex,
                         );
-                        form.setValue("care_team", updatedCareTeam);
+                        form.setValue("care_team", updatedCareTeam, USER_EDIT);
 
                         const items = form.getValues("item") || [];
                         items.forEach((item, itemIndex) => {
@@ -2791,8 +2768,7 @@ function AddCareTeamSection({
                           );
                           form.setValue(
                             `item.${itemIndex}.care_team_sequence`,
-                            updatedSequences,
-                          );
+                            updatedSequences, USER_EDIT);
                         });
                       }}
                       className="mt-6"
@@ -2816,8 +2792,7 @@ function AddCareTeamSection({
                               onSelect={(value) => {
                                 form.setValue(
                                   `care_team.${mainMemberIndex}.role`,
-                                  value,
-                                );
+                                  value, USER_EDIT);
                               }}
                             />
                           </FormControl>
@@ -2840,8 +2815,7 @@ function AddCareTeamSection({
                                 onCheckedChange={(checked) => {
                                   form.setValue(
                                     `care_team.${mainMemberIndex}.responsible`,
-                                    checked as boolean,
-                                  );
+                                    checked as boolean, USER_EDIT);
                                 }}
                               />
                               <Label
@@ -3113,7 +3087,7 @@ function AddSupportingInfoSection({
       form.setValue(`item.${index}.information_sequence`, [
         ...currentSequences,
         newSequence,
-      ]);
+      ], USER_EDIT);
 
       form.setValue("supporting_info", [
         ...currentSupportingInfo,
@@ -3134,7 +3108,7 @@ function AddSupportingInfoSection({
           value_attachment: undefined,
           _is_plan_level: false,
         },
-      ]);
+      ], USER_EDIT);
     }
     if (!isExpanded) setIsExpanded(true);
   };
@@ -3158,7 +3132,7 @@ function AddSupportingInfoSection({
     form.setValue(`item.${index}.information_sequence`, [
       ...currentSequences,
       newSequence,
-    ]);
+    ], USER_EDIT);
 
     form.setValue("supporting_info", [
       ...currentSupportingInfo,
@@ -3171,7 +3145,7 @@ function AddSupportingInfoSection({
         value_attachment: undefined,
         _is_plan_level: false,
       },
-    ]);
+    ], USER_EDIT);
   };
 
   return (
@@ -3416,8 +3390,7 @@ function AddSupportingInfoSection({
                                   }
                                   form.setValue(
                                     `supporting_info.${mainInfoIndex}.code`,
-                                    code,
-                                  );
+                                    code, USER_EDIT);
                                 }}
                               />
                             )}
@@ -3437,7 +3410,7 @@ function AddSupportingInfoSection({
                           currentSupportingInfo.filter(
                             (_, i) => i !== mainInfoIndex,
                           );
-                        form.setValue("supporting_info", updatedSupportingInfo);
+                        form.setValue("supporting_info", updatedSupportingInfo, USER_EDIT);
 
                         const items = form.getValues("item") || [];
                         items.forEach((item, itemIndex) => {
@@ -3448,8 +3421,7 @@ function AddSupportingInfoSection({
                           );
                           form.setValue(
                             `item.${itemIndex}.information_sequence`,
-                            updatedSequences,
-                          );
+                            updatedSequences, USER_EDIT);
                         });
                       }}
                       className="mt-6"
@@ -3474,8 +3446,7 @@ function AddSupportingInfoSection({
                               onChange={(value) => {
                                 form.setValue(
                                   `supporting_info.${mainInfoIndex}.timing.start`,
-                                  value ? value.toISOString() : undefined,
-                                );
+                                  value ? value.toISOString() : undefined, USER_EDIT);
                               }}
                               placeholder="Select start date and time"
                             />
@@ -3499,8 +3470,7 @@ function AddSupportingInfoSection({
                               onChange={(value) => {
                                 form.setValue(
                                   `supporting_info.${mainInfoIndex}.timing.end`,
-                                  value ? value.toISOString() : undefined,
-                                );
+                                  value ? value.toISOString() : undefined, USER_EDIT);
                               }}
                               placeholder="Select end date and time"
                             />
@@ -3552,8 +3522,7 @@ function AddSupportingInfoSection({
                                   }
                                   form.setValue(
                                     `supporting_info.${mainInfoIndex}.category`,
-                                    code,
-                                  );
+                                    code, USER_EDIT);
                                 }}
                               />
                             )}
@@ -3595,12 +3564,10 @@ function AddSupportingInfoSection({
                             onChange={(e) => {
                               form.setValue(
                                 `supporting_info.${mainInfoIndex}.value_string`,
-                                e.target.value || undefined,
-                              );
+                                e.target.value || undefined, USER_EDIT);
                               form.setValue(
                                 `supporting_info.${mainInfoIndex}.value_attachment`,
-                                undefined,
-                              );
+                                undefined, USER_EDIT);
                             }}
                             placeholder="Enter supporting info value"
                             className="min-h-[80px]"
@@ -3652,13 +3619,13 @@ function SupportingInfoFileUpload({
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      form.setValue(`supporting_info.${mainInfoIndex}.value_file`, file);
-      form.setValue(`supporting_info.${mainInfoIndex}.value_string`, undefined);
+      form.setValue(`supporting_info.${mainInfoIndex}.value_file`, file, USER_EDIT);
+      form.setValue(`supporting_info.${mainInfoIndex}.value_string`, undefined, USER_EDIT);
     }
   };
 
   const handleRemoveFile = () => {
-    form.setValue(`supporting_info.${mainInfoIndex}.value_file`, undefined);
+    form.setValue(`supporting_info.${mainInfoIndex}.value_file`, undefined, USER_EDIT);
   };
 
   return (
