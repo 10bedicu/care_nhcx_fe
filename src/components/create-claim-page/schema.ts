@@ -81,6 +81,11 @@ export const claimProcedureSchema = z
     }
   );
 
+export const claimSupportingInfoResourceSchema = z.object({
+  resource_type: z.string(),
+  resource_id: z.string().uuid(),
+});
+
 export const claimSupportingInfoSchema = z
   .object({
     sequence: z.number().int().positive(),
@@ -90,20 +95,26 @@ export const claimSupportingInfoSchema = z
     value_string: z.string().optional(),
     value_attachment: z.string().uuid().optional(),
     value_file: z.instanceof(File).optional(),
+    /** Reference to an existing care/EMR record (e.g. diagnostic report,
+     * questionnaire response). Converted into an ABDM FHIR document and
+     * embedded as a DocumentReference on the backend. */
+    value_resource: claimSupportingInfoResourceSchema.optional(),
     /** Internal marker: true = belongs to plan level, false/undefined = item level. Stripped before API submission. */
     _is_plan_level: z.boolean().optional(),
   })
   .refine(
     (data) => {
-      return (
-        (data.value_string && !data.value_attachment && !data.value_file) ||
-        (!data.value_string && data.value_attachment && !data.value_file) ||
-        (!data.value_string && !data.value_attachment && data.value_file)
-      );
+      const provided = [
+        data.value_string,
+        data.value_attachment,
+        data.value_file,
+        data.value_resource,
+      ].filter((value) => value !== undefined && value !== null && value !== "");
+      return provided.length === 1;
     },
     {
       message:
-        "Please provide a value — either enter text or upload an attachment",
+        "Please provide a value — enter text, upload an attachment, or select a record",
       path: ["value_string"],
     }
   );

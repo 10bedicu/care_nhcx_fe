@@ -39,6 +39,7 @@ import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { InlineLoading } from "@/components/common/loading-spinner";
 import { Input } from "@/components/ui/input";
 import { QuestionnaireResponseCard, QuestionnaireRequirementRow } from "./claim-questionnaire-section";
+import { SupportingInfoValueControls } from "./supporting-info-value-controls";
 import { apis } from "@/apis";
 import { cn } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
@@ -321,37 +322,25 @@ function PlanLevelDocCard({
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-3 space-y-2">
-        <Input
-          placeholder="Enter a value or description…"
-          value={valueString ?? ""}
-          disabled={hasFile}
-          onChange={(e) => {
-            form.setValue(
-              `supporting_info.${mainInfoIndex}.value_string` as FieldPath<
-                z.infer<typeof createClaimFormSchema>
-              >,
-              (e.target.value || undefined) as never
-            );
-            if (e.target.value) {
-              form.setValue(
-                `supporting_info.${mainInfoIndex}.value_file` as FieldPath<
-                  z.infer<typeof createClaimFormSchema>
-                >,
-                undefined as never
-              );
-              form.setValue(
-                `supporting_info.${mainInfoIndex}.value_attachment` as FieldPath<
-                  z.infer<typeof createClaimFormSchema>
-                >,
-                undefined as never
-              );
-            }
-          }}
-        />
-
-        {!valueString && (
-          <>
-            {hasFile ? (
+        <SupportingInfoValueControls
+          form={form}
+          mainInfoIndex={mainInfoIndex}
+          renderText={() => (
+            <Input
+              placeholder="Enter a value or description…"
+              value={valueString ?? ""}
+              onChange={(e) => {
+                form.setValue(
+                  `supporting_info.${mainInfoIndex}.value_string` as FieldPath<
+                    z.infer<typeof createClaimFormSchema>
+                  >,
+                  (e.target.value || undefined) as never
+                );
+              }}
+            />
+          )}
+          renderAttachment={() =>
+            hasFile ? (
               <div className="flex items-center gap-2 rounded-md bg-green-50 px-2 py-1.5">
                 <PaperclipIcon className="w-3.5 h-3.5 text-green-600" />
                 <span className="text-xs font-medium text-green-700 flex-1">
@@ -386,9 +375,9 @@ function PlanLevelDocCard({
                   />
                 </span>
               </Button>
-            )}
-          </>
-        )}
+            )
+          }
+        />
       </CardContent>
     </Card>
   );
@@ -562,7 +551,10 @@ export function PlanLevelSupportingInfoSection({
     );
     if (!match) return "missing";
     const hasValue =
-      match.value_string || match.value_attachment || match.value_file;
+      match.value_string ||
+      match.value_attachment ||
+      match.value_file ||
+      match.value_resource?.resource_id;
     return hasValue ? "satisfied" : "incomplete";
   };
 

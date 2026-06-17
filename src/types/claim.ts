@@ -53,6 +53,11 @@ export type ClaimCareTeam = {
   role?: Coding;
 };
 
+export type ClaimSupportingInfoResource = {
+  resource_type: string;
+  resource_id: string;
+};
+
 export type ClaimSupportingInfo = {
   sequence: number;
   category: Coding;
@@ -60,6 +65,7 @@ export type ClaimSupportingInfo = {
   timing?: Period;
   value_string?: string;
   value_attachment?: FileUpload;
+  value_resource?: ClaimSupportingInfoResource;
 };
 
 export type ClaimProcedure = {

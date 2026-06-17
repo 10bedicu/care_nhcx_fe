@@ -9,6 +9,7 @@ type SupportingInfoValueFields = {
   value_string?: string;
   value_attachment?: string;
   value_file?: File;
+  value_resource?: { resource_type?: string; resource_id?: string };
 };
 
 export function getSupportingInfoValueError(
@@ -17,13 +18,16 @@ export function getSupportingInfoValueError(
   const hasString = !!data.value_string;
   const hasAttachment = !!data.value_attachment;
   const hasFile = !!data.value_file;
-  const providedCount = [hasString, hasAttachment, hasFile].filter(Boolean).length;
+  const hasResource = !!data.value_resource?.resource_id;
+  const providedCount = [hasString, hasAttachment, hasFile, hasResource].filter(
+    Boolean
+  ).length;
 
   if (providedCount === 0) {
-    return "Either text or an attachment must be provided";
+    return "Provide text, an attachment, or a record";
   }
   if (providedCount > 1) {
-    return "Provide either text or an attachment, not both";
+    return "Provide only one of text, attachment, or record";
   }
   return undefined;
 }

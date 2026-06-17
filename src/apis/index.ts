@@ -24,6 +24,7 @@ import { Coding } from "@/types/base";
 import { Communication } from "@/types/communication";
 import { Condition } from "@/types/condition";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
+import { DiagnosticReport } from "@/types/diagnostic_report";
 import { Encounter } from "@/types/encounter";
 import { HealthFacility } from "@/types/health_facility";
 import { PaginatedResponse } from "./types";
@@ -248,6 +249,23 @@ export const apis = {
       return await request<PaginatedResponse<QuestionnaireResponse>>(
         `/api/v1/patient/${patientId}/questionnaire_response/` +
           queryString(query),
+      );
+    },
+  },
+
+  diagnosticReport: {
+    list: async (
+      patientId: string,
+      query?: {
+        encounter?: string;
+        status?: string;
+        ordering?: "created_date" | "-created_date";
+        limit?: number;
+        offset?: number;
+      },
+    ) => {
+      return await request<PaginatedResponse<DiagnosticReport>>(
+        `/api/v1/patient/${patientId}/diagnostic_report/` + queryString(query),
       );
     },
   },

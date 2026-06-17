@@ -62,6 +62,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AddQuestionnaireSection } from "./claim-questionnaire-section";
+import { SupportingInfoValueControls } from "./supporting-info-value-controls";
 import Autocomplete from "../ui/autocomplete";
 import { Badge } from "../ui/badge";
 import BenefitSearchSelect from "../common/benefit-search-select";
@@ -2952,7 +2953,8 @@ function AddSupportingInfoSection({
     const hasValue =
       matchingEntry.value_string ||
       matchingEntry.value_attachment ||
-      matchingEntry.value_file;
+      matchingEntry.value_file ||
+      matchingEntry.value_resource?.resource_id;
     return hasValue ? "satisfied" : "incomplete";
   };
 
@@ -3481,100 +3483,98 @@ function AddSupportingInfoSection({
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name={`supporting_info.${mainInfoIndex}.category`}
-                      render={({ field }) => (
-                        <FormItem className="space-y-1.5">
-                          <FormLabel>
-                            Category
-                            <span className="text-red-500 text-sm ml-0.5">
-                              *
-                            </span>
-                          </FormLabel>
-                          <FormControl>
-                            {isRequiredDoc ? (
-                              <Input
-                                value={
-                                  field.value?.display ??
-                                  field.value?.code ??
-                                  ""
-                                }
-                                disabled
-                                className="bg-muted"
-                              />
-                            ) : (
-                              <Autocomplete
-                                options={SUPPORTING_INFO_CATEGORIES.map(
-                                  (code) => ({
-                                    label: code.display,
-                                    value: code.code,
-                                  }),
-                                )}
-                                value={field.value?.code}
-                                onChange={(value) => {
-                                  const code = SUPPORTING_INFO_CATEGORIES.find(
-                                    (code) => code.code === value,
-                                  );
-                                  if (!code) {
-                                    return;
-                                  }
-                                  form.setValue(
-                                    `supporting_info.${mainInfoIndex}.category`,
-                                    code, USER_EDIT);
-                                }}
-                              />
-                            )}
-                          </FormControl>
-                          {matchingRequirement && (
-                            <p
-                              className={cn(
-                                "text-xs",
-                                isRequiredDoc
-                                  ? "text-amber-600"
-                                  : "text-blue-600",
-                              )}
-                            >
-                              {isRequiredDoc
-                                ? "Required by insurance plan benefit"
-                                : "Recommended by insurance plan benefit"}
-                            </p>
-                          )}
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <SupportingInfoFileUpload
-                      form={form}
-                      mainInfoIndex={mainInfoIndex}
-                    />
-                  </div>
-
                   <FormField
                     control={form.control}
-                    name={`supporting_info.${mainInfoIndex}.value_string`}
+                    name={`supporting_info.${mainInfoIndex}.category`}
                     render={({ field }) => (
                       <FormItem className="space-y-1.5">
-                        <FormLabel>Value (Text)</FormLabel>
+                        <FormLabel>
+                          Category
+                          <span className="text-red-500 text-sm ml-0.5">*</span>
+                        </FormLabel>
                         <FormControl>
-                          <Textarea
-                            value={field.value || ""}
-                            onChange={(e) => {
-                              form.setValue(
-                                `supporting_info.${mainInfoIndex}.value_string`,
-                                e.target.value || undefined, USER_EDIT);
-                              form.setValue(
-                                `supporting_info.${mainInfoIndex}.value_attachment`,
-                                undefined, USER_EDIT);
-                            }}
-                            placeholder="Enter supporting info value"
-                            className="min-h-[80px]"
-                          />
+                          {isRequiredDoc ? (
+                            <Input
+                              value={
+                                field.value?.display ?? field.value?.code ?? ""
+                              }
+                              disabled
+                              className="bg-muted"
+                            />
+                          ) : (
+                            <Autocomplete
+                              options={SUPPORTING_INFO_CATEGORIES.map(
+                                (code) => ({
+                                  label: code.display,
+                                  value: code.code,
+                                }),
+                              )}
+                              value={field.value?.code}
+                              onChange={(value) => {
+                                const code = SUPPORTING_INFO_CATEGORIES.find(
+                                  (code) => code.code === value,
+                                );
+                                if (!code) {
+                                  return;
+                                }
+                                form.setValue(
+                                  `supporting_info.${mainInfoIndex}.category`,
+                                  code, USER_EDIT);
+                              }}
+                            />
+                          )}
                         </FormControl>
+                        {matchingRequirement && (
+                          <p
+                            className={cn(
+                              "text-xs",
+                              isRequiredDoc
+                                ? "text-amber-600"
+                                : "text-blue-600",
+                            )}
+                          >
+                            {isRequiredDoc
+                              ? "Required by insurance plan benefit"
+                              : "Recommended by insurance plan benefit"}
+                          </p>
+                        )}
                         <FormMessage />
                       </FormItem>
+                    )}
+                  />
+
+                  <SupportingInfoValueControls
+                    form={form}
+                    mainInfoIndex={mainInfoIndex}
+                    renderText={() => (
+                      <FormField
+                        control={form.control}
+                        name={`supporting_info.${mainInfoIndex}.value_string`}
+                        render={({ field }) => (
+                          <FormItem className="space-y-1.5">
+                            <FormLabel>Value (Text)</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                value={field.value || ""}
+                                onChange={(e) => {
+                                  form.setValue(
+                                    `supporting_info.${mainInfoIndex}.value_string`,
+                                    e.target.value || undefined, USER_EDIT);
+                                }}
+                                placeholder="Enter supporting info value"
+                                className="min-h-[80px]"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                    renderAttachment={() => (
+                      <SupportingInfoFileUpload
+                        form={form}
+                        mainInfoIndex={mainInfoIndex}
+                      />
                     )}
                   />
                 </CardContent>

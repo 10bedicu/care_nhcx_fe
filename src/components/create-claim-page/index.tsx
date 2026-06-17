@@ -105,6 +105,7 @@ function mapClaimSupportingInfo(
     timing: s.timing,
     value_string: s.value_string,
     value_attachment: s.value_attachment as unknown as string,
+    value_resource: s.value_resource,
     _is_plan_level: !itemInfoSeqs.has(s.sequence),
   }));
 }
