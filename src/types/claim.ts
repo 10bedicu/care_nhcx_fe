@@ -198,6 +198,8 @@ export type Claim = {
   dispatch_status: "pending" | "awaiting" | "partial" | "complete" | "error";
   dispatched_at: string | null;
   dispatch_error: string;
+  payment_received: boolean;
+  is_paid: boolean;
   latest_response?: ClaimResponse;
   questionnaire_responses?: ClaimQuestionnaireResponse[];
   created_date: string;

@@ -1,6 +1,7 @@
 import {
   AlarmClockMinusIcon,
   AlertCircleIcon,
+  BanknoteIcon,
   CalendarIcon,
   CheckCircleIcon,
   ChevronDownIcon,
@@ -281,6 +282,19 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
+              {claim.is_paid ? (
+                <Badge className="gap-1 text-xs bg-green-100 text-green-700 hover:bg-green-100">
+                  <CheckCircleIcon className="w-3 h-3" />
+                  Paid
+                </Badge>
+              ) : (
+                claim.payment_received && (
+                  <Badge className="gap-1 text-xs bg-blue-100 text-blue-700 hover:bg-blue-100">
+                    <BanknoteIcon className="w-3 h-3" />
+                    Payment received
+                  </Badge>
+                )
+              )}
               <Badge
                 className={cn("capitalize text-xs", {
                   "bg-green-200 text-green-600": claim.priority === "stat",

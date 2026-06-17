@@ -27,7 +27,7 @@ import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { Encounter } from "@/types/encounter";
 import { HealthFacility } from "@/types/health_facility";
 import { PaginatedResponse } from "./types";
-import { PaymentReconciliation } from "@/types/payment";
+import { PaymentNotice } from "@/types/payment";
 import { Policy } from "@/types/policy";
 import { Provider } from "@/types/provider";
 import { QuestionnaireResponse } from "@/types/questionnaire_response";
@@ -409,7 +409,7 @@ export const apis = {
 
   payment: {
     acknowledge: async (id: string) => {
-      return await request<PaymentReconciliation>(
+      return await request<PaymentNotice>(
         `/api/nhcx/payment/${id}/acknowledge/`,
         { method: "POST" },
       );

@@ -5,7 +5,7 @@ import AcknowledgePaymentModal from "./acknowledge-payment-modal";
 import { Badge } from "@/components/ui/badge";
 import CommunicationReplyModal from "./communication-reply-modal";
 import { FC } from "react";
-import { PaymentReconciliation } from "@/types/payment";
+import { PaymentNotice } from "@/types/payment";
 import { Separator } from "@/components/ui/separator";
 import { Task } from "@/types/task";
 import { formatDate } from "@/lib/utils";
@@ -147,7 +147,7 @@ const DefaultTaskCard: FC<{ task: Task }> = ({ task }) => {
 };
 
 const PaymentNoticeRequestCard: FC<{ task: Task }> = ({ task }) => {
-  const paymentNotice = task.focus as PaymentReconciliation;
+  const paymentNotice = task.focus as PaymentNotice;
 
   const formatCurrency = (
     amount: number | undefined,

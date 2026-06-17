@@ -1,7 +1,7 @@
 import { CodeableConcept, TaskInput, TaskOutput } from "@medplum/fhirtypes";
 import { Communication, CommunicationRequest } from "./communication";
 
-import { PaymentReconciliation } from "./payment";
+import { PaymentNotice } from "./payment";
 import { User } from "./user";
 
 export type TaskBase = {
@@ -49,7 +49,7 @@ export type CommunicationTask = TaskBase & {
 
 export type PaymentNoticeTask = TaskBase & {
   use_case: "payment_notice_request";
-  focus: PaymentReconciliation;
+  focus: PaymentNotice;
 };
 
 export type ProcessAcknowledgementTask = TaskBase & {
