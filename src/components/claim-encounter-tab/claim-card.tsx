@@ -30,7 +30,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Claim, ClaimResponse } from "@/types/claim";
 import ClaimNotificationSheet from "./claim-notification-sheet";
-import { ClaimResponseItem } from "@medplum/fhirtypes";
+import {
+  itemStatusBadgeClass,
+  parseItemAdjudication,
+  parseQueryNotes,
+} from "@/lib/claim-response";
 import { Separator } from "@/components/ui/separator";
 
 interface ClaimCardProps {
@@ -215,46 +219,6 @@ function getTotals(response: ClaimResponse | undefined) {
     tax: find("tax"),
     incentive: find("incentive"),
   };
-}
-
-function parseItemAdj(item: ClaimResponseItem) {
-  const adj = item.adjudication ?? [];
-  const find = (code: string) =>
-    adj.find((a) => a.category?.coding?.[0]?.code === code);
-  return {
-    sequence: item.itemSequence,
-    submitted: find("submitted")?.amount?.value ?? null,
-    eligible: find("eligible")?.amount?.value ?? null,
-    eligPercent: find("eligpercent")?.value ?? null,
-    eligQuantity: find("eligquant")?.value ?? null,
-    notes: find("reason")?.reason?.coding?.[0]?.display ?? null,
-    itemStatus: find("status")?.reason?.coding?.[0]?.code ?? null,
-  };
-}
-
-function parseQueryNotes(raw: string | null): string[] {
-  if (!raw) return [];
-  return raw
-    .split("|")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((event) => {
-      const parts = event.split("~");
-      const date = parts[1]?.trim() ?? "";
-      const text = parts[3]?.trim() ?? event;
-      return date ? `${date}: ${text}` : text;
-    });
-}
-
-function itemStatusBadgeClass(itemStatus: string | null): string {
-  const code = itemStatus?.toLowerCase();
-  if (code === "approved")
-    return "bg-green-100 text-green-700 border border-green-200";
-  if (code === "queried")
-    return "bg-amber-100 text-amber-700 border border-amber-200";
-  if (code === "rejected")
-    return "bg-red-100 text-red-700 border border-red-200";
-  return "bg-gray-100 text-gray-600 border border-gray-200";
 }
 
 const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) => {
@@ -525,7 +489,9 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                         const respItem = response?.item?.find(
                           (r) => r.itemSequence === item.sequence
                         );
-                        const parsed = respItem ? parseItemAdj(respItem) : null;
+                        const parsed = respItem
+                          ? parseItemAdjudication(respItem)
+                          : null;
                         const claimedAmount =
                           item.unit_price * item.quantity.value;
                         const queryNotes = parseQueryNotes(parsed?.notes ?? null);

@@ -1,4 +1,4 @@
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertCircleIcon,
   CheckCircle2Icon,
@@ -6,15 +6,28 @@ import {
   ChevronRightIcon,
   CircleMinusIcon,
   InfoIcon,
+  MessageCircleQuestionIcon,
   PaperclipIcon,
   PlusIcon,
   ReceiptIcon,
   ShoppingBasketIcon,
   XIcon,
 } from "lucide-react";
-import { ChargeItem } from "@/types/charge_item";
-import { chargeItemLabel } from "@/lib/prefill";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from "@/components/ui/card";
+import { Claim, ClaimResponse, ClaimUseChoice } from "@/types/claim";
 import { FileIcon, TrashIcon } from "lucide-react";
+import {
+  FormCardErrorFooter,
+  SectionErrorMessage,
+  SectionValidationBadges,
+  cardErrorBorderClass,
+  sectionErrorBorderClass,
+} from "@/components/common/form-card-error";
 import {
   FormControl,
   FormField,
@@ -23,36 +36,17 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { UseFormReturn, useController, useFieldArray } from "react-hook-form";
-
-import Autocomplete from "../ui/autocomplete";
-import { Badge } from "../ui/badge";
-import BenefitSearchSelect from "../common/benefit-search-select";
-import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
-import { Coding } from "@/types/base";
-import { DateTimePicker } from "../ui/date-time-picker";
-import { Input } from "../ui/input";
-import { InsurancePlanSupportingInfoRequirement } from "@/types/insurance_plan";
-import { Label } from "../ui/label";
-import { Textarea } from "../ui/textarea";
-import ValuesetSelect from "../common/valueset-select";
-import { InlineLoading } from "@/components/common/loading-spinner";
-import { Skeleton } from "@/components/ui/skeleton";
-import { apis } from "@/apis";
-import {
-  FormCardErrorFooter,
-  SectionErrorMessage,
-  SectionValidationBadges,
-  cardErrorBorderClass,
-  sectionErrorBorderClass,
-} from "@/components/common/form-card-error";
-import { cn } from "@/lib/utils";
 import {
   buildBenefitConditionErrors,
   computeBenefitLimit,
   getQualifierTypeByCode,
   isModifierRequired,
 } from "@/lib/benefit-item-validation";
+import {
+  formatItemQueryReasons,
+  getItemResponseAdjudication,
+  isItemQueried,
+} from "@/lib/claim-response";
 import {
   getCardSectionValidationCounts,
   getChecklistValidationCounts,
@@ -65,12 +59,30 @@ import {
   mergeValidationCounts,
   syncVirtualFormErrorFromForm,
 } from "@/lib/form-card-validation";
-import { createClaimFormSchema } from "./schema";
-import { AddQuestionnaireSection } from "./claim-questionnaire-section";
-import { Claim, ClaimUseChoice } from "@/types/claim";
-import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
-import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
+
+import { AddQuestionnaireSection } from "./claim-questionnaire-section";
+import Autocomplete from "../ui/autocomplete";
+import { Badge } from "../ui/badge";
+import BenefitSearchSelect from "../common/benefit-search-select";
+import { Button } from "../ui/button";
+import { ChargeItem } from "@/types/charge_item";
+import { Checkbox } from "../ui/checkbox";
+import { Coding } from "@/types/base";
+import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
+import { DateTimePicker } from "../ui/date-time-picker";
+import { InlineLoading } from "@/components/common/loading-spinner";
+import { Input } from "../ui/input";
+import { InsurancePlanSupportingInfoRequirement } from "@/types/insurance_plan";
+import { Label } from "../ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "../ui/textarea";
+import ValuesetSelect from "../common/valueset-select";
+import { apis } from "@/apis";
+import { chargeItemLabel } from "@/lib/prefill";
+import { cn } from "@/lib/utils";
+import { createClaimFormSchema } from "./schema";
+import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 
 interface ClaimItemSectionProps {
@@ -78,6 +90,7 @@ interface ClaimItemSectionProps {
   coverageEligibilityRequest?: CoverageEligibilityRequest;
   previousClaim?: Claim;
   encounterChargeItems?: ChargeItem[];
+  queryResponse?: ClaimResponse;
 }
 
 const PROGRAM_CODES = [
@@ -673,6 +686,7 @@ export function ClaimItemSection({
   coverageEligibilityRequest,
   previousClaim,
   encounterChargeItems = [],
+  queryResponse,
 }: ClaimItemSectionProps) {
   const { fields, remove } = useFieldArray({
     name: "item",
@@ -700,55 +714,67 @@ export function ClaimItemSection({
     const stillUsedProcedureSeqs = new Set<number>();
 
     for (const item of remainingItems) {
-      for (const seq of item.information_sequence ?? []) stillUsedInfoSeqs.add(seq);
-      for (const seq of item.care_team_sequence ?? []) stillUsedCareTeamSeqs.add(seq);
-      for (const seq of item.diagnosis_sequence ?? []) stillUsedDiagnosisSeqs.add(seq);
-      for (const seq of item.procedure_sequence ?? []) stillUsedProcedureSeqs.add(seq);
+      for (const seq of item.information_sequence ?? [])
+        stillUsedInfoSeqs.add(seq);
+      for (const seq of item.care_team_sequence ?? [])
+        stillUsedCareTeamSeqs.add(seq);
+      for (const seq of item.diagnosis_sequence ?? [])
+        stillUsedDiagnosisSeqs.add(seq);
+      for (const seq of item.procedure_sequence ?? [])
+        stillUsedProcedureSeqs.add(seq);
     }
 
-    const orphanedInfoSeqs = [...infoSeqs].filter((seq) => !stillUsedInfoSeqs.has(seq));
+    const orphanedInfoSeqs = [...infoSeqs].filter(
+      (seq) => !stillUsedInfoSeqs.has(seq),
+    );
     if (orphanedInfoSeqs.length > 0) {
       form.setValue(
         "supporting_info",
         (form.getValues("supporting_info") ?? []).filter(
-          (info) => !orphanedInfoSeqs.includes(info.sequence)
-        )
+          (info) => !orphanedInfoSeqs.includes(info.sequence),
+        ),
       );
       form.setValue(
         "questionnaire_responses",
         (form.getValues("questionnaire_responses") ?? []).filter(
-          (qr) => !orphanedInfoSeqs.includes(qr.sequence)
-        )
+          (qr) => !orphanedInfoSeqs.includes(qr.sequence),
+        ),
       );
     }
 
-    const orphanedCTSeqs = [...careTeamSeqs].filter((seq) => !stillUsedCareTeamSeqs.has(seq));
+    const orphanedCTSeqs = [...careTeamSeqs].filter(
+      (seq) => !stillUsedCareTeamSeqs.has(seq),
+    );
     if (orphanedCTSeqs.length > 0) {
       form.setValue(
         "care_team",
         (form.getValues("care_team") ?? []).filter(
-          (ct) => !orphanedCTSeqs.includes(ct.sequence)
-        )
+          (ct) => !orphanedCTSeqs.includes(ct.sequence),
+        ),
       );
     }
 
-    const orphanedDxSeqs = [...diagnosisSeqs].filter((seq) => !stillUsedDiagnosisSeqs.has(seq));
+    const orphanedDxSeqs = [...diagnosisSeqs].filter(
+      (seq) => !stillUsedDiagnosisSeqs.has(seq),
+    );
     if (orphanedDxSeqs.length > 0) {
       form.setValue(
         "diagnosis",
         (form.getValues("diagnosis") ?? []).filter(
-          (dx) => !orphanedDxSeqs.includes(dx.sequence)
-        )
+          (dx) => !orphanedDxSeqs.includes(dx.sequence),
+        ),
       );
     }
 
-    const orphanedProcSeqs = [...procedureSeqs].filter((seq) => !stillUsedProcedureSeqs.has(seq));
+    const orphanedProcSeqs = [...procedureSeqs].filter(
+      (seq) => !stillUsedProcedureSeqs.has(seq),
+    );
     if (orphanedProcSeqs.length > 0) {
       form.setValue(
         "procedure",
         (form.getValues("procedure") ?? []).filter(
-          (proc) => !orphanedProcSeqs.includes(proc.sequence)
-        )
+          (proc) => !orphanedProcSeqs.includes(proc.sequence),
+        ),
       );
     }
 
@@ -800,8 +826,8 @@ export function ClaimItemSection({
         <div className="rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground flex items-start gap-2">
           <InfoIcon className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-600" />
           <span>
-            No items are attached yet. Items flow into this form from a
-            coverage eligibility (auth requirements) request.
+            No items are attached yet. Items flow into this form from a coverage
+            eligibility (auth requirements) request.
           </span>
         </div>
       )}
@@ -824,6 +850,15 @@ export function ClaimItemSection({
             watchedItems?.[index]?._mandatory_supporting_info_error;
           const amountCapError = watchedItems?.[index]?._amount_cap_error;
           const conditionErrors = watchedItems?.[index]?._condition_errors;
+          const itemSequence = watchedItems?.[index]?.sequence ?? index + 1;
+          const itemQueryAdjudication = getItemResponseAdjudication(
+            queryResponse,
+            itemSequence,
+          );
+          const isQueriedItem = isItemQueried(itemQueryAdjudication);
+          const itemQueryReasons = formatItemQueryReasons(
+            itemQueryAdjudication,
+          );
           const hasAnyError =
             mandatoryDocsError ||
             mandatoryQuestionnairesError ||
@@ -848,12 +883,19 @@ export function ClaimItemSection({
                     return (
                       <div className="flex justify-between items-center gap-2">
                         <FormItem className="space-y-1.5 w-full">
-                          <FormLabel>
-                            Product or Service
-                            <span className="text-red-500 text-sm ml-0.5">
-                              *
-                            </span>
-                          </FormLabel>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <FormLabel>
+                              Product or Service
+                              <span className="text-red-500 text-sm ml-0.5">
+                                *
+                              </span>
+                            </FormLabel>
+                            {isQueriedItem && (
+                              <Badge className="bg-amber-100 text-amber-800 border border-amber-200 text-xs font-medium">
+                                Queried
+                              </Badge>
+                            )}
+                          </div>
                           <FormControl>
                             <BenefitSearchSelect
                               insurancePlanId={planId}
@@ -910,6 +952,27 @@ export function ClaimItemSection({
                   }}
                 />
               </CardHeader>
+              {isQueriedItem && itemQueryReasons.length > 0 && (
+                <div className="px-6 pb-2">
+                  <Alert className="border-amber-300 bg-amber-50 text-amber-900 [&>svg]:text-amber-600">
+                    <MessageCircleQuestionIcon />
+                    <AlertDescription className="text-amber-900">
+                      <p className="font-medium text-amber-950 mb-1">
+                        Payer query reason
+                      </p>
+                      {itemQueryReasons.length > 1 ? (
+                        <ul className="list-disc list-inside space-y-0.5 text-sm">
+                          {itemQueryReasons.map((reason, reasonIndex) => (
+                            <li key={reasonIndex}>{reason}</li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-sm">{itemQueryReasons[0]}</p>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                </div>
+              )}
               <CardContent className="space-y-4">
                 <FormField
                   key={field.id}
@@ -1480,23 +1543,23 @@ function AddChargeItemsSection({
   const selectedIds = useMemo(
     () => rawSelectedIds ?? [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(rawSelectedIds)]
+    [JSON.stringify(rawSelectedIds)],
   );
 
   const allItems = useMemo(
     () => rawAllItems ?? [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(rawAllItems?.map((i) => i.charge_items))]
+    [JSON.stringify(rawAllItems?.map((i) => i.charge_items))],
   );
 
   const takenByOthers = useMemo(
     () =>
       new Set(
         allItems.flatMap((item, i) =>
-          i !== index ? (item.charge_items ?? []) : []
-        )
+          i !== index ? (item.charge_items ?? []) : [],
+        ),
       ),
-    [allItems, index]
+    [allItems, index],
   );
 
   const selectedChargeItems = useMemo(
@@ -1504,24 +1567,24 @@ function AddChargeItemsSection({
       selectedIds
         .map((id) => encounterChargeItems.find((ci) => ci.id === id))
         .filter((ci): ci is ChargeItem => !!ci),
-    [selectedIds, encounterChargeItems]
+    [selectedIds, encounterChargeItems],
   );
 
   const availableToAdd = useMemo(
     () =>
       encounterChargeItems.filter(
-        (ci) => !selectedIds.includes(ci.id) && !takenByOthers.has(ci.id)
+        (ci) => !selectedIds.includes(ci.id) && !takenByOthers.has(ci.id),
       ),
-    [encounterChargeItems, selectedIds, takenByOthers]
+    [encounterChargeItems, selectedIds, takenByOthers],
   );
 
   const totalSelected = useMemo(
     () =>
       selectedChargeItems.reduce(
         (sum, ci) => sum + parseFloat(ci.total_price || "0"),
-        0
+        0,
       ),
-    [selectedChargeItems]
+    [selectedChargeItems],
   );
 
   const hasMissingChargeItems = selectedIds.length === 0;
@@ -1544,7 +1607,7 @@ function AddChargeItemsSection({
     syncVirtualFormErrorFromForm(
       form,
       `item.${index}._mandatory_charge_items_error`,
-      nextError
+      nextError,
     );
   }, [form, index, encounterChargeItems.length, hasMissingChargeItems]);
 
@@ -1553,7 +1616,7 @@ function AddChargeItemsSection({
       <div
         className={cn(
           "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
-          hasMissingChargeItems && sectionErrorBorderClass
+          hasMissingChargeItems && sectionErrorBorderClass,
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -1658,7 +1721,7 @@ function AddChargeItemsSection({
                         onClick={() => {
                           form.setValue(
                             `item.${index}.charge_items`,
-                            selectedIds.filter((id) => id !== ci.id)
+                            selectedIds.filter((id) => id !== ci.id),
                           );
                         }}
                       >
@@ -1677,8 +1740,8 @@ function AddChargeItemsSection({
 
               {selectedIds.length === 0 && (
                 <p className="text-xs text-muted-foreground py-1">
-                  No charge items selected. Select charge items to auto-calculate
-                  the unit price.
+                  No charge items selected. Select charge items to
+                  auto-calculate the unit price.
                 </p>
               )}
             </>
@@ -1896,7 +1959,7 @@ function ItemAmountReferences({
   const modifiers = useMemo(
     () => rawModifiers ?? [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(rawModifiers)]
+    [JSON.stringify(rawModifiers)],
   );
 
   const { data: benefitDetail } = useQuery({
@@ -1914,17 +1977,17 @@ function ItemAmountReferences({
     if (!benefitDetail) return null;
     return computeBenefitLimit(
       benefitDetail,
-      modifiers.map((m) => m.code)
+      modifiers.map((m) => m.code),
     );
   }, [benefitDetail, modifiers]);
 
   const ceAllowed = useMemo(
     () => getCeAllowedAmount(coverageEligibilityRequest, productCode),
-    [coverageEligibilityRequest, productCode]
+    [coverageEligibilityRequest, productCode],
   );
   const preAuthApproved = useMemo(
     () => getPreAuthApprovedAmount(previousClaim, itemSequence),
-    [previousClaim, itemSequence]
+    [previousClaim, itemSequence],
   );
 
   const refs: Array<{ label: string; value: number; warn?: boolean }> = [];
@@ -1962,7 +2025,7 @@ function ItemAmountReferences({
             <span
               className={cn(
                 "text-muted-foreground",
-                ref.warn && "text-amber-700 font-medium"
+                ref.warn && "text-amber-700 font-medium",
               )}
             >
               {ref.label}
@@ -1970,7 +2033,7 @@ function ItemAmountReferences({
             <span
               className={cn(
                 "font-medium",
-                ref.warn ? "text-amber-700" : "text-foreground"
+                ref.warn ? "text-amber-700" : "text-foreground",
               )}
             >
               ₹{ref.value.toFixed(2)}
@@ -1982,9 +2045,9 @@ function ItemAmountReferences({
         <div className="flex items-start gap-1.5 text-xs text-amber-700 pt-1 border-t border-amber-200">
           <AlertCircleIcon className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
           <span>
-            Unit price exceeds the payer's prior reference amount. Submission
-            is still allowed within the benefit limit, but the payer may
-            adjust this down.
+            Unit price exceeds the payer's prior reference amount. Submission is
+            still allowed within the benefit limit, but the payer may adjust
+            this down.
           </span>
         </div>
       )}
@@ -2004,12 +2067,12 @@ function AddDiagnosisSection({
   const itemDiagnosisSequences =
     form.watch(`item.${index}.diagnosis_sequence`) || [];
   const itemSpecificDiagnoses = diagnosisFields.filter((diagnosis) =>
-    itemDiagnosisSequences.includes(diagnosis.sequence)
+    itemDiagnosisSequences.includes(diagnosis.sequence),
   );
   const diagnosisValidation = getCardSectionValidationCounts(
     itemSpecificDiagnoses,
     getClaimDiagnosisCardError,
-    { minRequired: 1 }
+    { minRequired: 1 },
   );
   const hasSectionError = hasSectionValidationIssue(diagnosisValidation);
 
@@ -2025,12 +2088,12 @@ function AddDiagnosisSection({
   useEffect(() => {
     const nextError = getSectionVirtualErrorMessage(
       diagnosisValidation,
-      "diagnosis"
+      "diagnosis",
     );
     syncVirtualFormErrorFromForm(
       form,
       `item.${index}._mandatory_diagnosis_error`,
-      nextError
+      nextError,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -2068,7 +2131,7 @@ function AddDiagnosisSection({
       <div
         className={cn(
           "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
-          hasSectionError && sectionErrorBorderClass
+          hasSectionError && sectionErrorBorderClass,
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -2105,7 +2168,7 @@ function AddDiagnosisSection({
         <div className="space-y-4 pl-4">
           {itemSpecificDiagnoses.map((diagnosis, diagnosisIndex) => {
             const mainDiagnosisIndex = diagnosisFields.findIndex(
-              (d) => d.sequence === diagnosis.sequence
+              (d) => d.sequence === diagnosis.sequence,
             );
             const cardError = getClaimDiagnosisCardError(diagnosis);
             return (
@@ -2133,7 +2196,7 @@ function AddDiagnosisSection({
                               onSelect={(value) => {
                                 form.setValue(
                                   `diagnosis.${mainDiagnosisIndex}.diagnosis_code`,
-                                  value
+                                  value,
                                 );
                               }}
                             />
@@ -2159,7 +2222,7 @@ function AddDiagnosisSection({
                               onChange={(value) => {
                                 form.setValue(
                                   `diagnosis.${mainDiagnosisIndex}.on_admission`,
-                                  value as "yes" | "no" | "unknown" | undefined
+                                  value as "yes" | "no" | "unknown" | undefined,
                                 );
                               }}
                             />
@@ -2176,7 +2239,7 @@ function AddDiagnosisSection({
                         const currentDiagnoses =
                           form.getValues("diagnosis") || [];
                         const updatedDiagnoses = currentDiagnoses.filter(
-                          (_, i) => i !== mainDiagnosisIndex
+                          (_, i) => i !== mainDiagnosisIndex,
                         );
                         form.setValue("diagnosis", updatedDiagnoses);
 
@@ -2185,11 +2248,11 @@ function AddDiagnosisSection({
                           const currentSequences =
                             item.diagnosis_sequence || [];
                           const updatedSequences = currentSequences.filter(
-                            (seq) => seq !== diagnosis.sequence
+                            (seq) => seq !== diagnosis.sequence,
                           );
                           form.setValue(
                             `item.${itemIndex}.diagnosis_sequence`,
-                            updatedSequences
+                            updatedSequences,
                           );
                         });
                       }}
@@ -2221,7 +2284,7 @@ function AddDiagnosisSection({
                                     .map((c) => c.code)
                                     .includes(value.code)
                                     ? field.value
-                                    : [...field.value, value]
+                                    : [...field.value, value],
                                 );
                               }}
                             />
@@ -2236,8 +2299,8 @@ function AddDiagnosisSection({
                                       form.setValue(
                                         `diagnosis.${mainDiagnosisIndex}.type`,
                                         field.value.filter(
-                                          (c) => c.code !== code.code
-                                        )
+                                          (c) => c.code !== code.code,
+                                        ),
                                       );
                                     }}
                                   />
@@ -2283,11 +2346,11 @@ function AddProcedureSection({
   const itemProcedureSequences =
     form.watch(`item.${index}.procedure_sequence`) || [];
   const itemSpecificProcedures = procedureFields.filter((procedure) =>
-    itemProcedureSequences.includes(procedure.sequence)
+    itemProcedureSequences.includes(procedure.sequence),
   );
   const procedureValidation = getCardSectionValidationCounts(
     itemSpecificProcedures,
-    getClaimProcedureCardError
+    getClaimProcedureCardError,
   );
   const hasSectionError = hasSectionValidationIssue(procedureValidation);
 
@@ -2303,12 +2366,12 @@ function AddProcedureSection({
   useEffect(() => {
     const nextError = getSectionVirtualErrorMessage(
       procedureValidation,
-      "procedure"
+      "procedure",
     );
     syncVirtualFormErrorFromForm(
       form,
       `item.${index}._mandatory_procedure_error`,
-      nextError
+      nextError,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -2349,7 +2412,7 @@ function AddProcedureSection({
       <div
         className={cn(
           "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
-          hasSectionError && sectionErrorBorderClass
+          hasSectionError && sectionErrorBorderClass,
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -2375,7 +2438,7 @@ function AddProcedureSection({
         <div className="space-y-4 pl-4">
           {itemSpecificProcedures.map((procedure, procedureIndex) => {
             const mainProcedureIndex = procedureFields.findIndex(
-              (p) => p.sequence === procedure.sequence
+              (p) => p.sequence === procedure.sequence,
             );
             const cardError = getClaimProcedureCardError(procedure);
             return (
@@ -2403,7 +2466,7 @@ function AddProcedureSection({
                               onSelect={(value) => {
                                 form.setValue(
                                   `procedure.${mainProcedureIndex}.procedure_code`,
-                                  value
+                                  value,
                                 );
                               }}
                             />
@@ -2426,7 +2489,7 @@ function AddProcedureSection({
                               onChange={(value) => {
                                 form.setValue(
                                   `procedure.${mainProcedureIndex}.date`,
-                                  value ? value.toISOString() : undefined
+                                  value ? value.toISOString() : undefined,
                                 );
                               }}
                               placeholder="Select date and time"
@@ -2444,7 +2507,7 @@ function AddProcedureSection({
                         const currentProcedures =
                           form.getValues("procedure") || [];
                         const updatedProcedures = currentProcedures.filter(
-                          (_, i) => i !== mainProcedureIndex
+                          (_, i) => i !== mainProcedureIndex,
                         );
                         form.setValue("procedure", updatedProcedures);
 
@@ -2453,11 +2516,11 @@ function AddProcedureSection({
                           const currentSequences =
                             item.procedure_sequence || [];
                           const updatedSequences = currentSequences.filter(
-                            (seq) => seq !== procedure.sequence
+                            (seq) => seq !== procedure.sequence,
                           );
                           form.setValue(
                             `item.${itemIndex}.procedure_sequence`,
-                            updatedSequences
+                            updatedSequences,
                           );
                         });
                       }}
@@ -2486,7 +2549,7 @@ function AddProcedureSection({
                                     .map((c) => c.code)
                                     .includes(value.code)
                                     ? field.value
-                                    : [...field.value, value]
+                                    : [...field.value, value],
                                 );
                               }}
                             />
@@ -2501,8 +2564,8 @@ function AddProcedureSection({
                                       form.setValue(
                                         `procedure.${mainProcedureIndex}.type`,
                                         field.value.filter(
-                                          (c) => c.code !== code.code
-                                        )
+                                          (c) => c.code !== code.code,
+                                        ),
                                       );
                                     }}
                                   />
@@ -2549,12 +2612,12 @@ function AddCareTeamSection({
     form.watch(`item.${index}.care_team_sequence`) || [];
 
   const itemSpecificCareTeam = careTeamFields.filter((member) =>
-    itemCareTeamSequences.includes(member.sequence)
+    itemCareTeamSequences.includes(member.sequence),
   );
   const careTeamValidation = getCardSectionValidationCounts(
     itemSpecificCareTeam,
     getClaimCareTeamCardError,
-    { minRequired: 1 }
+    { minRequired: 1 },
   );
   const hasSectionError = hasSectionValidationIssue(careTeamValidation);
 
@@ -2570,12 +2633,12 @@ function AddCareTeamSection({
   useEffect(() => {
     const nextError = getSectionVirtualErrorMessage(
       careTeamValidation,
-      "care team member"
+      "care team member",
     );
     syncVirtualFormErrorFromForm(
       form,
       `item.${index}._mandatory_care_team_error`,
-      nextError
+      nextError,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -2625,7 +2688,7 @@ function AddCareTeamSection({
       <div
         className={cn(
           "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
-          hasSectionError && sectionErrorBorderClass
+          hasSectionError && sectionErrorBorderClass,
         )}
         onClick={() => {
           setIsExpanded(!isExpanded);
@@ -2662,13 +2725,11 @@ function AddCareTeamSection({
 
       {isExpanded && (
         <div className="space-y-4 pl-4">
-          {loading && (
-            <InlineLoading label="Loading facility users…" />
-          )}
+          {loading && <InlineLoading label="Loading facility users…" />}
 
           {itemSpecificCareTeam.map((member, memberIndex) => {
             const mainMemberIndex = careTeamFields.findIndex(
-              (m) => m.sequence === member.sequence
+              (m) => m.sequence === member.sequence,
             );
             const cardError = getClaimCareTeamCardError(member);
             return (
@@ -2699,7 +2760,7 @@ function AddCareTeamSection({
                               onChange={(value) => {
                                 form.setValue(
                                   `care_team.${mainMemberIndex}.provider`,
-                                  value
+                                  value,
                                 );
                               }}
                               placeholder="Select a provider"
@@ -2717,7 +2778,7 @@ function AddCareTeamSection({
                         const currentCareTeam =
                           form.getValues("care_team") || [];
                         const updatedCareTeam = currentCareTeam.filter(
-                          (_, i) => i !== mainMemberIndex
+                          (_, i) => i !== mainMemberIndex,
                         );
                         form.setValue("care_team", updatedCareTeam);
 
@@ -2726,11 +2787,11 @@ function AddCareTeamSection({
                           const currentSequences =
                             item.care_team_sequence || [];
                           const updatedSequences = currentSequences.filter(
-                            (seq) => seq !== member.sequence
+                            (seq) => seq !== member.sequence,
                           );
                           form.setValue(
                             `item.${itemIndex}.care_team_sequence`,
-                            updatedSequences
+                            updatedSequences,
                           );
                         });
                       }}
@@ -2755,7 +2816,7 @@ function AddCareTeamSection({
                               onSelect={(value) => {
                                 form.setValue(
                                   `care_team.${mainMemberIndex}.role`,
-                                  value
+                                  value,
                                 );
                               }}
                             />
@@ -2779,7 +2840,7 @@ function AddCareTeamSection({
                                 onCheckedChange={(checked) => {
                                   form.setValue(
                                     `care_team.${mainMemberIndex}.responsible`,
-                                    checked as boolean
+                                    checked as boolean,
                                   );
                                 }}
                               />
@@ -2844,7 +2905,6 @@ function AddSupportingInfoSection({
     form.watch(`item.${index}.information_sequence`) || [];
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
 
-
   const { data: benefitDetail } = useQuery({
     queryKey: ["insurancePlanBenefit", "lookup", planId, productCode],
     queryFn: () =>
@@ -2861,7 +2921,7 @@ function AddSupportingInfoSection({
     if (!coverageEligibilityRequest || !productCode) return null;
     const allItems =
       coverageEligibilityRequest.latest_response?.insurances?.flatMap(
-        (i) => i.items ?? []
+        (i) => i.items ?? [],
       ) ?? [];
     const matchedItem = allItems.find((item) => item.code === productCode);
     if (!matchedItem) return new Set<string>();
@@ -2885,16 +2945,16 @@ function AddSupportingInfoSection({
 
   const requiredRequirements = useMemo(
     () => allSupportingInfoRequirements.filter((req) => req.is_required),
-    [allSupportingInfoRequirements]
+    [allSupportingInfoRequirements],
   );
 
   const recommendedRequirements = useMemo(
     () => allSupportingInfoRequirements.filter((req) => !req.is_required),
-    [allSupportingInfoRequirements]
+    [allSupportingInfoRequirements],
   );
 
   const itemSpecificSupportingInfo = supportingInfoFields.filter((info) =>
-    itemSupportingInfoSequences.includes(info.sequence)
+    itemSupportingInfoSequences.includes(info.sequence),
   );
 
   useEffect(() => {
@@ -2907,12 +2967,12 @@ function AddSupportingInfoSection({
   type RequirementStatus = "satisfied" | "incomplete" | "missing";
 
   const getRequirementStatus = (
-    req: InsurancePlanSupportingInfoRequirement
+    req: InsurancePlanSupportingInfoRequirement,
   ): RequirementStatus => {
     const matchingEntry = itemSpecificSupportingInfo.find(
       (info) =>
         info.category?.code === req.category_code &&
-        info.code?.code === req.code_code
+        info.code?.code === req.code_code,
     );
     if (!matchingEntry) return "missing";
     const hasValue =
@@ -2951,27 +3011,25 @@ function AddSupportingInfoSection({
       !allSupportingInfoRequirements.some(
         (req) =>
           req.category_code === info.category?.code &&
-          req.code_code === info.code?.code
-      )
+          req.code_code === info.code?.code,
+      ),
   );
   const manualCardValidation = getCardSectionValidationCounts(
     manualSupportingInfoEntries,
-    getClaimSupportingInfoCardError
+    getClaimSupportingInfoCardError,
   );
   const supportingInfoValidation = mergeValidationCounts(
     checklistValidation,
-    manualCardValidation
+    manualCardValidation,
   );
   const hasSectionError = hasSectionValidationIssue(supportingInfoValidation);
 
-  const {
-    field: mandatoryDocsField,
-    fieldState: mandatoryDocsFieldState,
-  } = useController({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    name: `item.${index}._mandatory_docs_error` as any,
-    control: form.control,
-  });
+  const { field: mandatoryDocsField, fieldState: mandatoryDocsFieldState } =
+    useController({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      name: `item.${index}._mandatory_docs_error` as any,
+      control: form.control,
+    });
 
   const {
     field: mandatorySupportingInfoField,
@@ -2986,12 +3044,15 @@ function AddSupportingInfoSection({
     const nextError = getSectionVirtualErrorMessage(
       checklistValidation,
       "document",
-      { requiredSingular: "1 required document must be uploaded before submitting" }
+      {
+        requiredSingular:
+          "1 required document must be uploaded before submitting",
+      },
     );
     syncVirtualFormErrorFromForm(
       form,
       `item.${index}._mandatory_docs_error`,
-      nextError
+      nextError,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -3005,12 +3066,12 @@ function AddSupportingInfoSection({
   useEffect(() => {
     const nextError = getSectionVirtualErrorMessage(
       manualCardValidation,
-      "supporting information entry"
+      "supporting information entry",
     );
     syncVirtualFormErrorFromForm(
       form,
       `item.${index}._mandatory_supporting_info_error`,
-      nextError
+      nextError,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -3025,20 +3086,24 @@ function AddSupportingInfoSection({
     (mandatorySupportingInfoField.value as string | undefined);
 
   const addSupportingInfoForRequirement = (
-    req: InsurancePlanSupportingInfoRequirement
+    req: InsurancePlanSupportingInfoRequirement,
   ) => {
     const alreadyAdded = itemSpecificSupportingInfo.some(
       (info) =>
         info.category?.code === req.category_code &&
-        info.code?.code === req.code_code
+        info.code?.code === req.code_code,
     );
     if (!alreadyAdded) {
       const currentSupportingInfo = form.getValues("supporting_info") || [];
-      const currentQRSeqs = (form.getValues("questionnaire_responses") ?? []).map(
-        (qr) => qr.sequence
-      );
+      const currentQRSeqs = (
+        form.getValues("questionnaire_responses") ?? []
+      ).map((qr) => qr.sequence);
       const newSequence =
-        Math.max(0, ...currentSupportingInfo.map((s) => s.sequence), ...currentQRSeqs) + 1;
+        Math.max(
+          0,
+          ...currentSupportingInfo.map((s) => s.sequence),
+          ...currentQRSeqs,
+        ) + 1;
 
       // Update information_sequence BEFORE appending to supporting_info so that
       // any intermediate render already sees the new sequence as item-linked
@@ -3077,10 +3142,14 @@ function AddSupportingInfoSection({
   const addNewSupportingInfo = () => {
     const currentSupportingInfo = form.getValues("supporting_info") || [];
     const currentQRSeqs = (form.getValues("questionnaire_responses") ?? []).map(
-      (qr) => qr.sequence
+      (qr) => qr.sequence,
     );
     const newSequence =
-      Math.max(0, ...currentSupportingInfo.map((s) => s.sequence), ...currentQRSeqs) + 1;
+      Math.max(
+        0,
+        ...currentSupportingInfo.map((s) => s.sequence),
+        ...currentQRSeqs,
+      ) + 1;
 
     // Update information_sequence BEFORE appending to supporting_info (same
     // ordering rationale as addSupportingInfoForReq above).
@@ -3110,7 +3179,7 @@ function AddSupportingInfoSection({
       <div
         className={cn(
           "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
-          hasSectionError && sectionErrorBorderClass
+          hasSectionError && sectionErrorBorderClass,
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -3169,7 +3238,7 @@ function AddSupportingInfoSection({
                         "flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm",
                         status === "satisfied" && "bg-green-50 text-green-800",
                         status === "incomplete" && "bg-red-50 text-red-800",
-                        status === "missing" && "bg-red-50 text-red-800"
+                        status === "missing" && "bg-red-50 text-red-800",
                       )}
                     >
                       <div className="flex items-center gap-1.5 min-w-0">
@@ -3234,7 +3303,7 @@ function AddSupportingInfoSection({
                         "flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm",
                         status === "satisfied" && "bg-green-50 text-green-800",
                         (status === "incomplete" || status === "missing") &&
-                          "bg-blue-50 text-blue-800"
+                          "bg-blue-50 text-blue-800",
                       )}
                     >
                       <div className="flex items-center gap-1.5 min-w-0">
@@ -3279,12 +3348,12 @@ function AddSupportingInfoSection({
 
           {itemSpecificSupportingInfo.map((info, infoIndex) => {
             const mainInfoIndex = supportingInfoFields.findIndex(
-              (i) => i.sequence === info.sequence
+              (i) => i.sequence === info.sequence,
             );
             const matchingRequirement = allSupportingInfoRequirements.find(
               (req) =>
                 req.category_code === info.category?.code &&
-                req.code_code === info.code?.code
+                req.code_code === info.code?.code,
             );
             const isRequiredDoc = Boolean(matchingRequirement?.is_required);
             const cardError = getClaimSupportingInfoCardError(info);
@@ -3313,7 +3382,7 @@ function AddSupportingInfoSection({
                                   "ml-2 text-xs font-normal",
                                   isRequiredDoc
                                     ? "border-amber-400 text-amber-700"
-                                    : "border-blue-400 text-blue-700"
+                                    : "border-blue-400 text-blue-700",
                                 )}
                               >
                                 {isRequiredDoc ? "Required" : "Recommended"}
@@ -3324,7 +3393,9 @@ function AddSupportingInfoSection({
                             {isRequiredDoc ? (
                               <Input
                                 value={
-                                  field.value?.display ?? field.value?.code ?? ""
+                                  field.value?.display ??
+                                  field.value?.code ??
+                                  ""
                                 }
                                 disabled
                                 className="bg-muted"
@@ -3338,14 +3409,14 @@ function AddSupportingInfoSection({
                                 value={field.value?.code}
                                 onChange={(value) => {
                                   const code = SUPPORTING_INFO_CODES.find(
-                                    (code) => code.code === value
+                                    (code) => code.code === value,
                                   );
                                   if (!code) {
                                     return;
                                   }
                                   form.setValue(
                                     `supporting_info.${mainInfoIndex}.code`,
-                                    code
+                                    code,
                                   );
                                 }}
                               />
@@ -3364,7 +3435,7 @@ function AddSupportingInfoSection({
                           form.getValues("supporting_info") || [];
                         const updatedSupportingInfo =
                           currentSupportingInfo.filter(
-                            (_, i) => i !== mainInfoIndex
+                            (_, i) => i !== mainInfoIndex,
                           );
                         form.setValue("supporting_info", updatedSupportingInfo);
 
@@ -3373,11 +3444,11 @@ function AddSupportingInfoSection({
                           const currentSequences =
                             item.information_sequence || [];
                           const updatedSequences = currentSequences.filter(
-                            (seq) => seq !== info.sequence
+                            (seq) => seq !== info.sequence,
                           );
                           form.setValue(
                             `item.${itemIndex}.information_sequence`,
-                            updatedSequences
+                            updatedSequences,
                           );
                         });
                       }}
@@ -3403,7 +3474,7 @@ function AddSupportingInfoSection({
                               onChange={(value) => {
                                 form.setValue(
                                   `supporting_info.${mainInfoIndex}.timing.start`,
-                                  value ? value.toISOString() : undefined
+                                  value ? value.toISOString() : undefined,
                                 );
                               }}
                               placeholder="Select start date and time"
@@ -3428,7 +3499,7 @@ function AddSupportingInfoSection({
                               onChange={(value) => {
                                 form.setValue(
                                   `supporting_info.${mainInfoIndex}.timing.end`,
-                                  value ? value.toISOString() : undefined
+                                  value ? value.toISOString() : undefined,
                                 );
                               }}
                               placeholder="Select end date and time"
@@ -3469,19 +3540,19 @@ function AddSupportingInfoSection({
                                   (code) => ({
                                     label: code.display,
                                     value: code.code,
-                                  })
+                                  }),
                                 )}
                                 value={field.value?.code}
                                 onChange={(value) => {
                                   const code = SUPPORTING_INFO_CATEGORIES.find(
-                                    (code) => code.code === value
+                                    (code) => code.code === value,
                                   );
                                   if (!code) {
                                     return;
                                   }
                                   form.setValue(
                                     `supporting_info.${mainInfoIndex}.category`,
-                                    code
+                                    code,
                                   );
                                 }}
                               />
@@ -3493,7 +3564,7 @@ function AddSupportingInfoSection({
                                 "text-xs",
                                 isRequiredDoc
                                   ? "text-amber-600"
-                                  : "text-blue-600"
+                                  : "text-blue-600",
                               )}
                             >
                               {isRequiredDoc
@@ -3524,11 +3595,11 @@ function AddSupportingInfoSection({
                             onChange={(e) => {
                               form.setValue(
                                 `supporting_info.${mainInfoIndex}.value_string`,
-                                e.target.value || undefined
+                                e.target.value || undefined,
                               );
                               form.setValue(
                                 `supporting_info.${mainInfoIndex}.value_attachment`,
-                                undefined
+                                undefined,
                               );
                             }}
                             placeholder="Enter supporting info value"
@@ -3569,7 +3640,7 @@ function SupportingInfoFileUpload({
 }) {
   const currentFile = form.watch(`supporting_info.${mainInfoIndex}.value_file`);
   const attachmentId = form.watch(
-    `supporting_info.${mainInfoIndex}.value_attachment`
+    `supporting_info.${mainInfoIndex}.value_attachment`,
   );
 
   const { data: existingFile, isLoading: isFileLoading } = useQuery({
@@ -3643,7 +3714,7 @@ function SupportingInfoFileUpload({
                   <div className="flex-shrink-0">
                     {existingFile.extension &&
                     ["jpg", "jpeg", "png", "gif", "webp"].includes(
-                      existingFile.extension.toLowerCase()
+                      existingFile.extension.toLowerCase(),
                     ) ? (
                       <img
                         src={existingFile.read_signed_url}

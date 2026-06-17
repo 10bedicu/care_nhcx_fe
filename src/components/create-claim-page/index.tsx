@@ -43,9 +43,10 @@ import { FileUploadModel } from "@/types/file_upload";
 import { Form } from "@/components/ui/form";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
 import { InsurancePlanDetailsPanel } from "../insurance-plan-details-panel";
-import PayerQueryBanner from "@/components/common/payer-query-banner";
+import PayerQueryDispositionAlert from "@/components/common/payer-query-disposition-alert";
 import { FormPrefillSkeleton } from "@/components/common/form-prefill-skeleton";
 import { PmjayBiometricVerificationGate } from "@/components/common/pmjay-biometric-verification-gate";
+import { isClaimResponseQueried } from "@/lib/claim-response";
 import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
 import { cn } from "@/lib/utils";
@@ -1018,13 +1019,26 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     }
   }
 
-  const relatedClaimResponse = relatedClaim?.latest_response;
-  const showPayerQuery =
-    !!relatedClaimId &&
-    !!relatedClaimResponse &&
-    relatedClaimResponse.outcome === "queued";
-  const payerQueryContext: "preauthorization" | "claim" =
-    relatedClaim?.use === "claim" ? "claim" : "preauthorization";
+  const queryResponse = useMemo(() => {
+    if (
+      relatedClaim?.latest_response &&
+      isClaimResponseQueried(relatedClaim.latest_response)
+    ) {
+      return relatedClaim.latest_response;
+    }
+    if (
+      prefilledClaim?.latest_response &&
+      isClaimResponseQueried(prefilledClaim.latest_response)
+    ) {
+      return prefilledClaim.latest_response;
+    }
+    return undefined;
+  }, [relatedClaim, prefilledClaim]);
+
+  const queryContext: "preauthorization" | "claim" =
+    (relatedClaim ?? prefilledClaim)?.use === "claim"
+      ? "claim"
+      : "preauthorization";
 
   const formUse = form.watch("use");
 
@@ -1140,14 +1154,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         </div>
         <Separator />
 
-        {showPayerQuery && (
-          <PayerQueryBanner
-            message={relatedClaimResponse?.disposition ?? undefined}
-            createdAt={relatedClaimResponse?.created_date}
-            context={payerQueryContext}
-          />
-        )}
-
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             {isFormPrefillLoading ? (
@@ -1168,6 +1174,15 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                     </>
                   )}
                   <ClaimInsuranceSection form={form} readOnly={isGuidedFlow} />
+                  {queryResponse && (
+                    <>
+                      <Separator />
+                      <PayerQueryDispositionAlert
+                        response={queryResponse}
+                        context={queryContext}
+                      />
+                    </>
+                  )}
                   <Separator />
                   <PlanLevelSupportingInfoSection
                     form={form}
@@ -1187,6 +1202,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                     coverageEligibilityRequest={coverageEligibilityRequest}
                     previousClaim={prefilledClaim}
                     encounterChargeItems={encounterChargeItems ?? []}
+                    queryResponse={queryResponse}
                   />
                   <Separator />
                   <ClaimAccidentSection form={form} />
