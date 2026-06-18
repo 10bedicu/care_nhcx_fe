@@ -38,6 +38,7 @@ import {
   getLinkedImplantsForParent,
   getQualifierTypeByCode,
   isModifierRequired,
+  normalizeImplantItemsFromPrefill,
 } from "@/lib/benefit-item-validation";
 import {
   getCardSectionValidationCounts,
@@ -113,6 +114,26 @@ export function CoverageEligibilityRequestItemSection({
   });
 
   const planId = planListData?.results?.[0]?.id ?? null;
+  const watchedItems = form.watch("item");
+
+  useEffect(() => {
+    const items = form.getValues("item") ?? [];
+    if (items.length === 0) return;
+    const normalized = normalizeImplantItemsFromPrefill(items);
+    const serialize = (list: typeof items) =>
+      JSON.stringify(
+        list.map((it) => [
+          it.sequence,
+          it._implant_parent_sequence,
+          it._implant_code,
+          (it.modifier ?? []).map((m) => m.code),
+          it.product_or_service?.code,
+        ]),
+      );
+    if (serialize(normalized) !== serialize(items)) {
+      form.setValue("item", normalized, { shouldDirty: false });
+    }
+  }, [watchedItems, form]);
 
   const productCodesKey = fields
     .map(

@@ -21,6 +21,7 @@ import { FormPrefillSkeleton } from "@/components/common/form-prefill-skeleton";
 import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
+import { normalizeImplantItemsFromPrefill } from "@/lib/benefit-item-validation";
 import { toast } from "@/lib/utils";
 import { uploadFile } from "@/lib/upload-file";
 import { z } from "zod";
@@ -170,24 +171,26 @@ const CreateCoverageEligibilityRequestPage: FC<
         value_attachment: s.value_attachment as unknown as string | undefined,
       }));
 
-    const mappedItems = ceItems.map((it, idx) => ({
-      sequence:
-        typeof it.sequence === "number" && it.sequence > 0
-          ? it.sequence
-          : idx + 1,
-      supporting_info_sequence: it.supporting_info_sequence ?? [],
-      category: it.category,
-      product_or_service: it.product_or_service,
-      modifier: it.modifier ?? [],
-      quantity: {
-        value: Number(it.quantity?.value) > 0 ? Number(it.quantity?.value) : 1,
-        unit: it.quantity?.unit,
-      },
-      diagnosis: (it.diagnosis ?? []).map((d) => ({
-        diagnosis_reference: d.diagnosis_reference?.id,
-        diagnosis_code: d.diagnosis_code,
+    const mappedItems = normalizeImplantItemsFromPrefill(
+      ceItems.map((it, idx) => ({
+        sequence:
+          typeof it.sequence === "number" && it.sequence > 0
+            ? it.sequence
+            : idx + 1,
+        supporting_info_sequence: it.supporting_info_sequence ?? [],
+        category: it.category,
+        product_or_service: it.product_or_service,
+        modifier: it.modifier ?? [],
+        quantity: {
+          value: Number(it.quantity?.value) > 0 ? Number(it.quantity?.value) : 1,
+          unit: it.quantity?.unit,
+        },
+        diagnosis: (it.diagnosis ?? []).map((d) => ({
+          diagnosis_reference: d.diagnosis_reference?.id,
+          diagnosis_code: d.diagnosis_code,
+        })),
       })),
-    }));
+    );
 
     if (mappedInsurance.length > 0) {
       current.insurance = mappedInsurance;

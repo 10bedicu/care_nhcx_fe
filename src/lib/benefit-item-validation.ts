@@ -208,10 +208,22 @@ type ImplantPrefillItem = ImplantLinkableItem & {
   sequence?: number;
   category?: Coding;
   modifier?: Coding[];
+  quantity?: { value?: number; unit?: Coding; code?: Coding };
+  supporting_info_sequence?: number[];
+  diagnosis?: Array<{
+    diagnosis_reference?: string;
+    diagnosis_code?: Coding;
+  }>;
   diagnosis_sequence?: number[];
   procedure_sequence?: number[];
   care_team_sequence?: number[];
 };
+
+function diagnosisKeys(item: ImplantPrefillItem): string[] {
+  return (item.diagnosis ?? [])
+    .map((entry) => entry.diagnosis_reference ?? entry.diagnosis_code?.code)
+    .filter((key): key is string => Boolean(key));
+}
 
 function sequencesOverlap(
   parent: ImplantPrefillItem,
@@ -219,15 +231,29 @@ function sequencesOverlap(
 ): boolean {
   const hasOverlap = (a?: number[], b?: number[]) =>
     (a ?? []).some((s) => (b ?? []).includes(s));
-  return (
-    hasOverlap(parent.diagnosis_sequence, child.diagnosis_sequence) ||
-    hasOverlap(parent.procedure_sequence, child.procedure_sequence) ||
-    hasOverlap(parent.care_team_sequence, child.care_team_sequence)
-  );
+  if (hasOverlap(parent.diagnosis_sequence, child.diagnosis_sequence)) {
+    return true;
+  }
+  if (hasOverlap(parent.procedure_sequence, child.procedure_sequence)) {
+    return true;
+  }
+  if (hasOverlap(parent.care_team_sequence, child.care_team_sequence)) {
+    return true;
+  }
+  if (hasOverlap(parent.supporting_info_sequence, child.supporting_info_sequence)) {
+    return true;
+  }
+  const parentDiagnosis = diagnosisKeys(parent);
+  const childDiagnosis = diagnosisKeys(child);
+  return parentDiagnosis.some((key) => childDiagnosis.includes(key));
 }
 
 function isLikelyImplantProductCode(code: string): boolean {
   return code.startsWith("IMP");
+}
+
+function isNonImplantParentCandidate(item: ImplantPrefillItem): boolean {
+  return !isLikelyImplantProductCode(item.product_or_service?.code ?? "");
 }
 
 function findImplantParentCandidate<T extends ImplantPrefillItem>(
@@ -237,15 +263,65 @@ function findImplantParentCandidate<T extends ImplantPrefillItem>(
   const implantCode = implantItem.product_or_service?.code;
   if (!implantCode) return undefined;
 
-  return items.find(
+  const sameCategoryParents = items.filter(
     (other) =>
       other.sequence !== implantItem.sequence &&
       !other._implant_parent_sequence &&
-      other.product_or_service?.code !== implantCode &&
-      !isLikelyImplantProductCode(other.product_or_service?.code ?? "") &&
-      other.category?.code === implantItem.category?.code &&
-      sequencesOverlap(other, implantItem),
+      isNonImplantParentCandidate(other) &&
+      other.category?.code === implantItem.category?.code,
   );
+
+  const withOverlap = sameCategoryParents.find((other) =>
+    sequencesOverlap(other, implantItem),
+  );
+  if (withOverlap) return withOverlap;
+
+  if (sameCategoryParents.length === 1) {
+    return sameCategoryParents[0];
+  }
+
+  if (sameCategoryParents.length > 1) {
+    const implantSeq = implantItem.sequence ?? 0;
+    return sameCategoryParents.reduce((closest, candidate) =>
+      Math.abs((candidate.sequence ?? 0) - implantSeq) <
+      Math.abs((closest.sequence ?? 0) - implantSeq)
+        ? candidate
+        : closest,
+    );
+  }
+
+  return undefined;
+}
+
+function implantBelongsToParent(
+  items: ImplantPrefillItem[],
+  parent: ImplantPrefillItem,
+  implantItem: ImplantPrefillItem,
+): boolean {
+  if (implantItem._implant_parent_sequence === parent.sequence) return true;
+  if (implantItem._implant_parent_sequence != null) return false;
+  const code = implantItem.product_or_service?.code;
+  if (!code || !isLikelyImplantProductCode(code)) return false;
+  const candidate = findImplantParentCandidate(items, implantItem);
+  return candidate?.sequence === parent.sequence;
+}
+
+function buildImplantLineItemFromParent<T extends ImplantPrefillItem>(
+  parent: T,
+  implant: Coding,
+  sequence: number,
+): T {
+  return {
+    ...parent,
+    sequence,
+    product_or_service: implant,
+    modifier: [],
+    quantity: parent.quantity ?? { value: 1 },
+    diagnosis: (parent.diagnosis ?? []).map((entry) => ({ ...entry })),
+    supporting_info_sequence: [...(parent.supporting_info_sequence ?? [])],
+    _implant_parent_sequence: parent.sequence,
+    _implant_code: implant.code,
+  } as T;
 }
 
 /**
@@ -270,9 +346,47 @@ export function normalizeImplantItemsFromPrefill<T extends ImplantPrefillItem>(
     }
   }
 
-  const stripped = stripImplantModifiersWhenLineItemExists(items);
+  let workingItems = [...items];
+  const existingLineItemCodes = new Set(
+    workingItems
+      .map((it) => it.product_or_service?.code)
+      .filter((code): code is string => Boolean(code)),
+  );
+  let nextSequence =
+    Math.max(0, ...workingItems.map((it) => it.sequence ?? 0)) + 1;
 
-  return stripped.map((item) => {
+  for (const item of items) {
+    if (item.sequence == null || !isNonImplantParentCandidate(item)) continue;
+    for (const modifier of item.modifier ?? []) {
+      if (!isLikelyImplantProductCode(modifier.code)) continue;
+      if (existingLineItemCodes.has(modifier.code)) continue;
+      if (
+        workingItems.some(
+          (it) =>
+            it._implant_parent_sequence === item.sequence &&
+            it._implant_code === modifier.code,
+        )
+      ) {
+        continue;
+      }
+      workingItems.push(
+        buildImplantLineItemFromParent(item, modifier, nextSequence),
+      );
+      existingLineItemCodes.add(modifier.code);
+      nextSequence += 1;
+    }
+  }
+
+  const stripped = stripImplantModifiersWhenLineItemExists(workingItems).map(
+    (item) => ({
+      ...item,
+      modifier: (item.modifier ?? []).filter(
+        (m) => !isLikelyImplantProductCode(m.code),
+      ),
+    }),
+  );
+
+  const linked = stripped.map((item) => {
     const code = item.product_or_service?.code;
     if (!code || item._implant_parent_sequence) return item;
 
@@ -296,6 +410,8 @@ export function normalizeImplantItemsFromPrefill<T extends ImplantPrefillItem>(
       _implant_code: code,
     };
   });
+
+  return linked;
 }
 
 /** Count implant line items associated with a parent (linked or prefilled orphan). */
@@ -305,16 +421,7 @@ export function countImplantLineItemsForParent<
   const parent = items.find((it) => it.sequence === parentSequence);
   if (!parent) return 0;
 
-  return items.filter((it) => {
-    if (it._implant_parent_sequence === parentSequence) return true;
-    if (it._implant_parent_sequence != null) return false;
-    const code = it.product_or_service?.code;
-    if (!code || !isLikelyImplantProductCode(code)) return false;
-    return (
-      it.category?.code === parent.category?.code &&
-      sequencesOverlap(parent, it)
-    );
-  }).length;
+  return items.filter((it) => implantBelongsToParent(items, parent, it)).length;
 }
 
 /** Implant line items to display on a parent's modifier UI. */
@@ -325,16 +432,7 @@ export function getLinkedImplantsForParent<
   if (!parent) return [];
 
   return items
-    .filter((it) => {
-      if (it._implant_parent_sequence === parentSequence) return true;
-      if (it._implant_parent_sequence != null) return false;
-      const code = it.product_or_service?.code;
-      if (!code || !isLikelyImplantProductCode(code)) return false;
-      return (
-        it.category?.code === parent.category?.code &&
-        sequencesOverlap(parent, it)
-      );
-    })
+    .filter((it) => implantBelongsToParent(items, parent, it))
     .map((it) => it.product_or_service)
     .filter((coding): coding is Coding => Boolean(coding?.code));
 }
