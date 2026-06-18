@@ -1,5 +1,6 @@
 import { QuestionnaireItem } from "@/types/insurance_plan";
 import { ClaimUseChoice } from "@/types/claim";
+import { EncounterDischargeDisposition } from "@/types/encounter";
 import { QuestionnaireResponseItemInput } from "./schema";
 
 export type QuestionnaireRequirementStatus =
@@ -9,8 +10,13 @@ export type QuestionnaireRequirementStatus =
 
 export const AUTHENTICATION_CONSENT_QUESTIONNAIRE = "100024";
 export const DISCHARGE_CONSENT_QUESTIONNAIRE = "100466";
+export const LAMA_DISCHARGE_QUESTIONNAIRE = "100136";
+export const DAMA_DISCHARGE_QUESTIONNAIRE = "100137";
+export const DEATH_DISCHARGE_QUESTIONNAIRE = "100025";
+export const NORMAL_DISCHARGE_QUESTIONNAIRE = "100005";
 
 export const CLAIM_CONSENT_OBTAINED_STORE_KEY = "claimConsentObtained";
+export const CLAIM_DISCHARGE_DISPOSITION_STORE_KEY = "claimDischargeDisposition";
 
 export function getForcedConsentQuestionnaireFhirId(
   claimUse: ClaimUseChoice | undefined,
@@ -20,6 +26,51 @@ export function getForcedConsentQuestionnaireFhirId(
   return claimUse === "claim"
     ? DISCHARGE_CONSENT_QUESTIONNAIRE
     : AUTHENTICATION_CONSENT_QUESTIONNAIRE;
+}
+
+export function getForcedDischargeQuestionnaireFhirId(
+  claimUse: ClaimUseChoice | undefined,
+  dischargeDisposition: EncounterDischargeDisposition | undefined,
+): string | null {
+  if (claimUse !== "claim") return null;
+
+  switch (dischargeDisposition) {
+    case "aadvice":
+      return LAMA_DISCHARGE_QUESTIONNAIRE;
+    case "oth":
+      return DAMA_DISCHARGE_QUESTIONNAIRE;
+    case "exp":
+      return DEATH_DISCHARGE_QUESTIONNAIRE;
+    default:
+      return NORMAL_DISCHARGE_QUESTIONNAIRE;
+  }
+}
+
+export function getForcedQuestionnaireFhirIds(
+  claimUse: ClaimUseChoice | undefined,
+  consentObtained: boolean | undefined,
+  dischargeDisposition: EncounterDischargeDisposition | undefined,
+): Set<string> {
+  const ids = new Set<string>();
+  const consentId = getForcedConsentQuestionnaireFhirId(
+    claimUse,
+    consentObtained,
+  );
+  if (consentId) ids.add(consentId);
+  const dischargeId = getForcedDischargeQuestionnaireFhirId(
+    claimUse,
+    dischargeDisposition,
+  );
+  if (dischargeId) ids.add(dischargeId);
+  return ids;
+}
+
+export function isQuestionnaireRequirementEffectivelyRequired(
+  req: { is_required: boolean; questionnaire?: { fhir_id?: string } | null },
+  forcedFhirIds: Set<string>,
+): boolean {
+  const fhirId = req.questionnaire?.fhir_id;
+  return req.is_required || (!!fhirId && forcedFhirIds.has(fhirId));
 }
 
 export function getQuestionnaireRequirementStatus(

@@ -41,16 +41,16 @@ import { ClaimRelatedSection } from "./claim-related-section";
 import { Encounter, EncounterClass } from "@/types/encounter";
 import { FileUploadModel } from "@/types/file_upload";
 import { Form } from "@/components/ui/form";
-import { GlobalStoreProvider } from "@/hooks/use-global-store";
+import { GlobalStoreProvider, useGlobalStore } from "@/hooks/use-global-store";
 import { InsurancePlanDetailsPanel } from "../insurance-plan-details-panel";
-import PayerQueryDispositionAlert from "@/components/common/payer-query-disposition-alert";
+import PayerQueryBanner from "@/components/common/payer-query-banner";
 import { FormPrefillSkeleton } from "@/components/common/form-prefill-skeleton";
 import { PmjayBiometricVerificationGate } from "@/components/common/pmjay-biometric-verification-gate";
-import { isClaimResponseQueried } from "@/lib/claim-response";
 import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
 import { cn } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
+import { CLAIM_DISCHARGE_DISPOSITION_STORE_KEY } from "./questionnaire-helpers";
 import { toast } from "sonner";
 import { uploadFile } from "@/lib/upload-file";
 import { z } from "zod";
@@ -68,6 +68,24 @@ function parseStringParam(value: unknown): string | undefined {
 }
 
 type ClaimFormValues = z.infer<typeof createClaimFormSchema>;
+
+function ClaimEncounterStoreSync({
+  encounter,
+}: {
+  encounter: Encounter | undefined;
+}) {
+  const { setStore } = useGlobalStore();
+
+  useEffect(() => {
+    setStore(
+      CLAIM_DISCHARGE_DISPOSITION_STORE_KEY,
+      encounter?.hospitalization?.discharge_disposition,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [encounter?.hospitalization?.discharge_disposition]);
+
+  return null;
+}
 
 function claimProviderUsernameMap(claim: Claim): Map<string, string> {
   return new Map(
@@ -105,7 +123,6 @@ function mapClaimSupportingInfo(
     timing: s.timing,
     value_string: s.value_string,
     value_attachment: s.value_attachment as unknown as string,
-    value_resource: s.value_resource,
     _is_plan_level: !itemInfoSeqs.has(s.sequence),
   }));
 }
@@ -1020,26 +1037,13 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     }
   }
 
-  const queryResponse = useMemo(() => {
-    if (
-      relatedClaim?.latest_response &&
-      isClaimResponseQueried(relatedClaim.latest_response)
-    ) {
-      return relatedClaim.latest_response;
-    }
-    if (
-      prefilledClaim?.latest_response &&
-      isClaimResponseQueried(prefilledClaim.latest_response)
-    ) {
-      return prefilledClaim.latest_response;
-    }
-    return undefined;
-  }, [relatedClaim, prefilledClaim]);
-
-  const queryContext: "preauthorization" | "claim" =
-    (relatedClaim ?? prefilledClaim)?.use === "claim"
-      ? "claim"
-      : "preauthorization";
+  const relatedClaimResponse = relatedClaim?.latest_response;
+  const showPayerQuery =
+    !!relatedClaimId &&
+    !!relatedClaimResponse &&
+    relatedClaimResponse.outcome === "queued";
+  const payerQueryContext: "preauthorization" | "claim" =
+    relatedClaim?.use === "claim" ? "claim" : "preauthorization";
 
   const formUse = form.watch("use");
 
@@ -1112,6 +1116,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       }}
     >
       <div className="space-y-6">
+        <ClaimEncounterStoreSync encounter={encounter} />
         <PmjayBiometricVerificationGate
           encounterId={encounterId}
           patientId={patientId}
@@ -1155,6 +1160,14 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         </div>
         <Separator />
 
+        {showPayerQuery && (
+          <PayerQueryBanner
+            message={relatedClaimResponse?.disposition ?? undefined}
+            createdAt={relatedClaimResponse?.created_date}
+            context={payerQueryContext}
+          />
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
             {isFormPrefillLoading ? (
@@ -1175,15 +1188,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                     </>
                   )}
                   <ClaimInsuranceSection form={form} readOnly={isGuidedFlow} />
-                  {queryResponse && (
-                    <>
-                      <Separator />
-                      <PayerQueryDispositionAlert
-                        response={queryResponse}
-                        context={queryContext}
-                      />
-                    </>
-                  )}
                   <Separator />
                   <PlanLevelSupportingInfoSection
                     form={form}
@@ -1203,7 +1207,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                     coverageEligibilityRequest={coverageEligibilityRequest}
                     previousClaim={prefilledClaim}
                     encounterChargeItems={encounterChargeItems ?? []}
-                    queryResponse={queryResponse}
                   />
                   <Separator />
                   <ClaimAccidentSection form={form} />

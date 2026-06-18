@@ -50,15 +50,18 @@ import { apis } from "@/apis";
 import { InlineLoading } from "@/components/common/loading-spinner";
 import { ClaimUseChoice } from "@/types/claim";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
+import { EncounterDischargeDisposition } from "@/types/encounter";
 import {
   buildInitialItems,
   countMissingRequiredItems,
-  getForcedConsentQuestionnaireFhirId,
+  getForcedQuestionnaireFhirIds,
   getQuestionnaireRequirementStatus,
   hasAnswerValue,
   itemLabel,
   QuestionnaireRequirementStatus,
   CLAIM_CONSENT_OBTAINED_STORE_KEY,
+  CLAIM_DISCHARGE_DISPOSITION_STORE_KEY,
+  isQuestionnaireRequirementEffectivelyRequired,
 } from "./questionnaire-helpers";
 import { QuestionnaireResponseItemInput } from "./schema";
 import { cn } from "@/lib/utils";
@@ -900,9 +903,17 @@ export function AddQuestionnaireSection({
   const consentObtained = getStore<boolean | undefined>(
     CLAIM_CONSENT_OBTAINED_STORE_KEY
   );
-  const forcedConsentFhirId = getForcedConsentQuestionnaireFhirId(
-    claimUse,
-    consentObtained
+  const dischargeDisposition = getStore<
+    EncounterDischargeDisposition | undefined
+  >(CLAIM_DISCHARGE_DISPOSITION_STORE_KEY);
+  const forcedQuestionnaireFhirIds = useMemo(
+    () =>
+      getForcedQuestionnaireFhirIds(
+        claimUse,
+        consentObtained,
+        dischargeDisposition,
+      ),
+    [claimUse, consentObtained, dischargeDisposition],
   );
 
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
@@ -945,9 +956,9 @@ export function AddQuestionnaireSection({
     const filtered = ceQuestionnaireFhirIdsForItem
       ? qReqs.filter((req) => {
           const fhir = req.questionnaire?.fhir_id;
-          // Keep the consent questionnaire even when it is not part of the CE
-          // response set, since it is mandatory once consent is skipped/missing.
-          if (!!fhir && fhir === forcedConsentFhirId) return true;
+          // Keep forced questionnaires even when they are not part of the CE
+          // response set, since they are mandatory for claim/consent rules.
+          if (!!fhir && forcedQuestionnaireFhirIds.has(fhir)) return true;
           return !!fhir && ceQuestionnaireFhirIdsForItem.has(fhir);
         })
       : qReqs;
@@ -959,17 +970,17 @@ export function AddQuestionnaireSection({
       seen.add(key);
       return true;
     });
-  }, [benefitDetail, ceQuestionnaireFhirIdsForItem, forcedConsentFhirId]);
+  }, [benefitDetail, ceQuestionnaireFhirIdsForItem, forcedQuestionnaireFhirIds]);
 
   // A requirement is effectively required when the IPB marks it required, or
-  // when it is the consent questionnaire that must be filled because claim
-  // consent has been skipped or is missing.
+  // when it is a consent/discharge questionnaire that must be filled for claim.
   const isReqEffectivelyRequired = useCallback(
     (req: InsurancePlanSupportingInfoRequirement) =>
-      req.is_required ||
-      (!!forcedConsentFhirId &&
-        req.questionnaire?.fhir_id === forcedConsentFhirId),
-    [forcedConsentFhirId]
+      isQuestionnaireRequirementEffectivelyRequired(
+        req,
+        forcedQuestionnaireFhirIds,
+      ),
+    [forcedQuestionnaireFhirIds],
   );
 
   const requiredRequirements = useMemo(

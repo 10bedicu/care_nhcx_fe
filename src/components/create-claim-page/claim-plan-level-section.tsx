@@ -24,9 +24,11 @@ import {
   QuestionnaireRequirementStatus,
   buildInitialItems,
   countMissingRequiredItems,
-  getForcedConsentQuestionnaireFhirId,
-  getQuestionnaireRequirementStatus,
   CLAIM_CONSENT_OBTAINED_STORE_KEY,
+  CLAIM_DISCHARGE_DISPOSITION_STORE_KEY,
+  getForcedQuestionnaireFhirIds,
+  getQuestionnaireRequirementStatus,
+  isQuestionnaireRequirementEffectivelyRequired,
 } from "./questionnaire-helpers";
 import { SectionValidationBadges } from "@/components/common/form-card-error";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -35,11 +37,11 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ClaimUseChoice } from "@/types/claim";
+import { EncounterDischargeDisposition } from "@/types/encounter";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { InlineLoading } from "@/components/common/loading-spinner";
 import { Input } from "@/components/ui/input";
 import { QuestionnaireResponseCard, QuestionnaireRequirementRow } from "./claim-questionnaire-section";
-import { SupportingInfoValueControls } from "./supporting-info-value-controls";
 import { apis } from "@/apis";
 import { cn } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
@@ -322,25 +324,37 @@ function PlanLevelDocCard({
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-3 space-y-2">
-        <SupportingInfoValueControls
-          form={form}
-          mainInfoIndex={mainInfoIndex}
-          renderText={() => (
-            <Input
-              placeholder="Enter a value or description…"
-              value={valueString ?? ""}
-              onChange={(e) => {
-                form.setValue(
-                  `supporting_info.${mainInfoIndex}.value_string` as FieldPath<
-                    z.infer<typeof createClaimFormSchema>
-                  >,
-                  (e.target.value || undefined) as never
-                );
-              }}
-            />
-          )}
-          renderAttachment={() =>
-            hasFile ? (
+        <Input
+          placeholder="Enter a value or description…"
+          value={valueString ?? ""}
+          disabled={hasFile}
+          onChange={(e) => {
+            form.setValue(
+              `supporting_info.${mainInfoIndex}.value_string` as FieldPath<
+                z.infer<typeof createClaimFormSchema>
+              >,
+              (e.target.value || undefined) as never
+            );
+            if (e.target.value) {
+              form.setValue(
+                `supporting_info.${mainInfoIndex}.value_file` as FieldPath<
+                  z.infer<typeof createClaimFormSchema>
+                >,
+                undefined as never
+              );
+              form.setValue(
+                `supporting_info.${mainInfoIndex}.value_attachment` as FieldPath<
+                  z.infer<typeof createClaimFormSchema>
+                >,
+                undefined as never
+              );
+            }
+          }}
+        />
+
+        {!valueString && (
+          <>
+            {hasFile ? (
               <div className="flex items-center gap-2 rounded-md bg-green-50 px-2 py-1.5">
                 <PaperclipIcon className="w-3.5 h-3.5 text-green-600" />
                 <span className="text-xs font-medium text-green-700 flex-1">
@@ -375,9 +389,9 @@ function PlanLevelDocCard({
                   />
                 </span>
               </Button>
-            )
-          }
-        />
+            )}
+          </>
+        )}
       </CardContent>
     </Card>
   );
@@ -551,10 +565,7 @@ export function PlanLevelSupportingInfoSection({
     );
     if (!match) return "missing";
     const hasValue =
-      match.value_string ||
-      match.value_attachment ||
-      match.value_file ||
-      match.value_resource?.resource_id;
+      match.value_string || match.value_attachment || match.value_file;
     return hasValue ? "satisfied" : "incomplete";
   };
 
@@ -795,9 +806,17 @@ export function PlanLevelQuestionnairesSection({
   const consentObtained = getStore<boolean | undefined>(
     CLAIM_CONSENT_OBTAINED_STORE_KEY
   );
-  const forcedConsentFhirId = getForcedConsentQuestionnaireFhirId(
-    claimUse,
-    consentObtained
+  const dischargeDisposition = getStore<
+    EncounterDischargeDisposition | undefined
+  >(CLAIM_DISCHARGE_DISPOSITION_STORE_KEY);
+  const forcedQuestionnaireFhirIds = useMemo(
+    () =>
+      getForcedQuestionnaireFhirIds(
+        claimUse,
+        consentObtained,
+        dischargeDisposition,
+      ),
+    [claimUse, consentObtained, dischargeDisposition],
   );
   const planId = usePlanId(form);
   const ceLeftover = useCELeftover({
@@ -815,14 +834,14 @@ export function PlanLevelQuestionnairesSection({
   });
 
   // A requirement is effectively required when the IPB marks it required, or
-  // when it is the consent questionnaire that must be filled because claim
-  // consent has been skipped or is missing.
+  // when it is a consent/discharge questionnaire that must be filled for claim.
   const isReqEffectivelyRequired = useCallback(
     (req: InsurancePlanSupportingInfoRequirement) =>
-      req.is_required ||
-      (!!forcedConsentFhirId &&
-        req.questionnaire?.fhir_id === forcedConsentFhirId),
-    [forcedConsentFhirId]
+      isQuestionnaireRequirementEffectivelyRequired(
+        req,
+        forcedQuestionnaireFhirIds,
+      ),
+    [forcedQuestionnaireFhirIds],
   );
 
   // Questionnaire requirements (documentation_url is NOT null), with optional
