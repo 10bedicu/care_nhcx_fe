@@ -219,11 +219,18 @@ interface CoverageEligibilityTimelineCardProps extends BaseProps {
   request: CoverageEligibilityRequest;
   latestClaimId?: string;
   latestSuccessfulClaimId?: string;
+  afterCeValidationSatisfied?: boolean;
 }
 
 export const CoverageEligibilityTimelineCard: FC<
   CoverageEligibilityTimelineCardProps
-> = ({ request, isCurrent, latestClaimId, latestSuccessfulClaimId }) => {
+> = ({
+  request,
+  isCurrent,
+  latestClaimId,
+  latestSuccessfulClaimId,
+  afterCeValidationSatisfied = true,
+}) => {
   const isValidation = hasValidationPurpose(request);
   const isAuthRequirements = hasAuthRequirementsPurpose(request);
   const validationOutcome = isValidation
@@ -250,7 +257,7 @@ export const CoverageEligibilityTimelineCard: FC<
 
   if (isCurrent) {
     if (isValidation) {
-      if (validationOutcome?.kind === "ok") {
+      if (validationOutcome?.kind === "ok" && afterCeValidationSatisfied) {
         footerActions = (
           <ActionButton
             to={`coverages/new?purpose=auth-requirements&coverage_eligibility=${request.id}`}

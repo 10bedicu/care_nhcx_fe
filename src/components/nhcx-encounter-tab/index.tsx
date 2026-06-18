@@ -17,8 +17,10 @@ import {
   isLatestRecord,
 } from "./flow";
 
-import PmjayEligibilityGate from "./pmjay-eligibility-gate";
-import { usePmjayEligibility } from "./use-pmjay-eligibility";
+import FlowPrerequisitesGate, {
+  FlowPrerequisitesTimelineGate,
+} from "./flow-prerequisites-gate";
+import { useFlowPrerequisites } from "./use-flow-prerequisites";
 
 import { Button } from "@/components/ui/button";
 import { Encounter } from "@/types/encounter";
@@ -72,9 +74,10 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
   const hasProvider = !!provider;
   const isLoadingTimeline = isLoadingCoverages || isLoadingClaims;
 
-  // Mandatory PMJAY prerequisites act as a hard gate: until they are all
-  // satisfied, the rest of the insurance claim flow is hidden.
-  const pmjayEligibility = usePmjayEligibility(encounter, patient);
+  // Before CE-validation prerequisites gate the timeline; after CE-validation
+  // prerequisites appear as a timeline entry below the validation card.
+  const flowPrerequisites = useFlowPrerequisites(encounter, patient);
+  const { beforeCeValidation, afterCeValidation } = flowPrerequisites;
 
   const encounterCoverages = coverages?.results ?? [];
 
@@ -111,7 +114,9 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
   const latestSuccessfulClaimId =
     findLatestClaimWithSuccessfulResponse(encounterClaims)?.id;
 
-  const timeline = buildTimeline(encounterCoverages, encounterClaims);
+  const timeline = buildTimeline(encounterCoverages, encounterClaims, {
+    afterCeValidationSatisfied: afterCeValidation.isSatisfied,
+  });
 
   return (
     <GlobalStoreProvider
@@ -175,13 +180,21 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
               </div>
             </div>
 
-            {pmjayEligibility.isLoading && <TimelineSkeleton count={2} />}
+            {beforeCeValidation.isLoading && <TimelineSkeleton count={2} />}
 
-            {!pmjayEligibility.isLoading && !pmjayEligibility.isSatisfied && (
-              <PmjayEligibilityGate state={pmjayEligibility} />
-            )}
+            {!beforeCeValidation.isLoading &&
+              !beforeCeValidation.isSatisfied && (
+                <FlowPrerequisitesGate
+                  title="PMJAY requirements not met"
+                  description="The following details are mandatory before coverage eligibility validation can be started for this"
+                  state={beforeCeValidation}
+                  ageUnknown={flowPrerequisites.ageUnknown}
+                  patientUpdateHref={flowPrerequisites.patientUpdateHref}
+                  isChild={flowPrerequisites.isChild}
+                />
+              )}
 
-            {pmjayEligibility.isSatisfied && (
+            {beforeCeValidation.isSatisfied && (
               <>
                 {!isLoadingTimeline && showInitialCTA && (
               <div className="rounded-lg border border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10 p-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
@@ -242,6 +255,17 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
                 )}
 
               {timeline.map((entry) => {
+                if (entry.kind === "prerequisites-gate") {
+                  return (
+                    <FlowPrerequisitesTimelineGate
+                      key={`gate-${entry.anchor}-${entry.phase}`}
+                      title="Additional details required"
+                      description="Complete the following before proceeding with pre-authorisation or claim submission."
+                      state={afterCeValidation}
+                    />
+                  );
+                }
+
                 const isCurrent = isLatestRecord(timeline, entry);
                 if (entry.kind === "ce") {
                   return (
@@ -252,6 +276,7 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
                       isCurrent={isCurrent}
                       latestClaimId={latestClaimId}
                       latestSuccessfulClaimId={latestSuccessfulClaimId}
+                      afterCeValidationSatisfied={afterCeValidation.isSatisfied}
                     />
                   );
                 }

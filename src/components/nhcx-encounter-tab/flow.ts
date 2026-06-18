@@ -3,6 +3,10 @@ import {
   CoverageEligibilityRequest,
   CoverageEligibilityRequestPurposeChoice,
 } from "@/types/coverage_eligibility";
+import {
+  FlowAnchor,
+  PrerequisitePhase,
+} from "./flow-prerequisites";
 
 export type ValidationOutcome =
   | { kind: "pending" }
@@ -206,12 +210,26 @@ function getApprovedTotal(claim: Claim): number {
 
 export type TimelineRecord =
   | { kind: "ce"; record: CoverageEligibilityRequest; createdAt: number }
-  | { kind: "claim"; record: Claim; createdAt: number };
+  | { kind: "claim"; record: Claim; createdAt: number }
+  | {
+      kind: "prerequisites-gate";
+      anchor: FlowAnchor;
+      phase: PrerequisitePhase;
+      createdAt: number;
+    };
+
+export type BuildTimelineOptions = {
+  /** When false, inserts an after-CE-validation gate below the latest successful validation card. */
+  afterCeValidationSatisfied?: boolean;
+};
 
 export function buildTimeline(
   coverages: CoverageEligibilityRequest[],
-  claims: Claim[]
+  claims: Claim[],
+  options: BuildTimelineOptions = {},
 ): TimelineRecord[] {
+  const { afterCeValidationSatisfied = true } = options;
+
   const records: TimelineRecord[] = [
     ...coverages.map<TimelineRecord>((record) => ({
       kind: "ce",
@@ -225,7 +243,49 @@ export function buildTimeline(
     })),
   ];
 
-  return records.sort((a, b) => b.createdAt - a.createdAt);
+  const sorted = records.sort((a, b) => b.createdAt - a.createdAt);
+
+  if (afterCeValidationSatisfied) {
+    return sorted;
+  }
+
+  const latestValidationCe = coverages
+    .filter(hasValidationPurpose)
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.created_date).getTime() - new Date(a.created_date).getTime(),
+    )[0];
+
+  if (
+    !latestValidationCe ||
+    deriveValidationOutcome(latestValidationCe).kind !== "ok"
+  ) {
+    return sorted;
+  }
+
+  const validationCreatedAt = new Date(
+    latestValidationCe.created_date,
+  ).getTime();
+  const gateEntry: TimelineRecord = {
+    kind: "prerequisites-gate",
+    anchor: "ce-validation",
+    phase: "after",
+    createdAt: validationCreatedAt - 1,
+  };
+
+  const validationIndex = sorted.findIndex(
+    (entry) =>
+      entry.kind === "ce" && entry.record.id === latestValidationCe.id,
+  );
+
+  if (validationIndex === -1) {
+    return sorted;
+  }
+
+  const withGate = [...sorted];
+  withGate.splice(validationIndex + 1, 0, gateEntry);
+  return withGate;
 }
 
 /**
@@ -235,17 +295,21 @@ export function buildTimeline(
  */
 export function isLatestRecord(
   timeline: TimelineRecord[],
-  target: TimelineRecord
+  target: TimelineRecord,
 ): boolean {
   if (timeline.length === 0) return false;
-  // Timeline is sorted descending (latest first), so index 0 is the most recent.
-  const latestEntry = timeline[0];
-  if (target.kind !== latestEntry.kind) return false;
-  if (target.kind === "ce" && latestEntry.kind === "ce") {
-    return target.record.id === latestEntry.record.id;
+
+  const latestActionable = timeline.find(
+    (entry) => entry.kind === "ce" || entry.kind === "claim",
+  );
+  if (!latestActionable) return false;
+
+  if (target.kind !== latestActionable.kind) return false;
+  if (target.kind === "ce" && latestActionable.kind === "ce") {
+    return target.record.id === latestActionable.record.id;
   }
-  if (target.kind === "claim" && latestEntry.kind === "claim") {
-    return target.record.id === latestEntry.record.id;
+  if (target.kind === "claim" && latestActionable.kind === "claim") {
+    return target.record.id === latestActionable.record.id;
   }
   return false;
 }
