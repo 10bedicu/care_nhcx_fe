@@ -48,7 +48,7 @@ import {
   hasSectionValidationIssue,
   syncVirtualFormErrorFromForm,
 } from "@/lib/form-card-validation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 
 import Autocomplete from "../ui/autocomplete";
@@ -93,9 +93,52 @@ export function CoverageEligibilityRequestItemSection({
   requireEnhancementAllowed = false,
   prefilledItemSequences,
 }: CoverageEligibilityRequestItemSectionProps) {
-  const { fields, append, remove } = useFieldArray({
+  const { fields, replace } = useFieldArray({
     name: "item",
     control: form.control,
+  });
+
+  type FormValues = z.infer<typeof createCoverageEligibilityRequestFormSchema>;
+
+  // Linked CE prefill stores items in form defaultValues via reset(). Without
+  // syncing defaults after item mutations, a new row at a recycled index
+  // rehydrates from the removed prefilled item's default snapshot.
+  const syncItemArrayDefaults = useCallback(
+    (items: FormValues["item"]) => {
+      form.reset(
+        { ...form.getValues(), item: items },
+        {
+          keepDefaultValues: false,
+          keepDirty: true,
+          keepErrors: true,
+          keepIsSubmitted: true,
+          keepSubmitCount: true,
+          keepTouched: true,
+        },
+      );
+    },
+    [form],
+  );
+
+  const applyItemArrayUpdate = useCallback(
+    (items: FormValues["item"]) => {
+      replace(items);
+      syncItemArrayDefaults(items);
+    },
+    [replace, syncItemArrayDefaults],
+  );
+
+  const createEmptyItem = (
+    sequence: number,
+    supportingInfoSequences: number[],
+  ) => ({
+    sequence,
+    category: undefined as unknown as Coding,
+    product_or_service: undefined as Coding | undefined,
+    modifier: [] as Coding[],
+    quantity: { value: 1 },
+    diagnosis: defaultItemDiagnoses.map((d) => ({ ...d })),
+    supporting_info_sequence: supportingInfoSequences,
   });
 
   const selectedInsurances = form.watch("insurance");
@@ -131,9 +174,9 @@ export function CoverageEligibilityRequestItemSection({
         ]),
       );
     if (serialize(normalized) !== serialize(items)) {
-      form.setValue("item", normalized, { shouldDirty: false });
+      applyItemArrayUpdate(normalized);
     }
-  }, [watchedItems, form]);
+  }, [watchedItems, form, applyItemArrayUpdate]);
 
   const productCodesKey = fields
     .map(
@@ -224,17 +267,20 @@ export function CoverageEligibilityRequestItemSection({
     );
     const nextSequence =
       Math.max(0, ...allItems.map((f) => f.sequence ?? 0)) + 1;
-    append({
-      sequence: nextSequence,
-      category: parentCategory,
-      product_or_service: implant,
-      modifier: [],
-      quantity: { value: 1 },
-      diagnosis: defaultItemDiagnoses.map((d) => ({ ...d })),
-      supporting_info_sequence: allSupportingInfoSequences,
-      _implant_parent_sequence: parentSequence,
-      _implant_code: implant.code,
-    });
+    applyItemArrayUpdate([
+      ...allItems,
+      {
+        sequence: nextSequence,
+        category: parentCategory,
+        product_or_service: implant,
+        modifier: [],
+        quantity: { value: 1 },
+        diagnosis: defaultItemDiagnoses.map((d) => ({ ...d })),
+        supporting_info_sequence: allSupportingInfoSequences,
+        _implant_parent_sequence: parentSequence,
+        _implant_code: implant.code,
+      },
+    ]);
     void form.trigger("item");
   };
 
@@ -251,7 +297,7 @@ export function CoverageEligibilityRequestItemSection({
         it._implant_code === implantCode,
     );
     if (targetIndex >= 0) {
-      remove(targetIndex);
+      applyItemArrayUpdate(allItems.filter((_, i) => i !== targetIndex));
       void form.trigger("item");
     }
   };
@@ -268,7 +314,7 @@ export function CoverageEligibilityRequestItemSection({
         }
       });
     }
-    remove([...indexesToRemove]);
+    applyItemArrayUpdate(allItems.filter((_, i) => !indexesToRemove.has(i)));
     void form.trigger("item");
   };
 
@@ -295,7 +341,7 @@ export function CoverageEligibilityRequestItemSection({
       )}
 
       <div className="space-y-4">
-        {fields.map((field, index) => {
+        {fields.map((row, index) => {
           const conditionErrors = form.watch(`item.${index}._condition_errors`);
           const mandatoryDiagnosisError = form.watch(
             `item.${index}._mandatory_diagnosis_error`,
@@ -315,11 +361,12 @@ export function CoverageEligibilityRequestItemSection({
             !!mandatorySupportingInfoError;
           return (
             <Card
-              key={field.id}
+              key={row.id}
               className={cn(hasAnyError && "overflow-hidden border-red-500")}
             >
               <CardHeader>
                 <FormField
+                  key={`product-${row.id}`}
                   control={form.control}
                   name={`item.${index}.product_or_service`}
                   render={({ field }) => {
@@ -335,6 +382,7 @@ export function CoverageEligibilityRequestItemSection({
                           </FormLabel>
                           <FormControl>
                             <BenefitSearchSelect
+                              key={row.id}
                               insurancePlanId={planId}
                               value={field.value}
                               categoryCode={
@@ -561,21 +609,18 @@ export function CoverageEligibilityRequestItemSection({
                   onClick={() => {
                     const existingSupportingInfo =
                       form.getValues("supporting_info") ?? [];
-                    const allSequences = existingSupportingInfo.map(
-                      (s) => s.sequence,
-                    );
-                    append({
-                      sequence:
-                        Math.max(0, ...fields.map((f) => f.sequence)) + 1,
-                      category: undefined as unknown as Coding,
-                      product_or_service: undefined,
-                      modifier: [],
-                      quantity: {
-                        value: 1,
-                      },
-                      diagnosis: defaultItemDiagnoses.map((d) => ({ ...d })),
-                      supporting_info_sequence: allSequences,
-                    });
+                    const allSupportingInfoSequences =
+                      existingSupportingInfo.map((s) => s.sequence);
+                    const existingItems = form.getValues("item") ?? [];
+                    const nextSequence =
+                      Math.max(
+                        0,
+                        ...existingItems.map((item) => item.sequence ?? 0),
+                      ) + 1;
+                    applyItemArrayUpdate([
+                      ...existingItems,
+                      createEmptyItem(nextSequence, allSupportingInfoSequences),
+                    ]);
                     void form.trigger("item");
                   }}
                 >

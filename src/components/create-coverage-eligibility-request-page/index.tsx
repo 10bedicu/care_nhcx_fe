@@ -87,6 +87,7 @@ const CreateCoverageEligibilityRequestPage: FC<
 
   const { isDirty, isValid } = useFormState({ control: form.control });
   const [hasLinkedCePrefill, setHasLinkedCePrefill] = useState(false);
+  const [prefillNonce, setPrefillNonce] = useState(0);
   const isUnchangedPrefill = hasLinkedCePrefill && !isDirty;
 
   const isAuthRequirements = lockedPurpose === "auth-requirements";
@@ -204,6 +205,7 @@ const CreateCoverageEligibilityRequestPage: FC<
 
     form.reset(current, { keepDefaultValues: false });
     setHasLinkedCePrefill(true);
+    setPrefillNonce((n) => n + 1);
   }, [linkedCoverageEligibilityId, linkedCoverageEligibilityRequest, form]);
 
   const defaultItemDiagnoses = useMemo(
@@ -242,7 +244,8 @@ const CreateCoverageEligibilityRequestPage: FC<
   });
 
   const isFormPrefillLoading =
-    (!!linkedCoverageEligibilityId && isLinkedCeLoading) ||
+    (!!linkedCoverageEligibilityId &&
+      (isLinkedCeLoading || !hasLinkedCePrefill)) ||
     (isAuthRequirements &&
       !!patientId &&
       !!encounterId &&
@@ -367,6 +370,7 @@ const CreateCoverageEligibilityRequestPage: FC<
                   {lockedPurpose !== "validation" && (
                     <>
                       <CoverageEligibilityRequestItemSection
+                        key={`cer-items-${prefillNonce}`}
                         form={form}
                         defaultItemDiagnoses={
                           isAuthRequirements ? defaultItemDiagnoses : []
