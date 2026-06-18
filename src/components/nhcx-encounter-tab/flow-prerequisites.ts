@@ -41,11 +41,14 @@ export type PrerequisiteContext = {
   hasParentMemberId: boolean;
   hasAttendantDetails: boolean;
   hasChildVerification: boolean;
+  hasLinkedAccount: boolean;
   isLoadingAttendant: boolean;
   isLoadingChild: boolean;
+  isLoadingAccount: boolean;
   patientUpdateHref: string;
   attendantQuestionnaireHref: string;
   childVerificationQuestionnaireHref: string;
+  accountLinkHref: string;
 };
 
 type PrerequisiteDefinition = {
@@ -107,6 +110,18 @@ const PREREQUISITE_DEFINITIONS: PrerequisiteDefinition[] = [
     isSatisfied: (ctx) => ctx.hasAttendantDetails,
     resolveActionHref: (ctx) => ctx.attendantQuestionnaireHref,
   },
+  {
+    key: "account-linking",
+    anchor: "ce-validation",
+    phase: "after",
+    label: "Account Linking",
+    description:
+      "Link a billing account to this encounter as the primary encounter.",
+    actionLabel: "Link Account",
+    applies: () => true,
+    isSatisfied: (ctx) => ctx.hasLinkedAccount,
+    resolveActionHref: (ctx) => ctx.accountLinkHref,
+  },
 ];
 
 export function resolvePmjayMemberId(patient: Patient): string | undefined {
@@ -155,7 +170,11 @@ function isGroupLoading(
   if (definitions.length === 0) return false;
 
   if (anchor === "ce-validation" && phase === "after") {
-    return ctx.isLoadingAttendant || (ctx.isChild && ctx.isLoadingChild);
+    return (
+      ctx.isLoadingAccount ||
+      ctx.isLoadingAttendant ||
+      (ctx.isChild && ctx.isLoadingChild)
+    );
   }
 
   return false;
@@ -210,8 +229,10 @@ export function buildPrerequisiteContext(
   data: {
     hasAttendantDetails: boolean;
     hasChildVerification: boolean;
+    hasLinkedAccount: boolean;
     isLoadingAttendant: boolean;
     isLoadingChild: boolean;
+    isLoadingAccount: boolean;
   },
 ): PrerequisiteContext {
   const facilityId = encounter.facility.id;
@@ -234,10 +255,13 @@ export function buildPrerequisiteContext(
     hasParentMemberId: !!memberExtension.parent_member_id?.trim(),
     hasAttendantDetails: data.hasAttendantDetails,
     hasChildVerification: data.hasChildVerification,
+    hasLinkedAccount: data.hasLinkedAccount,
     isLoadingAttendant: data.isLoadingAttendant,
     isLoadingChild: data.isLoadingChild,
+    isLoadingAccount: data.isLoadingAccount,
     patientUpdateHref: `/facility/${facilityId}/patient/${patientId}/update`,
     attendantQuestionnaireHref: `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/questionnaire/${ATTENDANT_DETAILS_SLUG}`,
     childVerificationQuestionnaireHref: `/facility/${facilityId}/patient/${patientId}/questionnaire`,
+    accountLinkHref: `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/updates`,
   };
 }

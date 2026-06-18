@@ -61,21 +61,37 @@ export function useFlowPrerequisites(
       enabled: !!patientId && isChild,
     });
 
+  const facilityId = encounter.facility.id;
+
+  const { data: linkedAccounts, isLoading: isLoadingAccount } = useQuery({
+    queryKey: ["encounter-linked-account", facilityId, encounterId],
+    queryFn: () =>
+      apis.account.list(facilityId, {
+        encounter: encounterId,
+        limit: 1,
+      }),
+    enabled: !!facilityId && !!encounterId && !ageUnknown,
+  });
+
   const context = useMemo(
     () =>
       buildPrerequisiteContext(encounter, patient, {
         hasAttendantDetails: (attendantResponses?.count ?? 0) > 0,
         hasChildVerification: (childVerificationResponses?.count ?? 0) > 0,
+        hasLinkedAccount: (linkedAccounts?.count ?? 0) > 0,
         isLoadingAttendant,
         isLoadingChild,
+        isLoadingAccount,
       }),
     [
       encounter,
       patient,
       attendantResponses?.count,
       childVerificationResponses?.count,
+      linkedAccounts?.count,
       isLoadingAttendant,
       isLoadingChild,
+      isLoadingAccount,
     ],
   );
 

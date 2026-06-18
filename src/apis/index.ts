@@ -17,6 +17,7 @@ import {
 import { queryString, request } from "@/apis/request";
 
 import { AbhaNumber } from "@/types/abha_number";
+import { Account } from "@/types/account";
 import { ChargeItem } from "@/types/charge_item";
 import { Claim } from "@/types/claim";
 import { ClaimConsent, ClaimConsentStage } from "@/types/claim_consent";
@@ -591,6 +592,23 @@ export const apis = {
         method: "PUT",
         body: JSON.stringify(body),
       });
+    },
+  },
+
+  account: {
+    list: async (
+      facilityId: string,
+      query?: {
+        encounter?: string;
+        patient?: string;
+        ordering?: "created_date" | "-created_date";
+        limit?: number;
+        offset?: number;
+      },
+    ) => {
+      return await request<PaginatedResponse<Account>>(
+        `/api/v1/facility/${facilityId}/account/` + queryString(query),
+      );
     },
   },
 
