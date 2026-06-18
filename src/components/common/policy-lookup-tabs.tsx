@@ -1,11 +1,9 @@
-import { CreditCardIcon, PencilIcon, PhoneIcon, ScanLineIcon } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Loader2Icon } from "lucide-react";
-import { Policy } from "@/types/policy";
+import {
+  CreditCardIcon,
+  PencilIcon,
+  PhoneIcon,
+  ScanLineIcon,
+} from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -13,7 +11,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useEffect, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Loader2Icon } from "lucide-react";
+import { Policy } from "@/types/policy";
 
 export type PolicyIdentifierTab = "abha" | "mobile" | "memberId" | "manual";
 
@@ -103,7 +108,7 @@ export function PolicyLookupTabs({
 
       <TabsContent value="mobile">
         <div className="space-y-2">
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <Input
               id="mobile-input"
               value={mobileValue}
@@ -129,7 +134,7 @@ export function PolicyLookupTabs({
 
       <TabsContent value="memberId">
         <div className="space-y-2">
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
             <Input
               id="memberid-input"
               value={memberIdValue}
@@ -290,7 +295,12 @@ function ManualPolicyEntry({
         </div>
       </div>
       <div className="flex justify-end">
-        <Button type="button" onClick={handleAdd} disabled={!canSubmit} size="sm">
+        <Button
+          type="button"
+          onClick={handleAdd}
+          disabled={!canSubmit}
+          size="sm"
+        >
           Add Policy
         </Button>
       </div>

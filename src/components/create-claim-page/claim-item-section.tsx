@@ -39,8 +39,12 @@ import { UseFormReturn, useController, useFieldArray } from "react-hook-form";
 import {
   buildBenefitConditionErrors,
   computeBenefitLimit,
+  countImplantLineItemsForParent,
+  findExistingImplantItemIndex,
+  getLinkedImplantsForParent,
   getQualifierTypeByCode,
   isModifierRequired,
+  normalizeImplantItemsFromPrefill,
 } from "@/lib/benefit-item-validation";
 import {
   formatItemQueryReasons,
@@ -62,7 +66,6 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { AddQuestionnaireSection } from "./claim-questionnaire-section";
-import { SupportingInfoValueControls } from "./supporting-info-value-controls";
 import Autocomplete from "../ui/autocomplete";
 import { Badge } from "../ui/badge";
 import BenefitSearchSelect from "../common/benefit-search-select";
@@ -77,6 +80,7 @@ import { Input } from "../ui/input";
 import { InsurancePlanSupportingInfoRequirement } from "@/types/insurance_plan";
 import { Label } from "../ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SupportingInfoValueControls } from "./supporting-info-value-controls";
 import { Textarea } from "../ui/textarea";
 import ValuesetSelect from "../common/valueset-select";
 import { apis } from "@/apis";
@@ -692,7 +696,7 @@ export function ClaimItemSection({
   encounterChargeItems = [],
   queryResponse,
 }: ClaimItemSectionProps) {
-  const { fields, remove } = useFieldArray({
+  const { fields, append, remove } = useFieldArray({
     name: "item",
     control: form.control,
   });
@@ -780,6 +784,89 @@ export function ClaimItemSection({
     remove(index);
   };
 
+  const addImplantLineItem = (parentIndex: number, implant: Coding) => {
+    const parentSequence = form.getValues(`item.${parentIndex}.sequence`);
+    const allItems = form.getValues("item") ?? [];
+    const existingIndex = findExistingImplantItemIndex(
+      allItems,
+      parentSequence,
+      implant.code,
+    );
+    if (existingIndex >= 0) {
+      const existing = allItems[existingIndex];
+      if (
+        existing._implant_parent_sequence === parentSequence &&
+        existing._implant_code === implant.code
+      ) {
+        return;
+      }
+      form.setValue(
+        `item.${existingIndex}._implant_parent_sequence`,
+        parentSequence,
+        { shouldDirty: false },
+      );
+      form.setValue(`item.${existingIndex}._implant_code`, implant.code, {
+        shouldDirty: false,
+      });
+      void form.trigger("item");
+      return;
+    }
+    const nextSequence =
+      Math.max(0, ...allItems.map((f) => f.sequence ?? 0)) + 1;
+    append({
+      sequence: nextSequence,
+      category: form.getValues(`item.${parentIndex}.category`),
+      product_or_service: implant,
+      modifier: [],
+      program_code: [
+        ...(form.getValues(`item.${parentIndex}.program_code`) ?? []),
+      ],
+      serviced_period: form.getValues(`item.${parentIndex}.serviced_period`),
+      care_team_sequence: [
+        ...(form.getValues(`item.${parentIndex}.care_team_sequence`) ?? []),
+      ],
+      diagnosis_sequence: [
+        ...(form.getValues(`item.${parentIndex}.diagnosis_sequence`) ?? []),
+      ],
+      procedure_sequence: [
+        ...(form.getValues(`item.${parentIndex}.procedure_sequence`) ?? []),
+      ],
+      information_sequence: [
+        ...(form.getValues(`item.${parentIndex}.information_sequence`) ?? []),
+      ],
+      charge_items: [],
+      quantity: { value: 1 },
+      unit_price: 0,
+      factor: undefined,
+      _implant_parent_sequence: parentSequence,
+      _implant_code: implant.code,
+    });
+    void form.trigger("item");
+  };
+
+  const removeItemAndImplants = (index: number) => {
+    const allItems = form.getValues("item") ?? [];
+    const parentSequence = allItems[index]?.sequence;
+    const childIndexes =
+      parentSequence != null
+        ? allItems
+            .map((it, i) => ({ it, i }))
+            .filter(
+              ({ it }) => it._implant_parent_sequence === parentSequence,
+            )
+            .map(({ i }) => i)
+        : [];
+    [...childIndexes]
+      .sort((a, b) => b - a)
+      .forEach((i) => removeItemWithCleanup(i));
+    const parentIndex = form
+      .getValues("item")
+      .findIndex((it) => it.sequence === parentSequence);
+    if (parentIndex >= 0) {
+      removeItemWithCleanup(parentIndex);
+    }
+  };
+
   const selectedInsurances = form.watch("insurance");
   const focalPolicy =
     selectedInsurances?.find((i) => i.focal)?.policy ??
@@ -798,6 +885,24 @@ export function ClaimItemSection({
   const planId = planListData?.results?.[0]?.id ?? null;
   const watchedItems = form.watch("item");
   const claimUse = form.watch("use");
+
+  useEffect(() => {
+    const items = form.getValues("item") ?? [];
+    if (items.length === 0) return;
+    const normalized = normalizeImplantItemsFromPrefill(items);
+    const serialize = (list: typeof items) =>
+      JSON.stringify(
+        list.map((it) => [
+          it.sequence,
+          it._implant_parent_sequence,
+          it._implant_code,
+          (it.modifier ?? []).map((m) => m.code),
+        ]),
+      );
+    if (serialize(normalized) !== serialize(items)) {
+      form.setValue("item", normalized, { shouldDirty: false });
+    }
+  }, [watchedItems, form]);
 
   return (
     <div className="space-y-6">
@@ -857,6 +962,9 @@ export function ClaimItemSection({
           const isQueriedItem = isItemQueried(itemQueryAdjudication);
           const itemQueryReasons = formatItemQueryReasons(
             itemQueryAdjudication,
+          );
+          const isImplantItem = Boolean(
+            watchedItems?.[index]?._implant_parent_sequence,
           );
           const hasAnyError =
             mandatoryDocsError ||
@@ -936,8 +1044,9 @@ export function ClaimItemSection({
                           </FormControl>
                           {isProductLocked && (
                             <p className="text-xs text-muted-foreground">
-                              Product is locked. Remove this item and add a new
-                              one to change it.
+                              {isImplantItem
+                                ? "Auto-added implant. Manage it from the originating item."
+                                : "Product is locked. Remove this item and add a new one to change it."}
                             </p>
                           )}
                           <FormMessage />
@@ -946,8 +1055,8 @@ export function ClaimItemSection({
                           type="button"
                           variant="ghost"
                           size="icon"
-                          onClick={() => removeItemWithCleanup(index)}
-                          className="mt-6"
+                          onClick={() => removeItemAndImplants(index)}
+                          className={cn("mt-6", isImplantItem && "hidden")}
                         >
                           <CircleMinusIcon className="h-6 w-6 text-danger-500" />
                         </Button>
@@ -1066,7 +1175,13 @@ export function ClaimItemSection({
                   )}
                 />
 
-                <ModifierField form={form} index={index} planId={planId} />
+                <ModifierField
+                  form={form}
+                  index={index}
+                  planId={planId}
+                  disabled={isImplantItem}
+                  onImplantAdd={(implant) => addImplantLineItem(index, implant)}
+                />
 
                 <AddChargeItemsSection
                   form={form}
@@ -1373,12 +1488,24 @@ function ModifierField({
   form,
   index,
   planId,
+  disabled = false,
+  onImplantAdd,
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   index: number;
   planId: string | null;
+  disabled?: boolean;
+  onImplantAdd?: (implant: Coding) => void;
 }) {
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
+  const parentSequence = form.watch(`item.${index}.sequence`);
+  const rawAllItems = form.watch("item");
+
+  const linkedImplants = useMemo(() => {
+    const allItems = rawAllItems ?? [];
+    if (parentSequence == null) return [];
+    return getLinkedImplantsForParent(allItems, parentSequence);
+  }, [rawAllItems, parentSequence]);
 
   const { data: benefitDetail, isLoading } = useQuery({
     queryKey: ["insurancePlanBenefit", "lookup", planId, productCode],
@@ -1415,31 +1542,62 @@ function ModifierField({
     [benefitDetail],
   );
 
-  // Implant modifiers are auto-filled and locked: they cannot be added or
-  // removed by the user. Only non-implant qualifiers are user-selectable.
   const selectableQualifiers = useMemo(
     () =>
       qualifiers.filter((q) => qualifierTypeByCode.get(q.code) !== "implant"),
     [qualifiers, qualifierTypeByCode],
   );
 
-  // Auto-fill modifiers from the benefit qualifiers when the form field is
-  // empty. This covers prefill paths that didn't carry modifiers through
-  // (e.g. older CE/Claim records). Only fires once per (item, benefit) load,
-  // so user removals are preserved.
   const didAutofillRef = useRef(false);
   useEffect(() => {
     if (didAutofillRef.current) return;
     if (!productCode || qualifiers.length === 0) return;
+
     const current = form.getValues(`item.${index}.modifier`) ?? [];
-    if (current.length > 0) {
-      didAutofillRef.current = true;
-      return;
+    const implantInModifier = current.filter(
+      (m) => qualifierTypeByCode.get(m.code) === "implant",
+    );
+    const nonImplantInModifier = current.filter(
+      (m) => qualifierTypeByCode.get(m.code) !== "implant",
+    );
+    const autofillNonImplants = qualifiers.filter(
+      (q) => qualifierTypeByCode.get(q.code) !== "implant",
+    );
+    const autofillImplants = qualifiers.filter(
+      (q) => qualifierTypeByCode.get(q.code) === "implant",
+    );
+
+    if (implantInModifier.length > 0) {
+      form.setValue(`item.${index}.modifier`, nonImplantInModifier, {
+        shouldDirty: false,
+      });
+      for (const implant of implantInModifier) {
+        onImplantAdd?.(implant);
+      }
+    } else if (nonImplantInModifier.length === 0 && autofillNonImplants.length > 0) {
+      form.setValue(`item.${index}.modifier`, autofillNonImplants, {
+        shouldDirty: false,
+      });
     }
-    form.setValue(`item.${index}.modifier`, qualifiers, { shouldDirty: false });
+
+    for (const implant of autofillImplants) {
+      onImplantAdd?.(implant);
+    }
+
+    if (parentSequence != null) {
+      for (const implant of getLinkedImplantsForParent(
+        form.getValues("item") ?? [],
+        parentSequence,
+      )) {
+        onImplantAdd?.(implant);
+      }
+    }
+
     didAutofillRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productCode, qualifiers]);
+  }, [productCode, qualifiers, qualifierTypeByCode]);
+
+  if (disabled) return null;
 
   return (
     <FormField
@@ -1466,12 +1624,15 @@ function ModifierField({
                     (q) => q.code === code,
                   );
                   if (!qualifier) return;
-                  const existing = field.value ?? [];
+                  const existing = (field.value ?? []).filter(
+                    (c) => qualifierTypeByCode.get(c.code) !== "implant",
+                  );
                   if (existing.some((c) => c.code === qualifier.code)) return;
-                  form.setValue(`item.${index}.modifier`, [
-                    ...existing,
-                    qualifier,
-                  ], USER_EDIT);
+                  form.setValue(
+                    `item.${index}.modifier`,
+                    [...existing, qualifier],
+                    USER_EDIT,
+                  );
                 }}
                 disabled={!productCode || isLoading}
                 placeholder={
@@ -1490,28 +1651,38 @@ function ModifierField({
                 }
               />
               <div className="flex flex-wrap gap-2">
-                {(field.value ?? []).map((code) => {
-                  const isImplant =
-                    qualifierTypeByCode.get(code.code) === "implant";
-                  return (
+                {(field.value ?? [])
+                  .filter(
+                    (code) => qualifierTypeByCode.get(code.code) !== "implant",
+                  )
+                  .map((code) => (
                     <Badge key={code.code} className="flex gap-2">
                       <span className="font-mono">{code.code}</span>
                       {code.display && (
                         <span className="opacity-80"> - {code.display}</span>
                       )}
-                      {!isImplant && (
-                        <XIcon
-                          className="w-4 h-4 cursor-pointer"
-                          onClick={() => {
-                            form.setValue(
-                              `item.${index}.modifier`,
-                              field.value.filter((c) => c.code !== code.code), USER_EDIT);
-                          }}
-                        />
-                      )}
+                      <XIcon
+                        className="w-4 h-4 cursor-pointer"
+                        onClick={() => {
+                          form.setValue(
+                            `item.${index}.modifier`,
+                            (field.value ?? []).filter(
+                              (c) => c.code !== code.code,
+                            ),
+                            USER_EDIT,
+                          );
+                        }}
+                      />
                     </Badge>
-                  );
-                })}
+                  ))}
+                {linkedImplants.map((implant) => (
+                  <Badge key={implant.code} className="flex gap-2">
+                    <span className="font-mono">{implant.code}</span>
+                    {implant.display && (
+                      <span className="opacity-80"> - {implant.display}</span>
+                    )}
+                  </Badge>
+                ))}
               </div>
             </div>
           </FormControl>
@@ -1813,12 +1984,31 @@ function ItemValidationEffects({
   const quantityValue = form.watch(`item.${index}.quantity.value`);
   const rawModifiers = form.watch(`item.${index}.modifier`);
   const rawChargeItemIds = form.watch(`item.${index}.charge_items`);
+  const isImplantItem = Boolean(
+    form.watch(`item.${index}._implant_parent_sequence`),
+  );
+  const currentSequence = form.watch(`item.${index}.sequence`);
+  const rawAllItems = form.watch("item");
 
   const modifiers = useMemo(
     () => rawModifiers ?? [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [JSON.stringify(rawModifiers)],
   );
+
+  const linkedImplantCount = useMemo(() => {
+    const allItems = rawAllItems ?? [];
+    if (isImplantItem || currentSequence == null) return undefined;
+    return countImplantLineItemsForParent(allItems, currentSequence);
+  }, [rawAllItems, currentSequence, isImplantItem]);
+
+  const linkedImplantCodes = useMemo(() => {
+    const allItems = rawAllItems ?? [];
+    if (isImplantItem || currentSequence == null) return [];
+    return getLinkedImplantsForParent(allItems, currentSequence).map(
+      (coding) => coding.code,
+    );
+  }, [rawAllItems, currentSequence, isImplantItem]);
 
   const chargeItemIds = useMemo(
     () => rawChargeItemIds ?? [],
@@ -1838,14 +2028,23 @@ function ItemValidationEffects({
     staleTime: 5 * 60 * 1000,
   });
 
+  const qualifierTypeByCode = useMemo(
+    () => getQualifierTypeByCode(benefitDetail),
+    [benefitDetail],
+  );
+
+  const modifierCodesForLimit = useMemo(() => {
+    const nonImplantCodes = modifiers
+      .filter((m) => qualifierTypeByCode.get(m.code) !== "implant")
+      .map((m) => m.code);
+    return [...nonImplantCodes, ...linkedImplantCodes];
+  }, [modifiers, linkedImplantCodes, qualifierTypeByCode]);
+
   // Benefit limit is the only hard cap.
   const benefitLimit = useMemo(() => {
     if (!benefitDetail) return null;
-    return computeBenefitLimit(
-      benefitDetail,
-      modifiers.map((m) => m.code),
-    );
-  }, [benefitDetail, modifiers]);
+    return computeBenefitLimit(benefitDetail, modifierCodesForLimit);
+  }, [benefitDetail, modifierCodesForLimit]);
 
   // Build a price lookup keyed by charge-item id from every available source.
   // The encounter charge-item query can resolve after the form is prefilled,
@@ -1908,11 +2107,14 @@ function ItemValidationEffects({
   }, [chargeItemsTotal, benefitLimit, form, index]);
 
   useEffect(() => {
-    const errors = buildBenefitConditionErrors(
-      benefitDetail,
-      Number(quantityValue),
-      modifiers,
-    );
+    const errors = isImplantItem
+      ? []
+      : buildBenefitConditionErrors(
+          benefitDetail,
+          Number(quantityValue),
+          modifiers,
+          { linkedImplantCount: linkedImplantCount ?? 0 },
+        );
     const nextError = errors.length > 0 ? errors.join(" • ") : undefined;
     const currentError = form.getValues(`item.${index}._condition_errors`);
 
@@ -1922,7 +2124,15 @@ function ItemValidationEffects({
         shouldValidate: true,
       });
     }
-  }, [benefitDetail, quantityValue, modifiers, form, index]);
+  }, [
+    benefitDetail,
+    quantityValue,
+    modifiers,
+    linkedImplantCount,
+    isImplantItem,
+    form,
+    index,
+  ]);
 
   return null;
 }
@@ -1950,12 +2160,24 @@ function ItemAmountReferences({
   const itemSequence = form.watch(`item.${index}.sequence`);
   const unitPrice = form.watch(`item.${index}.unit_price`) ?? 0;
   const rawModifiers = form.watch(`item.${index}.modifier`);
+  const isImplantItem = Boolean(
+    form.watch(`item.${index}._implant_parent_sequence`),
+  );
+  const rawAllItems = form.watch("item");
 
   const modifiers = useMemo(
     () => rawModifiers ?? [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [JSON.stringify(rawModifiers)],
   );
+
+  const linkedImplantCodes = useMemo(() => {
+    const allItems = rawAllItems ?? [];
+    if (isImplantItem || itemSequence == null) return [];
+    return getLinkedImplantsForParent(allItems, itemSequence).map(
+      (coding) => coding.code,
+    );
+  }, [rawAllItems, itemSequence, isImplantItem]);
 
   const { data: benefitDetail } = useQuery({
     queryKey: ["insurancePlanBenefit", "lookup", planId, productCode],
@@ -1968,13 +2190,22 @@ function ItemAmountReferences({
     staleTime: 5 * 60 * 1000,
   });
 
+  const qualifierTypeByCode = useMemo(
+    () => getQualifierTypeByCode(benefitDetail),
+    [benefitDetail],
+  );
+
+  const modifierCodesForLimit = useMemo(() => {
+    const nonImplantCodes = modifiers
+      .filter((m) => qualifierTypeByCode.get(m.code) !== "implant")
+      .map((m) => m.code);
+    return [...nonImplantCodes, ...linkedImplantCodes];
+  }, [modifiers, linkedImplantCodes, qualifierTypeByCode]);
+
   const benefitLimit = useMemo(() => {
     if (!benefitDetail) return null;
-    return computeBenefitLimit(
-      benefitDetail,
-      modifiers.map((m) => m.code),
-    );
-  }, [benefitDetail, modifiers]);
+    return computeBenefitLimit(benefitDetail, modifierCodesForLimit);
+  }, [benefitDetail, modifierCodesForLimit]);
 
   const ceAllowed = useMemo(
     () => getCeAllowedAmount(coverageEligibilityRequest, productCode),
@@ -3398,7 +3629,9 @@ function AddSupportingInfoSection({
                                   }
                                   form.setValue(
                                     `supporting_info.${mainInfoIndex}.code`,
-                                    code, USER_EDIT);
+                                    code,
+                                    USER_EDIT,
+                                  );
                                 }}
                               />
                             )}
@@ -3418,7 +3651,11 @@ function AddSupportingInfoSection({
                           currentSupportingInfo.filter(
                             (_, i) => i !== mainInfoIndex,
                           );
-                        form.setValue("supporting_info", updatedSupportingInfo, USER_EDIT);
+                        form.setValue(
+                          "supporting_info",
+                          updatedSupportingInfo,
+                          USER_EDIT,
+                        );
 
                         const items = form.getValues("item") || [];
                         items.forEach((item, itemIndex) => {
@@ -3429,10 +3666,12 @@ function AddSupportingInfoSection({
                           );
                           form.setValue(
                             `item.${itemIndex}.information_sequence`,
-                            updatedSequences, USER_EDIT);
+                            updatedSequences,
+                            USER_EDIT,
+                          );
                         });
                       }}
-                      className="mt-6"
+                      className="mt-1"
                     >
                       <CircleMinusIcon className="h-6 w-6 text-danger-500" />
                     </Button>
@@ -3454,7 +3693,9 @@ function AddSupportingInfoSection({
                               onChange={(value) => {
                                 form.setValue(
                                   `supporting_info.${mainInfoIndex}.timing.start`,
-                                  value ? value.toISOString() : undefined, USER_EDIT);
+                                  value ? value.toISOString() : undefined,
+                                  USER_EDIT,
+                                );
                               }}
                               placeholder="Select start date and time"
                             />
@@ -3478,7 +3719,9 @@ function AddSupportingInfoSection({
                               onChange={(value) => {
                                 form.setValue(
                                   `supporting_info.${mainInfoIndex}.timing.end`,
-                                  value ? value.toISOString() : undefined, USER_EDIT);
+                                  value ? value.toISOString() : undefined,
+                                  USER_EDIT,
+                                );
                               }}
                               placeholder="Select end date and time"
                             />
@@ -3525,7 +3768,9 @@ function AddSupportingInfoSection({
                                 }
                                 form.setValue(
                                   `supporting_info.${mainInfoIndex}.category`,
-                                  code, USER_EDIT);
+                                  code,
+                                  USER_EDIT,
+                                );
                               }}
                             />
                           )}
@@ -3565,7 +3810,9 @@ function AddSupportingInfoSection({
                                 onChange={(e) => {
                                   form.setValue(
                                     `supporting_info.${mainInfoIndex}.value_string`,
-                                    e.target.value || undefined, USER_EDIT);
+                                    e.target.value || undefined,
+                                    USER_EDIT,
+                                  );
                                 }}
                                 placeholder="Enter supporting info value"
                                 className="min-h-[80px]"

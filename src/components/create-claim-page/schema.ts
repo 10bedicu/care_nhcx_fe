@@ -176,6 +176,14 @@ export const claimItemSchema = z
     _mandatory_supporting_info_error: z.string().optional(),
     _amount_cap_error: z.string().optional(),
     _condition_errors: z.string().optional(),
+    /**
+     * Internal marker set on auto-generated implant line items. Holds the
+     * sequence of the parent item whose implant selection generated this item.
+     * Stripped before API submission.
+     */
+    _implant_parent_sequence: z.number().int().positive().optional(),
+    /** Internal: the implant code that generated this line item. */
+    _implant_code: z.string().optional(),
   })
   .refine(
     (data) => !!data.serviced_period?.start,

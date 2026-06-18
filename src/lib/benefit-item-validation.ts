@@ -87,7 +87,8 @@ export function isModifierRequired(
 export function buildBenefitConditionErrors(
   benefitDetail: InsurancePlanBenefitDetail | undefined,
   quantityValue: number,
-  modifiers: Coding[]
+  modifiers: Coding[],
+  options?: { linkedImplantCount?: number }
 ): string[] {
   if (!benefitDetail?.conditions?.length) return [];
 
@@ -98,6 +99,13 @@ export function buildBenefitConditionErrors(
   const implantModifiers = modifiers.filter(
     (m) => qualifierTypeMap.get(m.code) === "implant"
   );
+  const useLinkedImplantCount = options?.linkedImplantCount !== undefined;
+  const implantCount = useLinkedImplantCount
+    ? options!.linkedImplantCount!
+    : implantModifiers.length;
+  const hasImplants = useLinkedImplantCount
+    ? implantCount > 0
+    : implantModifiers.length > 0;
 
   const errors: string[] = [];
 
@@ -129,24 +137,206 @@ export function buildBenefitConditionErrors(
     }
 
     if (cond.implant_applicable) {
-      if (implantModifiers.length === 0) {
-        errors.push("An implant modifier is required for this benefit");
-      } else if (!cond.multiple_implants_allowed && implantModifiers.length > 1) {
+      if (implantCount === 0) {
+        errors.push("At least one implant is required for this benefit");
+      } else if (!cond.multiple_implants_allowed && implantCount > 1) {
         errors.push("Only one implant is allowed");
       } else if (
         cond.maximum_implants_allowed > 0 &&
-        implantModifiers.length > cond.maximum_implants_allowed
+        implantCount > cond.maximum_implants_allowed
       ) {
         errors.push(
-          `Maximum ${cond.maximum_implants_allowed} implant(s) allowed, ${implantModifiers.length} selected`
+          `Maximum ${cond.maximum_implants_allowed} implant(s) allowed, ${implantCount} selected`
         );
       }
-    } else if (implantModifiers.length > 0) {
+    } else if (hasImplants) {
       errors.push("Implants are not applicable for this benefit");
     }
   }
 
   return [...new Set(errors)];
+}
+
+type ImplantLinkableItem = {
+  product_or_service?: Coding;
+  _implant_parent_sequence?: number;
+  _implant_code?: string;
+};
+
+/** Index of an existing implant line item for a parent, or -1 when none. */
+export function findExistingImplantItemIndex(
+  items: ImplantLinkableItem[],
+  parentSequence: number,
+  implantCode: string,
+): number {
+  const linkedIndex = items.findIndex(
+    (it) =>
+      it._implant_parent_sequence === parentSequence &&
+      (it._implant_code === implantCode ||
+        it.product_or_service?.code === implantCode),
+  );
+  if (linkedIndex >= 0) return linkedIndex;
+
+  return items.findIndex(
+    (it) =>
+      !it._implant_parent_sequence &&
+      it.product_or_service?.code === implantCode,
+  );
+}
+
+/**
+ * When an implant is already a separate line item, remove it from parent
+ * modifiers so prefilled claims/CE records do not double-represent implants.
+ */
+export function stripImplantModifiersWhenLineItemExists<
+  T extends ImplantLinkableItem & { modifier?: Coding[] },
+>(items: T[]): T[] {
+  const lineItemProductCodes = new Set(
+    items
+      .map((it) => it.product_or_service?.code)
+      .filter((code): code is string => Boolean(code)),
+  );
+  return items.map((item) => ({
+    ...item,
+    modifier: (item.modifier ?? []).filter(
+      (m) => !lineItemProductCodes.has(m.code),
+    ),
+  }));
+}
+
+type ImplantPrefillItem = ImplantLinkableItem & {
+  sequence?: number;
+  category?: Coding;
+  modifier?: Coding[];
+  diagnosis_sequence?: number[];
+  procedure_sequence?: number[];
+  care_team_sequence?: number[];
+};
+
+function sequencesOverlap(
+  parent: ImplantPrefillItem,
+  child: ImplantPrefillItem,
+): boolean {
+  const hasOverlap = (a?: number[], b?: number[]) =>
+    (a ?? []).some((s) => (b ?? []).includes(s));
+  return (
+    hasOverlap(parent.diagnosis_sequence, child.diagnosis_sequence) ||
+    hasOverlap(parent.procedure_sequence, child.procedure_sequence) ||
+    hasOverlap(parent.care_team_sequence, child.care_team_sequence)
+  );
+}
+
+function isLikelyImplantProductCode(code: string): boolean {
+  return code.startsWith("IMP");
+}
+
+function findImplantParentCandidate<T extends ImplantPrefillItem>(
+  items: T[],
+  implantItem: T,
+): T | undefined {
+  const implantCode = implantItem.product_or_service?.code;
+  if (!implantCode) return undefined;
+
+  return items.find(
+    (other) =>
+      other.sequence !== implantItem.sequence &&
+      !other._implant_parent_sequence &&
+      other.product_or_service?.code !== implantCode &&
+      !isLikelyImplantProductCode(other.product_or_service?.code ?? "") &&
+      other.category?.code === implantItem.category?.code &&
+      sequencesOverlap(other, implantItem),
+  );
+}
+
+/**
+ * Normalizes prefilled items so implants exist only as linked line items:
+ * strips duplicate modifier entries and links orphan implant items to parents.
+ */
+export function normalizeImplantItemsFromPrefill<T extends ImplantPrefillItem>(
+  items: T[],
+): T[] {
+  const parentSequenceByImplantCode = new Map<string, number>();
+  for (const item of items) {
+    if (item.sequence == null) continue;
+    for (const modifier of item.modifier ?? []) {
+      const hasMatchingLineItem = items.some(
+        (other) =>
+          other.sequence !== item.sequence &&
+          other.product_or_service?.code === modifier.code,
+      );
+      if (hasMatchingLineItem) {
+        parentSequenceByImplantCode.set(modifier.code, item.sequence);
+      }
+    }
+  }
+
+  const stripped = stripImplantModifiersWhenLineItemExists(items);
+
+  return stripped.map((item) => {
+    const code = item.product_or_service?.code;
+    if (!code || item._implant_parent_sequence) return item;
+
+    const parentSequenceFromModifier = parentSequenceByImplantCode.get(code);
+    if (parentSequenceFromModifier != null) {
+      return {
+        ...item,
+        _implant_parent_sequence: parentSequenceFromModifier,
+        _implant_code: code,
+      };
+    }
+
+    if (!isLikelyImplantProductCode(code)) return item;
+
+    const parent = findImplantParentCandidate(stripped, item);
+    if (parent?.sequence == null) return item;
+
+    return {
+      ...item,
+      _implant_parent_sequence: parent.sequence,
+      _implant_code: code,
+    };
+  });
+}
+
+/** Count implant line items associated with a parent (linked or prefilled orphan). */
+export function countImplantLineItemsForParent<
+  T extends ImplantPrefillItem,
+>(items: T[], parentSequence: number): number {
+  const parent = items.find((it) => it.sequence === parentSequence);
+  if (!parent) return 0;
+
+  return items.filter((it) => {
+    if (it._implant_parent_sequence === parentSequence) return true;
+    if (it._implant_parent_sequence != null) return false;
+    const code = it.product_or_service?.code;
+    if (!code || !isLikelyImplantProductCode(code)) return false;
+    return (
+      it.category?.code === parent.category?.code &&
+      sequencesOverlap(parent, it)
+    );
+  }).length;
+}
+
+/** Implant line items to display on a parent's modifier UI. */
+export function getLinkedImplantsForParent<
+  T extends ImplantPrefillItem,
+>(items: T[], parentSequence: number): Coding[] {
+  const parent = items.find((it) => it.sequence === parentSequence);
+  if (!parent) return [];
+
+  return items
+    .filter((it) => {
+      if (it._implant_parent_sequence === parentSequence) return true;
+      if (it._implant_parent_sequence != null) return false;
+      const code = it.product_or_service?.code;
+      if (!code || !isLikelyImplantProductCode(code)) return false;
+      return (
+        it.category?.code === parent.category?.code &&
+        sequencesOverlap(parent, it)
+      );
+    })
+    .map((it) => it.product_or_service)
+    .filter((coding): coding is Coding => Boolean(coding?.code));
 }
 
 type ItemWithProduct = {

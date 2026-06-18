@@ -21,6 +21,7 @@ import {
   mergeServicedPeriod,
   parsePositiveNumber,
 } from "@/lib/prefill";
+import { normalizeImplantItemsFromPrefill } from "@/lib/benefit-item-validation";
 import { FC, useEffect, useMemo, useRef, useState } from "react";
 import {
   PlanLevelQuestionnairesSection,
@@ -131,7 +132,7 @@ function mapClaimItems(
   claim: Claim,
   encounterPeriod?: ReturnType<typeof encounterServicedPeriod>,
 ): ClaimFormValues["item"] {
-  return (claim.item || []).map((it) => ({
+  const items = (claim.item || []).map((it) => ({
     sequence: it.sequence,
     care_team_sequence: it.care_team_sequence || [],
     diagnosis_sequence: it.diagnosis_sequence || [],
@@ -150,6 +151,7 @@ function mapClaimItems(
     unit_price: 0,
     factor: it.factor,
   }));
+  return normalizeImplantItemsFromPrefill(items);
 }
 
 function mapClaimToFormValues(
@@ -293,7 +295,7 @@ function buildCePrefillValues(
       diagnosis: ceDiagnosis,
       supporting_info: supportingInfo,
       insurance: mapClaimInsurance(ceInsurance),
-      item: items,
+      item: normalizeImplantItemsFromPrefill(items),
       questionnaire_responses: [],
     },
     encounter,
@@ -397,7 +399,7 @@ function overlayClaimOnCePrefill(
             }
           : r,
       ),
-      item: mergedItems,
+      item: normalizeImplantItemsFromPrefill(mergedItems),
     },
     encounter,
     encounterDiagnoses ?? [],
@@ -1028,6 +1030,37 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       if (updatedValues.supporting_info) {
         updatedValues.supporting_info.forEach((info) => {
           delete (info as Record<string, unknown>)._is_plan_level;
+        });
+      }
+
+      if (updatedValues.item) {
+        const implantProductCodes = new Set(
+          updatedValues.item
+            .filter((it) => it._implant_parent_sequence != null)
+            .map((it) => it._implant_code ?? it.product_or_service?.code)
+            .filter((code): code is string => Boolean(code)),
+        );
+        updatedValues.item = updatedValues.item.map((item) => {
+          const {
+            _implant_parent_sequence: _ips,
+            _implant_code: _ic,
+            _mandatory_docs_error: _mde,
+            _mandatory_questionnaires_error: _mqe,
+            _mandatory_care_team_error: _mcte,
+            _mandatory_diagnosis_error: _mdxe,
+            _mandatory_charge_items_error: _mcie,
+            _mandatory_procedure_error: _mpe,
+            _mandatory_supporting_info_error: _msie,
+            _amount_cap_error: _ace,
+            _condition_errors: _ce,
+            ...rest
+          } = item;
+          return {
+            ...rest,
+            modifier: (rest.modifier ?? []).filter(
+              (m) => !implantProductCodes.has(m.code),
+            ),
+          };
         });
       }
 

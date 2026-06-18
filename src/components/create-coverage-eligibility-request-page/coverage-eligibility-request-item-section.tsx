@@ -1,4 +1,3 @@
-import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import {
   AlertCircleIcon,
   ChevronDownIcon,
@@ -9,7 +8,20 @@ import {
   ShoppingBasketIcon,
   XIcon,
 } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from "@/components/ui/card";
 import { FileIcon, TrashIcon } from "lucide-react";
+import {
+  FormCardErrorFooter,
+  SectionErrorMessage,
+  SectionValidationBadges,
+  cardErrorBorderClass,
+  sectionErrorBorderClass,
+} from "@/components/common/form-card-error";
 import {
   FormControl,
   FormField,
@@ -18,30 +30,12 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { UseFormReturn, useController, useFieldArray } from "react-hook-form";
-
-import Autocomplete from "../ui/autocomplete";
-import { Badge } from "../ui/badge";
-import BenefitSearchSelect from "../common/benefit-search-select";
-import { Button } from "../ui/button";
-import { Coding } from "@/types/base";
-import { Input } from "../ui/input";
-import { Label } from "../ui/label";
-import { Textarea } from "../ui/textarea";
-import ValuesetSelect from "../common/valueset-select";
-import { apis } from "@/apis";
-import { InlineLoading } from "@/components/common/loading-spinner";
-import { Skeleton } from "@/components/ui/skeleton";
-import {
-  FormCardErrorFooter,
-  SectionErrorMessage,
-  SectionValidationBadges,
-  cardErrorBorderClass,
-  sectionErrorBorderClass,
-} from "@/components/common/form-card-error";
-import { cn } from "@/lib/utils";
 import {
   buildBenefitConditionErrors,
   buildCrossItemErrors,
+  countImplantLineItemsForParent,
+  findExistingImplantItemIndex,
+  getLinkedImplantsForParent,
   getQualifierTypeByCode,
   isModifierRequired,
 } from "@/lib/benefit-item-validation";
@@ -53,9 +47,23 @@ import {
   hasSectionValidationIssue,
   syncVirtualFormErrorFromForm,
 } from "@/lib/form-card-validation";
-import { createCoverageEligibilityRequestFormSchema } from "./schema";
-import { useQueries, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { useQueries, useQuery } from "@tanstack/react-query";
+
+import Autocomplete from "../ui/autocomplete";
+import { Badge } from "../ui/badge";
+import BenefitSearchSelect from "../common/benefit-search-select";
+import { Button } from "../ui/button";
+import { Coding } from "@/types/base";
+import { InlineLoading } from "@/components/common/loading-spinner";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "../ui/textarea";
+import ValuesetSelect from "../common/valueset-select";
+import { apis } from "@/apis";
+import { cn } from "@/lib/utils";
+import { createCoverageEligibilityRequestFormSchema } from "./schema";
 import { z } from "zod";
 
 interface CoverageEligibilityRequestItemSectionProps {
@@ -63,7 +71,10 @@ interface CoverageEligibilityRequestItemSectionProps {
     z.infer<typeof createCoverageEligibilityRequestFormSchema>
   >;
   /** Encounter diagnoses pre-mapped to the form's diagnosis shape, injected into every new item. */
-  defaultItemDiagnoses?: { diagnosis_reference?: string; diagnosis_code?: { system: string; code: string; display?: string } }[];
+  defaultItemDiagnoses?: {
+    diagnosis_reference?: string;
+    diagnosis_code?: { system: string; code: string; display?: string };
+  }[];
   /** When adding items to an auth-requirements CE, only benefits with enhancement allowed are permitted. */
   requireEnhancementAllowed?: boolean;
   /** Sequences of items prefilled from the linked CE — exempt from enhancement validation. */
@@ -74,7 +85,6 @@ const BENEFIT_CATEGORY_SYSTEM =
   "https://nrces.in/ndhm/fhir/r4/ValueSet/ndhm-benefitcategory";
 const PROCEDURE_CODE_SYSTEM =
   "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-procedures-code";
-
 
 export function CoverageEligibilityRequestItemSection({
   form,
@@ -156,23 +166,41 @@ export function CoverageEligibilityRequestItemSection({
     form,
   ]);
 
-  // Adds an auto-generated, locked line item for a selected implant modifier.
+  // Adds an auto-generated, locked line item for a selected implant.
   // The implant code becomes the new item's product/service; the item is
-  // linked back to its parent so it can be swapped/removed when the parent's
-  // implant modifier changes.
+  // linked back to its parent so it can be removed when the parent changes.
   const addImplantLineItem = (parentIndex: number, implant: Coding) => {
     const parentSequence = form.getValues(`item.${parentIndex}.sequence`);
     const parentCategory = form.getValues(`item.${parentIndex}.category`);
     const allItems = form.getValues("item") ?? [];
-    if (
-      allItems.some(
-        (it) =>
-          it._implant_parent_sequence === parentSequence &&
-          it._implant_code === implant.code,
-      )
-    ) {
+    const existingIndex = findExistingImplantItemIndex(
+      allItems,
+      parentSequence,
+      implant.code,
+    );
+    if (existingIndex >= 0) {
+      const existing = allItems[existingIndex];
+      if (
+        existing._implant_parent_sequence === parentSequence &&
+        existing._implant_code === implant.code
+      ) {
+        return;
+      }
+      form.setValue(
+        `item.${existingIndex}._implant_parent_sequence`,
+        parentSequence,
+        { shouldDirty: false },
+      );
+      form.setValue(`item.${existingIndex}._implant_code`, implant.code, {
+        shouldDirty: false,
+      });
+      void form.trigger("item");
       return;
     }
+    const existingSupportingInfo = form.getValues("supporting_info") ?? [];
+    const allSupportingInfoSequences = existingSupportingInfo.map(
+      (s) => s.sequence,
+    );
     const nextSequence =
       Math.max(0, ...allItems.map((f) => f.sequence ?? 0)) + 1;
     append({
@@ -181,8 +209,8 @@ export function CoverageEligibilityRequestItemSection({
       product_or_service: implant,
       modifier: [],
       quantity: { value: 1 },
-      diagnosis: [],
-      supporting_info_sequence: [],
+      diagnosis: defaultItemDiagnoses.map((d) => ({ ...d })),
+      supporting_info_sequence: allSupportingInfoSequences,
       _implant_parent_sequence: parentSequence,
       _implant_code: implant.code,
     });
@@ -190,7 +218,7 @@ export function CoverageEligibilityRequestItemSection({
   };
 
   // Removes the auto-generated line item associated with a given parent item
-  // and implant modifier code (no-op when none exists).
+  // and implant code (no-op when none exists).
   const removeImplantLineItem = (
     parentSequence: number,
     implantCode: string,
@@ -320,7 +348,7 @@ export function CoverageEligibilityRequestItemSection({
                           {isProductLocked && (
                             <p className="text-xs text-muted-foreground">
                               {isImplantItem
-                                ? "Auto-added implant. Manage it from the originating item's implant modifier."
+                                ? "Auto-added implant. Manage it from the originating item."
                                 : "Product is locked. Remove this item and add a new one to change it."}
                             </p>
                           )}
@@ -391,12 +419,8 @@ export function CoverageEligibilityRequestItemSection({
                   }
                 />
 
-                {!isImplantItem && (
-                  <>
-                    <AddDiagnosisSection form={form} index={index} />
-                    <AddSupportingInfoSection form={form} index={index} />
-                  </>
-                )}
+                <AddDiagnosisSection form={form} index={index} />
+                <AddSupportingInfoSection form={form} index={index} />
 
                 <div className="grid grid-cols-2 gap-4">
                   <FormField
@@ -562,12 +586,20 @@ function ModifierField({
   planId: string | null;
   /** When true (auto-generated implant line items), the modifier UI is hidden. */
   disabled?: boolean;
-  /** Called when an implant-type modifier is selected on this item. */
+  /** Called when an implant-type qualifier is selected on this item. */
   onImplantAdd?: (implant: Coding) => void;
-  /** Called when an implant-type modifier is removed from this item. */
+  /** Called when an implant-type qualifier is removed from this item. */
   onImplantRemove?: (parentSequence: number, implantCode: string) => void;
 }) {
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
+  const parentSequence = form.watch(`item.${index}.sequence`);
+  const rawAllItems = form.watch("item");
+
+  const linkedImplants = useMemo(() => {
+    const allItems = rawAllItems ?? [];
+    if (parentSequence == null) return [];
+    return getLinkedImplantsForParent(allItems, parentSequence);
+  }, [rawAllItems, parentSequence]);
 
   const { data: benefitDetail, isLoading } = useQuery({
     queryKey: ["insurancePlanBenefit", "lookup", planId, productCode],
@@ -629,16 +661,24 @@ function ModifierField({
                 onChange={(code) => {
                   const qualifier = qualifiers.find((q) => q.code === code);
                   if (!qualifier) return;
-                  const existing = field.value ?? [];
+                  const isImplant =
+                    qualifierTypeByCode.get(qualifier.code) === "implant";
+                  if (isImplant) {
+                    if (linkedImplants.some((i) => i.code === qualifier.code)) {
+                      return;
+                    }
+                    onImplantAdd?.(qualifier);
+                    return;
+                  }
+                  const existing = (field.value ?? []).filter(
+                    (c) => qualifierTypeByCode.get(c.code) !== "implant",
+                  );
                   if (existing.some((c) => c.code === qualifier.code)) return;
                   form.setValue(
                     `item.${index}.modifier`,
                     [...existing, qualifier],
                     { shouldValidate: true, shouldDirty: true },
                   );
-                  if (qualifierTypeByCode.get(qualifier.code) === "implant") {
-                    onImplantAdd?.(qualifier);
-                  }
                 }}
                 disabled={!productCode || isLoading}
                 placeholder={
@@ -657,26 +697,41 @@ function ModifierField({
                 }
               />
               <div className="flex flex-wrap gap-2">
-                {(field.value ?? []).map((code) => (
-                  <Badge key={code.code} className="flex gap-2">
-                    <span className="font-mono">{code.code}</span>
-                    {code.display && (
-                      <span className="opacity-80"> – {code.display}</span>
+                {(field.value ?? [])
+                  .filter(
+                    (code) => qualifierTypeByCode.get(code.code) !== "implant",
+                  )
+                  .map((code) => (
+                    <Badge key={code.code} className="flex gap-2">
+                      <span className="font-mono">{code.code}</span>
+                      {code.display && (
+                        <span className="opacity-80"> – {code.display}</span>
+                      )}
+                      <XIcon
+                        className="w-4 h-4 cursor-pointer"
+                        onClick={() => {
+                          form.setValue(
+                            `item.${index}.modifier`,
+                            (field.value ?? []).filter(
+                              (c) => c.code !== code.code,
+                            ),
+                            { shouldValidate: true, shouldDirty: true },
+                          );
+                        }}
+                      />
+                    </Badge>
+                  ))}
+                {linkedImplants.map((implant) => (
+                  <Badge key={implant.code} className="flex gap-2">
+                    <span className="font-mono">{implant.code}</span>
+                    {implant.display && (
+                      <span className="opacity-80"> – {implant.display}</span>
                     )}
                     <XIcon
                       className="w-4 h-4 cursor-pointer"
                       onClick={() => {
-                        form.setValue(
-                          `item.${index}.modifier`,
-                          field.value.filter((c) => c.code !== code.code),
-                          { shouldValidate: true, shouldDirty: true },
-                        );
-                        if (qualifierTypeByCode.get(code.code) === "implant") {
-                          const parentSequence = form.getValues(
-                            `item.${index}.sequence`,
-                          );
-                          onImplantRemove?.(parentSequence, code.code);
-                        }
+                        if (parentSequence == null) return;
+                        onImplantRemove?.(parentSequence, implant.code);
                       }}
                     />
                   </Badge>
@@ -697,7 +752,9 @@ function CEItemValidationEffects({
   planId,
   crossItemErrorsKey = "",
 }: {
-  form: UseFormReturn<z.infer<typeof createCoverageEligibilityRequestFormSchema>>;
+  form: UseFormReturn<
+    z.infer<typeof createCoverageEligibilityRequestFormSchema>
+  >;
   index: number;
   planId: string | null;
   crossItemErrorsKey?: string;
@@ -705,12 +762,23 @@ function CEItemValidationEffects({
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
   const quantityValue = form.watch(`item.${index}.quantity.value`);
   const rawModifiers = form.watch(`item.${index}.modifier`);
+  const isImplantItem = Boolean(
+    form.watch(`item.${index}._implant_parent_sequence`),
+  );
+  const currentSequence = form.watch(`item.${index}.sequence`);
+  const rawAllItems = form.watch("item");
 
   const modifiers = useMemo(
     () => rawModifiers ?? [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(rawModifiers)]
+    [JSON.stringify(rawModifiers)],
   );
+
+  const linkedImplantCount = useMemo(() => {
+    const allItems = rawAllItems ?? [];
+    if (isImplantItem || currentSequence == null) return undefined;
+    return countImplantLineItemsForParent(allItems, currentSequence);
+  }, [rawAllItems, currentSequence, isImplantItem]);
 
   const { data: benefitDetail } = useQuery({
     queryKey: ["insurancePlanBenefit", "lookup", planId, productCode],
@@ -724,17 +792,19 @@ function CEItemValidationEffects({
   });
 
   useEffect(() => {
-    const conditionErrors = buildBenefitConditionErrors(
-      benefitDetail,
-      Number(quantityValue),
-      modifiers
-    );
+    const conditionErrors = isImplantItem
+      ? []
+      : buildBenefitConditionErrors(
+          benefitDetail,
+          Number(quantityValue),
+          modifiers,
+          { linkedImplantCount: linkedImplantCount ?? 0 },
+        );
     const crossItemErrors = crossItemErrorsKey
       ? crossItemErrorsKey.split(" • ")
       : [];
     const allErrors = [...conditionErrors, ...crossItemErrors];
-    const nextError =
-      allErrors.length > 0 ? allErrors.join(" • ") : undefined;
+    const nextError = allErrors.length > 0 ? allErrors.join(" • ") : undefined;
     const currentError = form.getValues(`item.${index}._condition_errors`);
 
     if (currentError !== nextError) {
@@ -747,6 +817,8 @@ function CEItemValidationEffects({
     benefitDetail,
     quantityValue,
     modifiers,
+    linkedImplantCount,
+    isImplantItem,
     crossItemErrorsKey,
     form,
     index,
@@ -768,7 +840,7 @@ function AddDiagnosisSection({
   const diagnosisFields = form.watch(`item.${index}.diagnosis`) || [];
   const diagnosisValidation = getCardSectionValidationCounts(
     diagnosisFields,
-    getCeDiagnosisCardError
+    getCeDiagnosisCardError,
   );
   const hasSectionError = hasSectionValidationIssue(diagnosisValidation);
 
@@ -784,12 +856,12 @@ function AddDiagnosisSection({
   useEffect(() => {
     const nextError = getSectionVirtualErrorMessage(
       diagnosisValidation,
-      "diagnosis"
+      "diagnosis",
     );
     syncVirtualFormErrorFromForm(
       form,
       `item.${index}._mandatory_diagnosis_error`,
-      nextError
+      nextError,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -813,14 +885,14 @@ function AddDiagnosisSection({
     form.setValue(
       `item.${index}.diagnosis`,
       [...currentDiagnoses, newDiagnosis],
-      { shouldValidate: true, shouldDirty: true }
+      { shouldValidate: true, shouldDirty: true },
     );
   };
 
   const removeDiagnosis = (diagnosisIndex: number) => {
     const currentDiagnoses = form.getValues(`item.${index}.diagnosis`) || [];
     const updatedDiagnoses = currentDiagnoses.filter(
-      (_, i) => i !== diagnosisIndex
+      (_, i) => i !== diagnosisIndex,
     );
     form.setValue(`item.${index}.diagnosis`, updatedDiagnoses, {
       shouldValidate: true,
@@ -833,7 +905,7 @@ function AddDiagnosisSection({
       <div
         className={cn(
           "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
-          hasSectionError && sectionErrorBorderClass
+          hasSectionError && sectionErrorBorderClass,
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -860,51 +932,53 @@ function AddDiagnosisSection({
           {diagnosisFields.map((diagnosis, diagnosisIndex) => {
             const cardError = getCeDiagnosisCardError(diagnosis);
             return (
-            <Card
-              key={diagnosisIndex}
-              className={cn(cardError && cardErrorBorderClass)}
-            >
-              <CardHeader>
-                <div className="flex justify-between items-center gap-2">
-                  <FormField
-                    control={form.control}
-                    name={`item.${index}.diagnosis.${diagnosisIndex}.diagnosis_code`}
-                    render={({ field }) => (
-                      <FormItem className="space-y-1.5 w-full">
-                        <FormLabel>
-                          Diagnosis Code
-                          <span className="text-red-500 text-sm ml-0.5">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <ValuesetSelect
-                            system="system-coverage-eligibility-request-item-diagnosis-code"
-                            value={field.value}
-                            onSelect={(value) => {
-                              form.setValue(
-                                `item.${index}.diagnosis.${diagnosisIndex}.diagnosis_code`,
-                                value,
-                                { shouldValidate: true, shouldDirty: true }
-                              );
-                            }}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeDiagnosis(diagnosisIndex)}
-                    className="mt-6"
-                  >
-                    <CircleMinusIcon className="h-6 w-6 text-danger-500" />
-                  </Button>
-                </div>
-              </CardHeader>
-              {cardError && <FormCardErrorFooter message={cardError} />}
-            </Card>
+              <Card
+                key={diagnosisIndex}
+                className={cn(cardError && cardErrorBorderClass)}
+              >
+                <CardHeader>
+                  <div className="flex justify-between items-center gap-2">
+                    <FormField
+                      control={form.control}
+                      name={`item.${index}.diagnosis.${diagnosisIndex}.diagnosis_code`}
+                      render={({ field }) => (
+                        <FormItem className="space-y-1.5 w-full">
+                          <FormLabel>
+                            Diagnosis Code
+                            <span className="text-red-500 text-sm ml-0.5">
+                              *
+                            </span>
+                          </FormLabel>
+                          <FormControl>
+                            <ValuesetSelect
+                              system="system-coverage-eligibility-request-item-diagnosis-code"
+                              value={field.value}
+                              onSelect={(value) => {
+                                form.setValue(
+                                  `item.${index}.diagnosis.${diagnosisIndex}.diagnosis_code`,
+                                  value,
+                                  { shouldValidate: true, shouldDirty: true },
+                                );
+                              }}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeDiagnosis(diagnosisIndex)}
+                      className="mt-6"
+                    >
+                      <CircleMinusIcon className="h-6 w-6 text-danger-500" />
+                    </Button>
+                  </div>
+                </CardHeader>
+                {cardError && <FormCardErrorFooter message={cardError} />}
+              </Card>
             );
           })}
 
@@ -937,11 +1011,11 @@ function AddSupportingInfoSection({
   const itemSupportingInfoSequences =
     form.watch(`item.${index}.supporting_info_sequence`) || [];
   const itemSpecificSupportingInfo = supportingInfoFields.filter((info) =>
-    itemSupportingInfoSequences.includes(info.sequence)
+    itemSupportingInfoSequences.includes(info.sequence),
   );
   const supportingInfoValidation = getCardSectionValidationCounts(
     itemSpecificSupportingInfo,
-    getCeSupportingInfoCardError
+    getCeSupportingInfoCardError,
   );
   const hasSectionError = hasSectionValidationIssue(supportingInfoValidation);
 
@@ -957,12 +1031,12 @@ function AddSupportingInfoSection({
   useEffect(() => {
     const nextError = getSectionVirtualErrorMessage(
       supportingInfoValidation,
-      "supporting information entry"
+      "supporting information entry",
     );
     syncVirtualFormErrorFromForm(
       form,
       `item.${index}._mandatory_supporting_info_error`,
-      nextError
+      nextError,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -991,7 +1065,7 @@ function AddSupportingInfoSection({
     form.setValue(
       "supporting_info",
       [...currentSupportingInfo, newSupportingInfo],
-      { shouldValidate: true, shouldDirty: true }
+      { shouldValidate: true, shouldDirty: true },
     );
 
     const currentSequences =
@@ -999,7 +1073,7 @@ function AddSupportingInfoSection({
     form.setValue(
       `item.${index}.supporting_info_sequence`,
       [...currentSequences, newSequence],
-      { shouldValidate: true, shouldDirty: true }
+      { shouldValidate: true, shouldDirty: true },
     );
   };
 
@@ -1008,7 +1082,7 @@ function AddSupportingInfoSection({
       <div
         className={cn(
           "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
-          hasSectionError && sectionErrorBorderClass
+          hasSectionError && sectionErrorBorderClass,
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -1034,7 +1108,7 @@ function AddSupportingInfoSection({
         <div className="space-y-4 pl-4">
           {itemSpecificSupportingInfo.map((info, infoIndex) => {
             const mainInfoIndex = supportingInfoFields.findIndex(
-              (i) => i.sequence === info.sequence
+              (i) => i.sequence === info.sequence,
             );
             const cardError = getCeSupportingInfoCardError(info);
             return (
@@ -1053,12 +1127,12 @@ function AddSupportingInfoSection({
                           form.getValues("supporting_info") || [];
                         const updatedSupportingInfo =
                           currentSupportingInfo.filter(
-                            (_, i) => i !== mainInfoIndex
+                            (_, i) => i !== mainInfoIndex,
                           );
                         form.setValue(
                           "supporting_info",
                           updatedSupportingInfo,
-                          { shouldValidate: true, shouldDirty: true }
+                          { shouldValidate: true, shouldDirty: true },
                         );
 
                         const items = form.getValues("item") || [];
@@ -1066,12 +1140,12 @@ function AddSupportingInfoSection({
                           const currentSequences =
                             item.supporting_info_sequence || [];
                           const updatedSequences = currentSequences.filter(
-                            (seq) => seq !== info.sequence
+                            (seq) => seq !== info.sequence,
                           );
                           form.setValue(
                             `item.${itemIndex}.supporting_info_sequence`,
                             updatedSequences,
-                            { shouldValidate: true, shouldDirty: true }
+                            { shouldValidate: true, shouldDirty: true },
                           );
                         });
                       }}
@@ -1097,12 +1171,12 @@ function AddSupportingInfoSection({
                               form.setValue(
                                 `supporting_info.${mainInfoIndex}.value_string`,
                                 e.target.value || undefined,
-                                { shouldValidate: true, shouldDirty: true }
+                                { shouldValidate: true, shouldDirty: true },
                               );
                               form.setValue(
                                 `supporting_info.${mainInfoIndex}.value_attachment`,
                                 undefined,
-                                { shouldValidate: true, shouldDirty: true }
+                                { shouldValidate: true, shouldDirty: true },
                               );
                             }}
                             placeholder="Enter supporting info value"
@@ -1145,7 +1219,7 @@ function SupportingInfoFileUpload({
 }) {
   const currentFile = form.watch(`supporting_info.${mainInfoIndex}.value_file`);
   const attachmentId = form.watch(
-    `supporting_info.${mainInfoIndex}.value_attachment`
+    `supporting_info.${mainInfoIndex}.value_attachment`,
   );
 
   const { data: existingFile, isLoading: isFileLoading } = useQuery({
@@ -1164,7 +1238,7 @@ function SupportingInfoFileUpload({
       form.setValue(
         `supporting_info.${mainInfoIndex}.value_string`,
         undefined,
-        { shouldValidate: true, shouldDirty: true }
+        { shouldValidate: true, shouldDirty: true },
       );
     }
   };
@@ -1229,7 +1303,7 @@ function SupportingInfoFileUpload({
                   <div className="flex-shrink-0">
                     {existingFile.extension &&
                     ["jpg", "jpeg", "png", "gif", "webp"].includes(
-                      existingFile.extension.toLowerCase()
+                      existingFile.extension.toLowerCase(),
                     ) ? (
                       <img
                         src={existingFile.read_signed_url}
