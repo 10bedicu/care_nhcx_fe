@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export type PolicyIdentifierTab = "abha" | "mobile" | "memberId" | "manual";
 
@@ -158,6 +158,7 @@ export function PolicyLookupTabs({
           <ManualPolicyEntry
             abhaValue={abhaValue}
             mobileValue={mobileValue}
+            memberIdValue={memberIdValue}
             onAdd={onManualAdd}
           />
         </TabsContent>
@@ -169,15 +170,23 @@ export function PolicyLookupTabs({
 interface ManualPolicyEntryProps {
   abhaValue: string;
   mobileValue: string;
+  memberIdValue: string;
   onAdd: (policy: Policy) => void;
 }
 
 function ManualPolicyEntry({
   abhaValue,
   mobileValue,
+  memberIdValue,
   onAdd,
 }: ManualPolicyEntryProps) {
-  const [memberId, setMemberId] = useState("");
+  const [memberId, setMemberId] = useState(memberIdValue);
+
+  useEffect(() => {
+    if (memberIdValue) {
+      setMemberId(memberIdValue);
+    }
+  }, [memberIdValue]);
   const [payerId, setPayerId] = useState(MANUAL_PAYER_OPTIONS[0].value);
   const [productId, setProductId] = useState("");
   const [productName, setProductName] = useState("");
@@ -201,7 +210,7 @@ function ManualPolicyEntry({
       processingid: payerId,
       policy_period: null,
     });
-    setMemberId("");
+    setMemberId(memberIdValue);
     setProductId("");
     setProductName("");
   };

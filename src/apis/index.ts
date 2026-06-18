@@ -28,6 +28,7 @@ import { DiagnosticReport } from "@/types/diagnostic_report";
 import { Encounter } from "@/types/encounter";
 import { HealthFacility } from "@/types/health_facility";
 import { PaginatedResponse } from "./types";
+import { Patient } from "@/types/patient";
 import { PaymentNotice } from "@/types/payment";
 import { Policy } from "@/types/policy";
 import { Provider } from "@/types/provider";
@@ -355,6 +356,12 @@ export const apis = {
   abhaNumber: {
     get: async (patientId: string) => {
       return await request<AbhaNumber>(`/api/abdm/abha_number/${patientId}/`);
+    },
+  },
+
+  patient: {
+    get: async (patientId: string) => {
+      return await request<Patient>(`/api/v1/patient/${patientId}/`);
     },
   },
 

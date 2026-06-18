@@ -109,6 +109,19 @@ const PREREQUISITE_DEFINITIONS: PrerequisiteDefinition[] = [
   },
 ];
 
+export function resolvePmjayMemberId(patient: Patient): string | undefined {
+  const memberExtension = (patient.extensions?.[PMJAY_MEMBER_EXTENSION] ??
+    {}) as { member_id?: string; parent_member_id?: string };
+
+  const age = resolvePatientAge(patient);
+
+  if (age !== undefined && age <= CHILD_AGE_THRESHOLD) {
+    return memberExtension.parent_member_id?.trim() || undefined;
+  }
+
+  return memberExtension.member_id?.trim() || undefined;
+}
+
 export function resolvePatientAge(patient: Patient): number | undefined {
   if (patient.date_of_birth) {
     const dob = new Date(patient.date_of_birth);

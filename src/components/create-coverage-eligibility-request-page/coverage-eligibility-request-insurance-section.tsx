@@ -25,6 +25,7 @@ import { Checkbox } from "../ui/checkbox";
 import { Policy } from "@/types/policy";
 import { UseFormReturn } from "react-hook-form";
 import { apis } from "@/apis";
+import { resolvePmjayMemberId } from "@/components/nhcx-encounter-tab/flow-prerequisites";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
@@ -55,15 +56,25 @@ export function CoverageEligibilityRequestInsuranceSection({
 }: CoverageEligibilityRequestInsuranceSectionProps) {
   const [activeTab, setActiveTab] = useState<PolicyIdentifierTab>("abha");
   const [mobileInput, setMobileInput] = useState("");
-  const [memberIdInput, setMemberIdInput] = useState("SBXSTG007");
+  const [memberIdInput, setMemberIdInput] = useState("");
   const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
   const [manualPolicies, setManualPolicies] = useState<Policy[]>([]);
 
+  const patientId = form.watch("patient");
+
   const { data: abhaNumber, isFetching: isAbhaLoading } = useQuery({
-    queryKey: ["abhaNumber", form.getValues("patient")],
-    queryFn: () => apis.abhaNumber.get(form.getValues("patient")),
-    enabled: !!form.getValues("patient") && !readOnly,
+    queryKey: ["abhaNumber", patientId],
+    queryFn: () => apis.abhaNumber.get(patientId),
+    enabled: !!patientId && !readOnly,
   });
+
+  const { data: patient } = useQuery({
+    queryKey: ["patient", patientId],
+    queryFn: () => apis.patient.get(patientId),
+    enabled: !!patientId && !readOnly,
+  });
+
+  const pmjayMemberId = patient ? resolvePmjayMemberId(patient) : undefined;
 
   useEffect(() => {
     if (readOnly) return;
@@ -71,6 +82,13 @@ export function CoverageEligibilityRequestInsuranceSection({
       setMobileInput(abhaNumber.mobile);
     }
   }, [abhaNumber?.mobile, readOnly]);
+
+  useEffect(() => {
+    if (readOnly) return;
+    if (pmjayMemberId) {
+      setMemberIdInput(pmjayMemberId);
+    }
+  }, [pmjayMemberId, readOnly]);
 
   useEffect(() => {
     if (readOnly) return;
