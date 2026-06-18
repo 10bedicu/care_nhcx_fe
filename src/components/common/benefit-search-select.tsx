@@ -9,9 +9,26 @@ import { useQuery } from "@tanstack/react-query";
 type BenefitSearchSelectProps = {
   insurancePlanId: string | null;
   value: Coding | undefined;
+  /** Used to distinguish benefits that share the same procedure code. */
+  categoryCode?: string;
+  categoryDisplay?: string;
   onSelect: (benefit: InsurancePlanBenefit) => void;
   disabled?: boolean;
 };
+
+function formatBenefitLabel(
+  typeCode: string,
+  typeDisplay: string,
+  categoryCode?: string,
+  categoryDisplay?: string,
+) {
+  const procedure = `${typeCode} · ${typeDisplay}`;
+  if (categoryCode || categoryDisplay) {
+    const category = [categoryCode, categoryDisplay].filter(Boolean).join(" · ");
+    return `${category} · ${procedure}`;
+  }
+  return procedure;
+}
 
 /**
  * Searches InsurancePlanBenefit records instead of a FHIR valueset.
@@ -24,6 +41,8 @@ type BenefitSearchSelectProps = {
 export default function BenefitSearchSelect({
   insurancePlanId,
   value,
+  categoryCode,
+  categoryDisplay,
   onSelect,
   disabled,
 }: BenefitSearchSelectProps) {
@@ -54,24 +73,40 @@ export default function BenefitSearchSelect({
   const results = data?.results ?? [];
 
   const options = results.map((b) => ({
-    label: `${b.type_code} · ${b.type_display}`,
+    label: formatBenefitLabel(
+      b.type_code,
+      b.type_display,
+      b.coverage_type_code,
+      b.coverage_type_display,
+    ),
     value: b.id,
   }));
 
-  const selectedId =
-    value?.code ? (results.find((b) => b.type_code === value.code)?.id ?? null) : null;
+  const selectedId = value?.code
+    ? (results.find(
+        (b) =>
+          b.type_code === value.code &&
+          (!categoryCode || b.coverage_type_code === categoryCode),
+      )?.id ?? null)
+    : null;
 
   // When the current value isn't in the page of results, add a synthetic option
   // so the control still shows the selected display text
   if (value?.code && !selectedId) {
     options.unshift({
-      label: value.display ? `${value.code} · ${value.display}` : value.code,
-      value: `__existing__${value.code}`,
+      label: formatBenefitLabel(
+        value.code,
+        value.display ?? value.code,
+        categoryCode,
+        categoryDisplay,
+      ),
+      value: `__existing__${value.code}__${categoryCode ?? ""}`,
     });
   }
 
   const effectiveValue =
-    selectedId ?? (value?.code ? `__existing__${value.code}` : undefined);
+    selectedId ??
+    (value?.code ? `__existing__${value.code}__${categoryCode ?? ""}` : undefined);
 
   return (
     <Autocomplete

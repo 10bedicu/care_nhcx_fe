@@ -899,6 +899,12 @@ export function ClaimItemSection({
                             <BenefitSearchSelect
                               insurancePlanId={planId}
                               value={field.value}
+                              categoryCode={
+                                form.watch(`item.${index}.category`)?.code
+                              }
+                              categoryDisplay={
+                                form.watch(`item.${index}.category`)?.display
+                              }
                               onSelect={(benefit) => {
                                 form.setValue(
                                   `item.${index}.product_or_service`,
