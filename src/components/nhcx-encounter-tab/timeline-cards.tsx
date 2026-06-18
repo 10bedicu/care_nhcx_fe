@@ -1,3 +1,4 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertCircleIcon,
   ArrowRightIcon,
@@ -13,10 +14,15 @@ import {
 } from "lucide-react";
 import { FC, ReactNode, useState } from "react";
 import {
+  NDHM_CANCEL_REASON_CODES,
+  NDHM_REPROCESS_REASON_CODES,
+} from "@/lib/ndhm-reason-codes";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { cn, toast } from "@/lib/utils";
 import {
   deriveClaimOutcome,
   deriveValidationOutcome,
@@ -25,20 +31,14 @@ import {
 } from "./flow";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Claim } from "@/types/claim";
-import { Coding } from "@/types/base";
 import ClaimCard from "../claim-encounter-tab/claim-card";
+import { Coding } from "@/types/base";
 import CoverageEligibilityCard from "../coverage-encounter-tab/coverage-eligibility-card";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
-import {
-  NDHM_CANCEL_REASON_CODES,
-  NDHM_REPROCESS_REASON_CODES,
-} from "@/lib/ndhm-reason-codes";
 import { ReasonDialog } from "./reason-dialog";
 import { apis } from "@/apis";
-import { cn, toast } from "@/lib/utils";
 
 interface BaseProps {
   encounterId: string;
@@ -380,7 +380,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
       toast.success(
         claim.use === "preauthorization"
           ? "Pre-authorization cancelled"
-          : "Claim cancelled"
+          : "Claim cancelled",
       );
       queryClient.invalidateQueries({ queryKey: ["claims", encounterId] });
       setCancelOpen(false);
@@ -442,8 +442,18 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   let headerBanner: ReactNode = null;
 
   // Add more items + Cancel are available on the latest pre-authorization card
-  // once a payer response is in (so the user can course-correct). Queried
-  // records skip Add more items; cancelled records skip Cancel.
+  // after a payer response is in. While awaiting acknowledgement, only Cancel
+  // is offered. Queried records skip Add more items; cancelled records skip Cancel.
+  const preauthCancelMenuItem: MenuItem | undefined =
+    isCurrent && isPreauth && outcome !== "cancelled"
+      ? {
+          label: "Cancel Pre-Authorization",
+          icon: <BanIcon className="h-4 w-4" />,
+          onClick: () => setCancelOpen(true),
+          destructive: true,
+        }
+      : undefined;
+
   const preauthResponseExtras: MenuItem[] = [];
   if (isCurrent && isPreauth) {
     if (outcome !== "queried") {
@@ -453,13 +463,8 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
         to: `coverages/new?purpose=auth-requirements${ceQueryParam}`,
       });
     }
-    if (outcome !== "cancelled") {
-      preauthResponseExtras.push({
-        label: "Cancel Pre-Authorization",
-        icon: <BanIcon className="h-4 w-4" />,
-        onClick: () => setCancelOpen(true),
-        destructive: true,
-      });
+    if (preauthCancelMenuItem) {
+      preauthResponseExtras.push(preauthCancelMenuItem);
     }
   }
 
@@ -486,6 +491,13 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
       if (isPreauth) {
         primaryActions = [
           <ActionButton
+            key="raise-auth-requirements"
+            to={`coverages/new?purpose=auth-requirements${ceQueryParam}`}
+            label="Raise new Auth Requirements"
+            icon={<ShieldAlertIcon className="h-4 w-4" />}
+            variant="outline"
+          />,
+          <ActionButton
             key="raise-new"
             to={buildClaimNewUrl({
               use: "preauthorization",
@@ -500,7 +512,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
       // Created but not yet submitted to the payer.
       primaryActions = [submitAction];
     } else if (dispatchStatus === "awaiting") {
-      // Submitted; waiting for the payer. No actions.
+      // Submitted; waiting for the payer.
       headerBanner = (
         <PendingResponseBanner
           message={
@@ -510,6 +522,9 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
           }
         />
       );
+      if (preauthCancelMenuItem) {
+        extraMenuItems = [preauthCancelMenuItem];
+      }
     } else if (dispatchStatus === "error") {
       headerBanner = (
         <ResponseErrorBanner
@@ -673,4 +688,4 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
       />
     </>
   );
-};
+};;
