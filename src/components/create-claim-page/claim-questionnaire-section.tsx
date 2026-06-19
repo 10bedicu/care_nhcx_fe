@@ -1102,8 +1102,17 @@ export function AddQuestionnaireSection({
     });
 
   const showValidationIssue = hasSectionValidationIssue(questionnaireValidation);
+  const isItemDisabled = form.watch(`item.${index}._is_disabled`);
 
   useEffect(() => {
+    if (isItemDisabled) {
+      syncVirtualFormErrorFromForm(
+        form,
+        `item.${index}._mandatory_questionnaires_error`,
+        undefined,
+      );
+      return;
+    }
     const nextError = getSectionVirtualErrorMessage(
       questionnaireValidation,
       "questionnaire"
@@ -1120,6 +1129,7 @@ export function AddQuestionnaireSection({
     questionnaireValidation.requiredMissing,
     questionnaireValidation.incomplete,
     requiredRequirements.length,
+    isItemDisabled,
   ]);
 
   const addQuestionnaireForReq = (

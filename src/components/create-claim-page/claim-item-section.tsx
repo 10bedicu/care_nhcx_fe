@@ -87,6 +87,7 @@ import { apis } from "@/apis";
 import { chargeItemLabel } from "@/lib/prefill";
 import { cn } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
+import { LAMA_DAMA_PROCEDURE_BENEFIT_CODE } from "./lama-dama-helpers";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 
@@ -904,6 +905,13 @@ export function ClaimItemSection({
     }
   }, [watchedItems, form]);
 
+  useEffect(() => {
+    (watchedItems ?? []).forEach((item, index) => {
+      if (!item._is_disabled) return;
+      form.clearErrors(`item.${index}`);
+    });
+  }, [watchedItems, form]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center space-x-3 mb-6">
@@ -954,6 +962,7 @@ export function ClaimItemSection({
             watchedItems?.[index]?._mandatory_supporting_info_error;
           const amountCapError = watchedItems?.[index]?._amount_cap_error;
           const conditionErrors = watchedItems?.[index]?._condition_errors;
+          const isItemDisabled = !!watchedItems?.[index]?._is_disabled;
           const itemSequence = watchedItems?.[index]?.sequence ?? index + 1;
           const itemQueryAdjudication = getItemResponseAdjudication(
             queryResponse,
@@ -967,7 +976,8 @@ export function ClaimItemSection({
             watchedItems?.[index]?._implant_parent_sequence,
           );
           const hasAnyError =
-            mandatoryDocsError ||
+            !isItemDisabled &&
+            (mandatoryDocsError ||
             mandatoryQuestionnairesError ||
             mandatoryCareTeamError ||
             mandatoryDiagnosisError ||
@@ -975,11 +985,22 @@ export function ClaimItemSection({
             mandatoryProcedureError ||
             mandatorySupportingInfoError ||
             amountCapError ||
-            conditionErrors;
+            conditionErrors);
           return (
             <Card
-              className={cn(hasAnyError && "overflow-hidden border-red-500")}
+              className={cn(
+                hasAnyError && "overflow-hidden border-red-500",
+                isItemDisabled && "opacity-60",
+              )}
             >
+              {isItemDisabled && (
+                <div className="px-6 pt-4">
+                  <Badge variant="secondary" className="text-xs">
+                    Disabled for LAMA/DAMA before or during treatment
+                  </Badge>
+                </div>
+              )}
+              <div className={cn(isItemDisabled && "pointer-events-none select-none")}>
               <CardHeader>
                 <FormField
                   key={field.id}
@@ -1057,6 +1078,7 @@ export function ClaimItemSection({
                           size="icon"
                           onClick={() => removeItemAndImplants(index)}
                           className={cn("mt-6", isImplantItem && "hidden")}
+                          disabled={isItemDisabled}
                         >
                           <CircleMinusIcon className="h-6 w-6 text-danger-500" />
                         </Button>
@@ -1065,6 +1087,8 @@ export function ClaimItemSection({
                   }}
                 />
               </CardHeader>
+              {!isItemDisabled && (
+                <>
               {isQueriedItem && itemQueryReasons.length > 0 && (
                 <div className="px-6 pb-2">
                   <Alert className="border-amber-300 bg-amber-50 text-amber-900 [&>svg]:text-amber-600">
@@ -1466,6 +1490,9 @@ export function ClaimItemSection({
                     ))}
                 </CardFooter>
               )}
+                </>
+              )}
+              </div>
             </Card>
           );
         })}
@@ -1550,6 +1577,10 @@ function ModifierField({
 
   const didAutofillRef = useRef(false);
   useEffect(() => {
+    if (productCode === LAMA_DAMA_PROCEDURE_BENEFIT_CODE) {
+      didAutofillRef.current = true;
+      return;
+    }
     if (didAutofillRef.current) return;
     if (!productCode || qualifiers.length === 0) return;
 
@@ -1755,6 +1786,7 @@ function AddChargeItemsSection({
   );
 
   const hasMissingChargeItems = selectedIds.length === 0;
+  const isItemDisabled = form.watch(`item.${index}._is_disabled`);
 
   const {
     field: mandatoryChargeItemsField,
@@ -1766,6 +1798,14 @@ function AddChargeItemsSection({
   });
 
   useEffect(() => {
+    if (isItemDisabled) {
+      syncVirtualFormErrorFromForm(
+        form,
+        `item.${index}._mandatory_charge_items_error`,
+        undefined,
+      );
+      return;
+    }
     const nextError = hasMissingChargeItems
       ? encounterChargeItems.length === 0
         ? "No charge items are available for this encounter. At least one charge item is required."
@@ -1776,7 +1816,7 @@ function AddChargeItemsSection({
       `item.${index}._mandatory_charge_items_error`,
       nextError,
     );
-  }, [form, index, encounterChargeItems.length, hasMissingChargeItems]);
+  }, [form, index, encounterChargeItems.length, hasMissingChargeItems, isItemDisabled]);
 
   return (
     <div className="space-y-4">
@@ -1981,6 +2021,7 @@ function ItemValidationEffects({
   encounterChargeItems?: ChargeItem[];
 }) {
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
+  const isItemDisabled = form.watch(`item.${index}._is_disabled`);
   const quantityValue = form.watch(`item.${index}.quantity.value`);
   const rawModifiers = form.watch(`item.${index}.modifier`);
   const rawChargeItemIds = form.watch(`item.${index}.charge_items`);
@@ -2086,6 +2127,18 @@ function ItemValidationEffects({
   }, [chargeItemIds, chargeItemPriceById, form, index]);
 
   useEffect(() => {
+    if (isItemDisabled) {
+      form.setValue(`item.${index}.unit_price`, 0, { shouldDirty: false });
+      form.setValue(`item.${index}._amount_cap_error`, undefined, {
+        shouldDirty: false,
+        shouldValidate: true,
+      });
+      form.setValue(`item.${index}._condition_errors`, undefined, {
+        shouldDirty: false,
+        shouldValidate: true,
+      });
+      return;
+    }
     const capped =
       benefitLimit != null
         ? Math.min(chargeItemsTotal, benefitLimit)
@@ -2104,9 +2157,16 @@ function ItemValidationEffects({
         shouldValidate: true,
       });
     }
-  }, [chargeItemsTotal, benefitLimit, form, index]);
+  }, [chargeItemsTotal, benefitLimit, form, index, isItemDisabled]);
 
   useEffect(() => {
+    if (isItemDisabled) {
+      form.setValue(`item.${index}._condition_errors`, undefined, {
+        shouldDirty: false,
+        shouldValidate: true,
+      });
+      return;
+    }
     const errors = isImplantItem
       ? []
       : buildBenefitConditionErrors(
@@ -2132,6 +2192,7 @@ function ItemValidationEffects({
     isImplantItem,
     form,
     index,
+    isItemDisabled,
   ]);
 
   return null;
@@ -2301,6 +2362,7 @@ function AddDiagnosisSection({
     { minRequired: 1 },
   );
   const hasSectionError = hasSectionValidationIssue(diagnosisValidation);
+  const isItemDisabled = form.watch(`item.${index}._is_disabled`);
 
   const {
     field: mandatoryDiagnosisField,
@@ -2312,6 +2374,14 @@ function AddDiagnosisSection({
   });
 
   useEffect(() => {
+    if (isItemDisabled) {
+      syncVirtualFormErrorFromForm(
+        form,
+        `item.${index}._mandatory_diagnosis_error`,
+        undefined,
+      );
+      return;
+    }
     const nextError = getSectionVirtualErrorMessage(
       diagnosisValidation,
       "diagnosis",
@@ -2328,6 +2398,7 @@ function AddDiagnosisSection({
     diagnosisValidation.requiredMissing,
     diagnosisValidation.incomplete,
     itemSpecificDiagnoses.length,
+    isItemDisabled,
   ]);
 
   const addNewDiagnosis = () => {
@@ -2574,6 +2645,7 @@ function AddProcedureSection({
     getClaimProcedureCardError,
   );
   const hasSectionError = hasSectionValidationIssue(procedureValidation);
+  const isItemDisabled = form.watch(`item.${index}._is_disabled`);
 
   const {
     field: mandatoryProcedureField,
@@ -2585,6 +2657,14 @@ function AddProcedureSection({
   });
 
   useEffect(() => {
+    if (isItemDisabled) {
+      syncVirtualFormErrorFromForm(
+        form,
+        `item.${index}._mandatory_procedure_error`,
+        undefined,
+      );
+      return;
+    }
     const nextError = getSectionVirtualErrorMessage(
       procedureValidation,
       "procedure",
@@ -2600,6 +2680,7 @@ function AddProcedureSection({
     index,
     procedureValidation.incomplete,
     itemSpecificProcedures.length,
+    isItemDisabled,
   ]);
 
   const sectionErrorMessage =
@@ -2836,6 +2917,7 @@ function AddCareTeamSection({
     { minRequired: 1 },
   );
   const hasSectionError = hasSectionValidationIssue(careTeamValidation);
+  const isItemDisabled = form.watch(`item.${index}._is_disabled`);
 
   const {
     field: mandatoryCareTeamField,
@@ -2847,6 +2929,14 @@ function AddCareTeamSection({
   });
 
   useEffect(() => {
+    if (isItemDisabled) {
+      syncVirtualFormErrorFromForm(
+        form,
+        `item.${index}._mandatory_care_team_error`,
+        undefined,
+      );
+      return;
+    }
     const nextError = getSectionVirtualErrorMessage(
       careTeamValidation,
       "care team member",
@@ -2863,6 +2953,7 @@ function AddCareTeamSection({
     careTeamValidation.requiredMissing,
     careTeamValidation.incomplete,
     itemSpecificCareTeam.length,
+    isItemDisabled,
   ]);
 
   const facilityId = form.getValues("facility");
@@ -3236,6 +3327,7 @@ function AddSupportingInfoSection({
     manualCardValidation,
   );
   const hasSectionError = hasSectionValidationIssue(supportingInfoValidation);
+  const isItemDisabled = form.watch(`item.${index}._is_disabled`);
 
   const { field: mandatoryDocsField, fieldState: mandatoryDocsFieldState } =
     useController({
@@ -3254,6 +3346,14 @@ function AddSupportingInfoSection({
   });
 
   useEffect(() => {
+    if (isItemDisabled) {
+      syncVirtualFormErrorFromForm(
+        form,
+        `item.${index}._mandatory_docs_error`,
+        undefined,
+      );
+      return;
+    }
     const nextError = getSectionVirtualErrorMessage(
       checklistValidation,
       "document",
@@ -3274,9 +3374,18 @@ function AddSupportingInfoSection({
     checklistValidation.requiredMissing,
     checklistValidation.incomplete,
     requiredRequirements.length,
+    isItemDisabled,
   ]);
 
   useEffect(() => {
+    if (isItemDisabled) {
+      syncVirtualFormErrorFromForm(
+        form,
+        `item.${index}._mandatory_supporting_info_error`,
+        undefined,
+      );
+      return;
+    }
     const nextError = getSectionVirtualErrorMessage(
       manualCardValidation,
       "supporting information entry",
@@ -3292,6 +3401,7 @@ function AddSupportingInfoSection({
     index,
     manualCardValidation.incomplete,
     manualSupportingInfoEntries.length,
+    isItemDisabled,
   ]);
 
   const supportingInfoCardsErrorMessage =

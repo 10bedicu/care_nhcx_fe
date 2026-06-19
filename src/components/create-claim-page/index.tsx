@@ -61,6 +61,7 @@ import {
 } from "@/lib/resubmit-intent";
 import { createClaimFormSchema } from "./schema";
 import { CLAIM_DISCHARGE_DISPOSITION_STORE_KEY } from "./questionnaire-helpers";
+import { LamaDamaFlowController } from "./lama-dama-flow-controller";
 import { toast } from "sonner";
 import { uploadFile } from "@/lib/upload-file";
 import { z } from "zod";
@@ -915,6 +916,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
   const totalClaimAmount = useMemo(() => {
     return (watchedItemsForTotal ?? []).reduce((sum, item) => {
+      if (item._is_disabled) return sum;
       const fallbackFromChargeItems = (item.charge_items ?? []).reduce(
         (acc, id) => acc + (chargeItemPriceById.get(id) ?? 0),
         0,
@@ -1061,6 +1063,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
           for (const key of [
             "_implant_parent_sequence",
             "_implant_code",
+            "_is_disabled",
             "_mandatory_docs_error",
             "_mandatory_questionnaires_error",
             "_mandatory_care_team_error",
@@ -1181,6 +1184,14 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     >
       <div className="space-y-6">
         <ClaimEncounterStoreSync encounter={encounter} />
+        <LamaDamaFlowController
+          form={form}
+          encounter={encounter}
+          prefilledClaim={prefilledClaim}
+          lockedUse={lockedUse}
+          isFormReady={!isFormPrefillLoading}
+          onLm100ModeApplied={() => setPrefillNonce((n) => n + 1)}
+        />
         <PmjayBiometricVerificationGate
           encounterId={encounterId}
           patientId={patientId}

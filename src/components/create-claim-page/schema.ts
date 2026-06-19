@@ -143,14 +143,8 @@ export const claimInsuranceSchema = z.object({
 export const claimItemSchema = z
   .object({
     sequence: z.number().int().positive(),
-    care_team_sequence: z
-      .array(z.number().int().positive())
-      .min(1, "At least one care team member is required")
-      .default([]),
-    diagnosis_sequence: z
-      .array(z.number().int().positive())
-      .min(1, "At least one diagnosis is required")
-      .default([]),
+    care_team_sequence: z.array(z.number().int().positive()).default([]),
+    diagnosis_sequence: z.array(z.number().int().positive()).default([]),
     procedure_sequence: z.array(z.number().int().positive()).default([]),
     information_sequence: z.array(z.number().int().positive()).default([]),
     category: codingSchema.optional(),
@@ -164,7 +158,11 @@ export const claimItemSchema = z
         end: z.string().datetime().optional(),
       })
       .optional(),
-    quantity: quantitySchema,
+    quantity: z.object({
+      value: z.coerce.number(),
+      unit: codingSchema.optional(),
+      code: codingSchema.optional(),
+    }),
     unit_price: z.number().gte(0),
     factor: z.number().optional(),
     _mandatory_docs_error: z.string().optional(),
@@ -176,6 +174,8 @@ export const claimItemSchema = z
     _mandatory_supporting_info_error: z.string().optional(),
     _amount_cap_error: z.string().optional(),
     _condition_errors: z.string().optional(),
+    /** Internal: item is disabled during LAMA/DAMA before/during treatment flow. */
+    _is_disabled: z.boolean().optional(),
     /**
      * Internal marker set on auto-generated implant line items. Holds the
      * sequence of the parent item whose implant selection generated this item.
@@ -186,14 +186,21 @@ export const claimItemSchema = z
     _implant_code: z.string().optional(),
   })
   .refine(
-    (data) => !!data.serviced_period?.start,
+    (data) => data._is_disabled || data.quantity.value > 0,
+    {
+      message: "Number must be greater than 0",
+      path: ["quantity", "value"],
+    }
+  )
+  .refine(
+    (data) => data._is_disabled || !!data.serviced_period?.start,
     {
       message: "Service start date is required",
       path: ["serviced_period", "start"],
     }
   )
   .refine(
-    (data) => !data._mandatory_docs_error,
+    (data) => data._is_disabled || !data._mandatory_docs_error,
     (data) => ({
       message:
         data._mandatory_docs_error ??
@@ -202,7 +209,7 @@ export const claimItemSchema = z
     })
   )
   .refine(
-    (data) => !data._mandatory_questionnaires_error,
+    (data) => data._is_disabled || !data._mandatory_questionnaires_error,
     (data) => ({
       message:
         data._mandatory_questionnaires_error ??
@@ -211,7 +218,7 @@ export const claimItemSchema = z
     })
   )
   .refine(
-    (data) => !data._mandatory_care_team_error,
+    (data) => data._is_disabled || !data._mandatory_care_team_error,
     (data) => ({
       message:
         data._mandatory_care_team_error ??
@@ -220,7 +227,7 @@ export const claimItemSchema = z
     })
   )
   .refine(
-    (data) => !data._mandatory_diagnosis_error,
+    (data) => data._is_disabled || !data._mandatory_diagnosis_error,
     (data) => ({
       message:
         data._mandatory_diagnosis_error ??
@@ -229,7 +236,7 @@ export const claimItemSchema = z
     })
   )
   .refine(
-    (data) => !data._mandatory_charge_items_error,
+    (data) => data._is_disabled || !data._mandatory_charge_items_error,
     (data) => ({
       message:
         data._mandatory_charge_items_error ??
@@ -238,7 +245,7 @@ export const claimItemSchema = z
     })
   )
   .refine(
-    (data) => !data._mandatory_procedure_error,
+    (data) => data._is_disabled || !data._mandatory_procedure_error,
     (data) => ({
       message:
         data._mandatory_procedure_error ??
@@ -247,7 +254,7 @@ export const claimItemSchema = z
     })
   )
   .refine(
-    (data) => !data._mandatory_supporting_info_error,
+    (data) => data._is_disabled || !data._mandatory_supporting_info_error,
     (data) => ({
       message:
         data._mandatory_supporting_info_error ??
@@ -256,7 +263,7 @@ export const claimItemSchema = z
     })
   )
   .refine(
-    (data) => !data._condition_errors,
+    (data) => data._is_disabled || !data._condition_errors,
     (data) => ({
       message: data._condition_errors ?? "Condition validation failed",
       path: ["_condition_errors"],
@@ -390,6 +397,7 @@ export const createClaimFormSchema = z
   .superRefine((data, ctx) => {
     if (data.use !== "claim") return;
     data.item.forEach((item, index) => {
+      if (item._is_disabled) return;
       if (!item.serviced_period?.end) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
