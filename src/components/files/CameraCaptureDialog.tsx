@@ -5,7 +5,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentRef,
+} from "react";
 
 import { Button } from "@/components/ui/button";
 import Webcam from "react-webcam";
@@ -28,8 +34,8 @@ export default function CameraCaptureDialog(props: CameraCaptureDialogProps) {
   const [cameraFacingMode, setCameraFacingMode] = useState(
     isLaptopScreen ? "user" : "environment"
   );
-  const [previewImage, setPreviewImage] = useState(null);
-  const webRef = useRef<any>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const webRef = useRef<ComponentRef<typeof Webcam>>(null);
 
   const videoConstraints = {
     width: { ideal: 4096 },
@@ -75,12 +81,16 @@ export default function CameraCaptureDialog(props: CameraCaptureDialogProps) {
     } else {
       toast.warning(t("switch_camera_is_not_available"));
     }
-  }, []);
+  }, [isLaptopScreen]);
 
   const captureImage = () => {
-    setPreviewImage(webRef.current.getScreenshot());
-    const canvas = webRef.current.getCanvas();
-    canvas?.toBlob((blob: Blob) => {
+    const webcam = webRef.current;
+    if (!webcam) return;
+
+    setPreviewImage(webcam.getScreenshot());
+    const canvas = webcam.getCanvas();
+    canvas?.toBlob((blob) => {
+      if (!blob) return;
       const extension = blob.type.split("/").pop();
       const myFile = new File([blob], `capture.${extension}`, {
         type: blob.type,

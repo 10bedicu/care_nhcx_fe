@@ -1057,20 +1057,22 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             .filter((code): code is string => Boolean(code)),
         );
         updatedValues.item = updatedValues.item.map((item) => {
-          const {
-            _implant_parent_sequence: _ips,
-            _implant_code: _ic,
-            _mandatory_docs_error: _mde,
-            _mandatory_questionnaires_error: _mqe,
-            _mandatory_care_team_error: _mcte,
-            _mandatory_diagnosis_error: _mdxe,
-            _mandatory_charge_items_error: _mcie,
-            _mandatory_procedure_error: _mpe,
-            _mandatory_supporting_info_error: _msie,
-            _amount_cap_error: _ace,
-            _condition_errors: _ce,
-            ...rest
-          } = item;
+          const rest = { ...item };
+          for (const key of [
+            "_implant_parent_sequence",
+            "_implant_code",
+            "_mandatory_docs_error",
+            "_mandatory_questionnaires_error",
+            "_mandatory_care_team_error",
+            "_mandatory_diagnosis_error",
+            "_mandatory_charge_items_error",
+            "_mandatory_procedure_error",
+            "_mandatory_supporting_info_error",
+            "_amount_cap_error",
+            "_condition_errors",
+          ] as const) {
+            delete (rest as Record<string, unknown>)[key];
+          }
           return {
             ...rest,
             modifier: (rest.modifier ?? []).filter(

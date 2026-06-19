@@ -346,7 +346,7 @@ export function normalizeImplantItemsFromPrefill<T extends ImplantPrefillItem>(
     }
   }
 
-  let workingItems = [...items];
+  const workingItems = [...items];
   const existingLineItemCodes = new Set(
     workingItems
       .map((it) => it.product_or_service?.code)
