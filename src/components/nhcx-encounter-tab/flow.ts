@@ -1,4 +1,3 @@
-import { Claim } from "@/types/claim";
 import {
   CoverageEligibilityRequest,
   CoverageEligibilityRequestPurposeChoice,
@@ -7,6 +6,8 @@ import {
   FlowAnchor,
   PrerequisitePhase,
 } from "./flow-prerequisites";
+
+import { Claim } from "@/types/claim";
 
 export type ValidationOutcome =
   | { kind: "pending" }
@@ -103,7 +104,10 @@ export function findLatestClaim(claims: Claim[]): Claim | undefined {
 export function findLatestClaimWithSuccessfulResponse(
   claims: Claim[]
 ): Claim | undefined {
-  return sortClaimsByCreatedDesc(claims).find(hasSuccessfulPayerResponse);
+  return sortClaimsByCreatedDesc(claims).find(
+    (claim) =>
+      claim.status !== "cancelled" && hasSuccessfulPayerResponse(claim),
+  );
 }
 
 export function deriveClaimOutcome(claim: Claim): ClaimOutcome {

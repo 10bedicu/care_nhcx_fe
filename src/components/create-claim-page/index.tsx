@@ -31,9 +31,14 @@ import { useForm, useFormState, useWatch } from "react-hook-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useQueryParams } from "raviger";
 
-import { AlertCircleIcon, WalletIcon } from "lucide-react";
+import { AlertCircleIcon, ChevronDownIcon, WalletIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ChargeItem } from "@/types/charge_item";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { ClaimAccidentSection } from "./claim-accident-section";
 import { ClaimInsuranceSection } from "./claim-insurance-section";
 import { ClaimItemSection } from "./claim-item-section";
@@ -50,6 +55,10 @@ import { PmjayBiometricVerificationGate } from "@/components/common/pmjay-biomet
 import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
 import { cn } from "@/lib/utils";
+import {
+  clearResubmitIntent,
+  hasResubmitIntent,
+} from "@/lib/resubmit-intent";
 import { createClaimFormSchema } from "./schema";
 import { CLAIM_DISCHARGE_DISPOSITION_STORE_KEY } from "./questionnaire-helpers";
 import { toast } from "sonner";
@@ -461,6 +470,8 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
   const { isDirty, isValid } = useFormState({ control: form.control });
   const [hasBulkPrefill, setHasBulkPrefill] = useState(false);
+  const [submitMode, setSubmitMode] = useState<"submit" | "resubmit">("submit");
+  const [submitMenuOpen, setSubmitMenuOpen] = useState(false);
   const isUnchangedPrefill = hasBulkPrefill && !isDirty;
 
   useEffect(() => {
@@ -939,9 +950,11 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   }, [totalClaimAmount, validationBalance, form]);
 
   const { mutate: submitClaim, isPending: submitClaimIsPending } = useMutation({
-    mutationFn: apis.claim.submit,
+    mutationFn: ({ id, resubmit }: { id: string; resubmit?: boolean }) =>
+      apis.claim.submit(id, { resubmit }),
     onSuccess: () => {
       toast.success("Claim submitted successfully");
+      clearResubmitIntent(encounterId);
       navigate(
         `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`,
       );
@@ -953,7 +966,10 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     onSuccess: (data) => {
       form.reset();
       toast.success("Claim created successfully");
-      submitClaim(data.id);
+      submitClaim({
+        id: data.id,
+        resubmit: canManuallyResubmit && submitMode === "resubmit",
+      });
       queryClient.invalidateQueries({ queryKey: ["claims", encounterId] });
     },
   });
@@ -1079,6 +1095,19 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     relatedClaim?.use === "claim" ? "claim" : "preauthorization";
 
   const formUse = form.watch("use");
+
+  // A resubmission is only possible when there is a prior submission of the
+  // same use to resubmit against (a same-use related claim). First pre-auth /
+  // first claim submissions always follow the auto-derived flow (12 / 15).
+  const canManuallyResubmit = !!relatedClaim && relatedClaim.use === formUse;
+
+  // When the user arrived via "Update Items as Resubmit", default the submit
+  // action to Resubmit (they can still switch back via the dropdown).
+  useEffect(() => {
+    if (canManuallyResubmit && hasResubmitIntent(encounterId)) {
+      setSubmitMode("resubmit");
+    }
+  }, [canManuallyResubmit, encounterId]);
 
   const isFormPrefillLoading = useMemo(() => {
     if (hasBulkPrefill) {
@@ -1274,20 +1303,97 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                     </Alert>
                   )}
 
-                  <Button
-                    className="w-full"
-                    size="lg"
-                    type="submit"
-                    loading={isSubmitting}
-                    disabled={
+                  {(() => {
+                    const submitDisabled =
                       isUnchangedPrefill ||
                       isFormPrefillLoading ||
                       !isValid ||
-                      !!form.watch("_total_amount_cap_error")
+                      !!form.watch("_total_amount_cap_error");
+                    const submitLabel =
+                      submitMode === "resubmit"
+                        ? "Create & Resubmit Claim"
+                        : "Create Claim";
+
+                    if (!canManuallyResubmit) {
+                      return (
+                        <Button
+                          className="w-full"
+                          size="lg"
+                          type="submit"
+                          loading={isSubmitting}
+                          disabled={submitDisabled}
+                        >
+                          Create Claim
+                        </Button>
+                      );
                     }
-                  >
-                    Create Claim
-                  </Button>
+
+                    return (
+                      <div className="flex w-full">
+                        <Button
+                          className="flex-1 rounded-r-none"
+                          size="lg"
+                          type="submit"
+                          loading={isSubmitting}
+                          disabled={submitDisabled}
+                        >
+                          {submitLabel}
+                        </Button>
+                        <Popover
+                          open={submitMenuOpen}
+                          onOpenChange={setSubmitMenuOpen}
+                        >
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              size="lg"
+                              className="rounded-l-none border-l border-l-primary-foreground/20 px-3"
+                              disabled={isSubmitting}
+                              aria-label="Submit options"
+                            >
+                              <ChevronDownIcon className="h-4 w-4" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent align="end" className="w-56 p-1">
+                            <div className="flex flex-col">
+                              <button
+                                type="button"
+                                className={cn(
+                                  "flex flex-col items-start gap-0.5 rounded-md px-3 py-2 text-sm hover:bg-gray-100 cursor-pointer text-left",
+                                  submitMode === "submit" && "bg-gray-100",
+                                )}
+                                onClick={() => {
+                                  setSubmitMode("submit");
+                                  setSubmitMenuOpen(false);
+                                }}
+                              >
+                                <span className="font-medium">Submit</span>
+                                <span className="text-xs text-muted-foreground">
+                                  Follow the normal workflow.
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                className={cn(
+                                  "flex flex-col items-start gap-0.5 rounded-md px-3 py-2 text-sm hover:bg-gray-100 cursor-pointer text-left",
+                                  submitMode === "resubmit" && "bg-gray-100",
+                                )}
+                                onClick={() => {
+                                  setSubmitMode("resubmit");
+                                  setSubmitMenuOpen(false);
+                                }}
+                              >
+                                <span className="font-medium">Resubmit</span>
+                                <span className="text-xs text-muted-foreground">
+                                  Force the resubmit workflow code.
+                                </span>
+                              </button>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      </div>
+                    );
+                  })()}
                 </form>
               </Form>
             )}

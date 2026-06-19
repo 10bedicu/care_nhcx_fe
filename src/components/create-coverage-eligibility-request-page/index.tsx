@@ -22,6 +22,7 @@ import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
 import { normalizeImplantItemsFromPrefill } from "@/lib/benefit-item-validation";
+import { setResubmitIntent } from "@/lib/resubmit-intent";
 import { toast } from "@/lib/utils";
 import { uploadFile } from "@/lib/upload-file";
 import { z } from "zod";
@@ -65,6 +66,21 @@ const CreateCoverageEligibilityRequestPage: FC<
     [queryParams?.coverage_eligibility],
   );
 
+  // The `mode` param distinguishes how the auth-requirements form was entered:
+  //   - "enhancement": enhancing an already-approved pre-auth -> enhancement
+  //     validation applies.
+  //   - "resubmit": resubmitting -> enhancement validation skipped and the
+  //     resubmit intent is carried through to the claim form.
+  //   - undefined: initial / cancelled / pre-approval building -> no enhancement
+  //     validation.
+  // Enhancement and resubmit are mutually exclusive, so a single enum models them.
+  const ceMode = useMemo(
+    () => parseStringParam(queryParams?.mode),
+    [queryParams?.mode],
+  );
+  const isResubmitMode = ceMode === "resubmit";
+  const isEnhancementMode = ceMode === "enhancement";
+
   const initialPurpose: CoverageEligibilityRequestPurposeChoice[] = useMemo(
     () => (lockedPurpose ? [lockedPurpose] : ["validation"]),
     [lockedPurpose],
@@ -105,12 +121,8 @@ const CreateCoverageEligibilityRequestPage: FC<
   });
 
   const requireEnhancementAllowed = useMemo(
-    () =>
-      Boolean(
-        linkedCoverageEligibilityId &&
-        linkedCoverageEligibilityRequest?.purpose.includes("auth-requirements"),
-      ),
-    [linkedCoverageEligibilityId, linkedCoverageEligibilityRequest],
+    () => Boolean(isAuthRequirements && isEnhancementMode),
+    [isAuthRequirements, isEnhancementMode],
   );
 
   const prefilledItemSequences = useMemo(() => {
@@ -236,6 +248,9 @@ const CreateCoverageEligibilityRequestPage: FC<
     onSuccess: (data) => {
       form.reset();
       toast.success("Coverage check created successfully");
+      if (isResubmitMode) {
+        setResubmitIntent(encounterId);
+      }
       checkCoverageEligibility(data.id);
       queryClient.invalidateQueries({
         queryKey: ["coverage-eligibility-requests", encounterId],

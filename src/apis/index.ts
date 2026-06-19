@@ -163,9 +163,10 @@ export const apis = {
       });
     },
 
-    submit: async (id: string) => {
+    submit: async (id: string, body?: { resubmit?: boolean }) => {
       return await request<Claim>(`/api/nhcx/claim/${id}/submit/`, {
         method: "POST",
+        body: JSON.stringify(body ?? {}),
       });
     },
 

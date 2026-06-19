@@ -426,6 +426,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   const outcome = deriveClaimOutcome(claim);
   const isPreauth = claim.use === "preauthorization";
   const isClaim = claim.use === "claim";
+  const useLabel = isPreauth ? "Preauth" : "Claim";
   const dispatchStatus = claim.dispatch_status;
 
   const ceQueryParam = latestCoverageEligibilityId
@@ -457,10 +458,21 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   const preauthResponseExtras: MenuItem[] = [];
   if (isCurrent && isPreauth) {
     if (outcome !== "queried") {
+      // Enhancement validation only applies when there is an approved pre-auth to
+      // enhance — signalled by `mode=enhancement`. Initial / pre-approval
+      // auth-requirements building (no successful response yet) omits it.
+      const enhancementModeParam = latestSuccessfulClaimId
+        ? "&mode=enhancement"
+        : "";
       preauthResponseExtras.push({
-        label: "Add more items",
+        label: "Update Items as Enhancement",
         icon: <PlusCircleIcon className="h-4 w-4" />,
-        to: `coverages/new?purpose=auth-requirements${ceQueryParam}`,
+        to: `coverages/new?purpose=auth-requirements${enhancementModeParam}${ceQueryParam}`,
+      });
+      preauthResponseExtras.push({
+        label: "Update Items as Resubmit",
+        icon: <PlusCircleIcon className="h-4 w-4" />,
+        to: `coverages/new?purpose=auth-requirements&mode=resubmit${ceQueryParam}`,
       });
     }
     if (preauthCancelMenuItem) {
@@ -567,7 +579,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
           ];
           extraMenuItems = [
             {
-              label: "Enhancement",
+              label: `Update ${useLabel}`,
               icon: <PlusCircleIcon className="h-4 w-4" />,
               to: buildClaimNewUrl({
                 use: "preauthorization",
