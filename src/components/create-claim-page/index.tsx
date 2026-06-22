@@ -219,7 +219,7 @@ function mapClaimToFormValues(
     accident: claim.accident ?? undefined,
     payment: undefined,
     questionnaire_responses: (claim.questionnaire_responses ?? []).map((qr) => ({
-      sequence: 0,
+      sequence: qr.sequence,
       questionnaire: qr.questionnaire,
       category: qr.category,
       code: qr.code,
@@ -393,7 +393,7 @@ function overlayClaimOnCePrefill(
       supporting_info: mapClaimSupportingInfo(claim),
       accident: claim.accident ?? undefined,
       questionnaire_responses: (claim.questionnaire_responses ?? []).map((qr) => ({
-        sequence: 0,
+        sequence: qr.sequence,
         questionnaire: qr.questionnaire,
         category: qr.category,
         code: qr.code,
