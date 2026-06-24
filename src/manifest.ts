@@ -9,6 +9,9 @@ const manifest = {
     FacilityHomeActions: lazy(
       () => import("./components/pluggables/facility-home-actions"),
     ),
+    AppointmentActions: lazy(
+      () => import("./components/pluggables/appointment-policy-verification"),
+    ),
   },
   navItems: [],
   encounterTabs: {

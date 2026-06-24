@@ -142,6 +142,7 @@ export const createCoverageEligibilityRequestFormSchema = z.object({
   facility: z.string().uuid(),
   patient: z.string().uuid(),
   encounter: z.string().uuid().optional(),
+  appointment: z.string().uuid().optional(),
   supporting_info: z
     .array(coverageEligibilityRequestSupportingInfoSchema)
     .default([]),
@@ -155,7 +156,7 @@ export const createCoverageEligibilityRequestFormSchema = z.object({
       },
       {
         message: "At least one focal insurance is required",
-      }
+      },
     ),
   item: z.array(coverageEligibilityRequestItemSchema).min(0).default([]),
 });

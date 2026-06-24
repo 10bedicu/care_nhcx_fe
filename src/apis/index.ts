@@ -87,6 +87,7 @@ export const apis = {
   coverageEligibilityRequest: {
     list: async (query?: {
       encounter?: string;
+      appointment?: string;
       ordering?:
         | "created_date"
         | "-created_date"

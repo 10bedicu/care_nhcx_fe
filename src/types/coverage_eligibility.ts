@@ -135,6 +135,7 @@ export type CoverageEligibilityRequest = {
   provider: string; // uuid
   patient: string; // uuid
   encounter?: string; // uuid
+  appointment?: string; // uuid
   insurer: Participant;
   supporting_info: CoverageEligibilityRequestSupportingInfo[];
   insurance: CoverageEligibilityRequestInsurance[];

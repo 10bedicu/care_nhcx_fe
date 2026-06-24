@@ -226,11 +226,26 @@ export const CoverageEligibilityTimelineCard: FC<
   CoverageEligibilityTimelineCardProps
 > = ({
   request,
+  encounterId,
   isCurrent,
   latestClaimId,
   latestSuccessfulClaimId,
   afterCeValidationSatisfied = true,
 }) => {
+  const queryClient = useQueryClient();
+  const submitMutation = useMutation({
+    mutationFn: (id: string) => apis.coverageEligibilityRequest.check(id),
+    onSuccess: () => {
+      toast.success("Coverage check submitted to payer");
+      queryClient.invalidateQueries({
+        queryKey: ["coverage-eligibility-requests", encounterId],
+      });
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to submit coverage check");
+    },
+  });
+
   const isValidation = hasValidationPurpose(request);
   const isAuthRequirements = hasAuthRequirementsPurpose(request);
   const validationOutcome = isValidation
@@ -273,6 +288,17 @@ export const CoverageEligibilityTimelineCard: FC<
                 request.dispatch_error ||
                 "Failed to submit to the payer. Please try resubmitting."
               }
+            />
+          );
+        } else if (request.dispatch_status === "pending") {
+          footerActions = (
+            <ActionButton
+              label={
+                submitMutation.isPending ? "Submitting…" : "Submit to Payer"
+              }
+              icon={<SendIcon className="h-4 w-4" />}
+              onClick={() => submitMutation.mutate(request.id)}
+              disabled={submitMutation.isPending}
             />
           );
         } else {
