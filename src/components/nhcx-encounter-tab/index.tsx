@@ -20,6 +20,7 @@ import {
 import FlowPrerequisitesGate, {
   FlowPrerequisitesTimelineGate,
 } from "./flow-prerequisites-gate";
+import { hasDemographicMismatch } from "./demographics";
 import { useFlowPrerequisites } from "./use-flow-prerequisites";
 
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,12 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
     enabled: !!encounter?.facility.id,
   });
 
+  const { data: abhaNumber } = useQuery({
+    queryKey: ["abhaNumber", patient?.id],
+    queryFn: () => apis.abhaNumber.get(patient.id),
+    enabled: !!patient?.id,
+  });
+
   const isLoadingPrereqs = isHealthFacilityLoading || isProviderLoading;
   const hasHealthFacility = !!healthFacility;
   const hasProvider = !!provider;
@@ -98,6 +105,13 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
   const isHardStop =
     validationOutcome?.kind === "policy-inactive" ||
     validationOutcome?.kind === "no-balance";
+
+  // Demographic verification is a post-requirement: once the policy validates,
+  // a contradiction between the payer's record and the patient's record blocks
+  // the flow until the details are corrected.
+  const demographicMismatch = latestValidation
+    ? hasDemographicMismatch(latestValidation, patient, abhaNumber)
+    : false;
 
   const showInitialCTA = !latestValidation;
 
@@ -197,101 +211,136 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
             {beforeCeValidation.isSatisfied && (
               <>
                 {!isLoadingTimeline && showInitialCTA && (
-              <div className="rounded-lg border border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10 p-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="rounded-full bg-primary/10 p-2.5">
-                    <ShieldCheckIcon className="h-6 w-6 text-primary" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-semibold text-gray-900">
-                      Start with a Coverage Balance Check
-                    </h2>
-                    <p className="text-sm text-gray-600 mt-0.5">
-                      Confirm the patient’s policy is active and has wallet
-                      balance before checking what is needed for pre-authorisation.
-                    </p>
-                  </div>
-                </div>
-                <Link href="coverages/new?purpose=validation">
-                  <Button size="lg" className="gap-2">
-                    Check Coverage Balance
-                    <ArrowRightIcon className="h-4 w-4" />
-                  </Button>
-                </Link>
-              </div>
-            )}
-
-            {!isLoadingTimeline && isHardStop && (
-              <Alert className="border-red-300 bg-red-50 text-red-800">
-                <AlertTitle>Flow blocked</AlertTitle>
-                <AlertDescription className="space-y-3">
-                  <p>
-                    {validationOutcome?.kind === "policy-inactive"
-                      ? "The patient’s policy is inactive."
-                      : "The patient’s wallet balance is exhausted."}{" "}
-                    No further authorisation or claim actions can be taken on
-                    this encounter.
-                  </p>
-                  <div>
+                  <div className="rounded-lg border border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10 p-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-full bg-primary/10 p-2.5">
+                        <ShieldCheckIcon className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <h2 className="text-base font-semibold text-gray-900">
+                          Start with a Coverage Balance Check
+                        </h2>
+                        <p className="text-sm text-gray-600 mt-0.5">
+                          Confirm the patient’s policy is active and has wallet
+                          balance before checking what is needed for
+                          pre-authorisation.
+                        </p>
+                      </div>
+                    </div>
                     <Link href="coverages/new?purpose=validation">
-                      <Button variant="outline" size="sm">
-                        Re-check Coverage Balance
+                      <Button size="lg" className="gap-2">
+                        Check Coverage Balance
+                        <ArrowRightIcon className="h-4 w-4" />
                       </Button>
                     </Link>
                   </div>
-                </AlertDescription>
-              </Alert>
-            )}
-
-            <div className="space-y-4">
-              {isLoadingTimeline && <TimelineSkeleton count={3} />}
-
-              {!isLoadingTimeline &&
-                timeline.length === 0 &&
-                !showInitialCTA && (
-                  <div className="text-center py-8 text-gray-500">
-                    No activity yet.
-                  </div>
                 )}
 
-              {timeline.map((entry) => {
-                if (entry.kind === "prerequisites-gate") {
-                  return (
-                    <FlowPrerequisitesTimelineGate
-                      key={`gate-${entry.anchor}-${entry.phase}`}
-                      title="Additional details required"
-                      description="Complete the following before proceeding with pre-authorisation or claim submission."
-                      state={afterCeValidation}
-                    />
-                  );
-                }
+                {!isLoadingTimeline && isHardStop && (
+                  <Alert className="border-red-300 bg-red-50 text-red-800">
+                    <AlertTitle>Flow blocked</AlertTitle>
+                    <AlertDescription className="space-y-3">
+                      <p>
+                        {validationOutcome?.kind === "policy-inactive"
+                          ? "The patient’s policy is inactive."
+                          : "The patient’s wallet balance is exhausted."}{" "}
+                        No further authorisation or claim actions can be taken
+                        on this encounter.
+                      </p>
+                      <div>
+                        <Link href="coverages/new?purpose=validation">
+                          <Button variant="outline" size="sm">
+                            Re-check Coverage Balance
+                          </Button>
+                        </Link>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
 
-                const isCurrent = isLatestRecord(timeline, entry);
-                if (entry.kind === "ce") {
-                  return (
-                    <CoverageEligibilityTimelineCard
-                      key={`ce-${entry.record.id}`}
-                      request={entry.record}
-                      encounterId={encounter.id}
-                      isCurrent={isCurrent}
-                      latestClaimId={latestClaimId}
-                      latestSuccessfulClaimId={latestSuccessfulClaimId}
-                      afterCeValidationSatisfied={afterCeValidation.isSatisfied}
-                    />
-                  );
-                }
-                return (
-                  <ClaimTimelineCard
-                    key={`claim-${entry.record.id}`}
-                    claim={entry.record}
-                    encounterId={encounter.id}
-                    isCurrent={isCurrent}
-                    latestCoverageEligibilityId={latestCoverageEligibilityId}
-                    latestClaimId={latestClaimId}
-                    latestSuccessfulClaimId={latestSuccessfulClaimId}
-                  />
-                );
-              })}
+                {!isLoadingTimeline && !isHardStop && demographicMismatch && (
+                  <Alert className="border-red-300 bg-red-50 text-red-800">
+                    <AlertTitle>Flow blocked: demographic mismatch</AlertTitle>
+                    <AlertDescription className="space-y-3">
+                      <p>
+                        The patient’s details do not match the records returned
+                        by the payer. Correct the patient’s details so they
+                        match, then re-run the coverage check before proceeding
+                        with pre-authorisation or claims.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {flowPrerequisites.patientUpdateHref && (
+                          <Link href={flowPrerequisites.patientUpdateHref}>
+                            <Button variant="outline" size="sm">
+                              Update Patient Details
+                            </Button>
+                          </Link>
+                        )}
+                        <Link href="coverages/new?purpose=validation">
+                          <Button variant="outline" size="sm">
+                            Re-check Coverage Balance
+                          </Button>
+                        </Link>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="space-y-4">
+                  {isLoadingTimeline && <TimelineSkeleton count={3} />}
+
+                  {!isLoadingTimeline &&
+                    timeline.length === 0 &&
+                    !showInitialCTA && (
+                      <div className="text-center py-8 text-gray-500">
+                        No activity yet.
+                      </div>
+                    )}
+
+                  {timeline.map((entry) => {
+                    if (entry.kind === "prerequisites-gate") {
+                      return (
+                        <FlowPrerequisitesTimelineGate
+                          key={`gate-${entry.anchor}-${entry.phase}`}
+                          title="Additional details required"
+                          description="Complete the following before proceeding with pre-authorisation or claim submission."
+                          state={afterCeValidation}
+                        />
+                      );
+                    }
+
+                    const isCurrent = isLatestRecord(timeline, entry);
+                    if (entry.kind === "ce") {
+                      return (
+                        <CoverageEligibilityTimelineCard
+                          key={`ce-${entry.record.id}`}
+                          request={entry.record}
+                          encounterId={encounter.id}
+                          isCurrent={isCurrent}
+                          latestClaimId={latestClaimId}
+                          latestSuccessfulClaimId={latestSuccessfulClaimId}
+                          afterCeValidationSatisfied={
+                            afterCeValidation.isSatisfied
+                          }
+                          patient={patient}
+                          abhaNumber={abhaNumber}
+                        />
+                      );
+                    }
+                    return (
+                      <ClaimTimelineCard
+                        key={`claim-${entry.record.id}`}
+                        claim={entry.record}
+                        encounterId={encounter.id}
+                        isCurrent={isCurrent}
+                        latestCoverageEligibilityId={
+                          latestCoverageEligibilityId
+                        }
+                        latestClaimId={latestClaimId}
+                        latestSuccessfulClaimId={latestSuccessfulClaimId}
+                      />
+                    );
+                  })}
                 </div>
               </>
             )}
@@ -300,6 +349,6 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
       </div>
     </GlobalStoreProvider>
   );
-};
+};;;
 
 export default NhcxEncounterTab;

@@ -29,14 +29,21 @@ import {
   hasAuthRequirementsPurpose,
   hasValidationPurpose,
 } from "./flow";
+import {
+  buildDemographicChecks,
+  getValidationDemographicEntry,
+} from "./demographics";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
+import { AbhaNumber } from "@/types/abha_number";
 import { Button } from "@/components/ui/button";
 import { Claim } from "@/types/claim";
 import ClaimCard from "../claim-encounter-tab/claim-card";
 import { Coding } from "@/types/base";
 import CoverageEligibilityCard from "../coverage-encounter-tab/coverage-eligibility-card";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
+import { DemographicCheck } from "./demographics";
+import { Patient } from "@/types/patient";
 import { ReasonDialog } from "./reason-dialog";
 import { apis } from "@/apis";
 
@@ -114,6 +121,40 @@ function ResponseErrorBanner({ message }: { message: string }) {
       <XCircleIcon className="text-red-600" />
       <AlertTitle>Payer returned an error</AlertTitle>
       <AlertDescription>{message}</AlertDescription>
+    </Alert>
+  );
+}
+
+function DemographicMismatchBanner({ checks }: { checks: DemographicCheck[] }) {
+  return (
+    <Alert className="border-red-300 bg-red-50 text-red-800">
+      <BanIcon className="h-4 w-4 text-red-600" />
+      <AlertTitle>Demographic verification failed</AlertTitle>
+      <AlertDescription className="space-y-2">
+        <p>
+          The patient's details on record do not match what the payer returned.
+          Resolve the mismatch before proceeding with pre-authorisation or
+          claims.
+        </p>
+        <div className="divide-y rounded-md border border-red-200 bg-white/60 text-sm">
+          {checks.map((check) => (
+            <div
+              key={check.label}
+              className="grid grid-cols-[auto_1fr_1fr] items-center gap-2 px-3 py-1.5"
+            >
+              <span className="font-medium">{check.label}</span>
+              <span className="text-xs">
+                <span className="text-muted-foreground">Record: </span>
+                {check.expected}
+              </span>
+              <span className="text-xs">
+                <span className="text-muted-foreground">Payer: </span>
+                {check.received}
+              </span>
+            </div>
+          ))}
+        </div>
+      </AlertDescription>
     </Alert>
   );
 }
@@ -220,17 +261,19 @@ interface CoverageEligibilityTimelineCardProps extends BaseProps {
   latestClaimId?: string;
   latestSuccessfulClaimId?: string;
   afterCeValidationSatisfied?: boolean;
+  patient?: Patient;
+  abhaNumber?: AbhaNumber;
 }
 
-export const CoverageEligibilityTimelineCard: FC<
-  CoverageEligibilityTimelineCardProps
-> = ({
+export const CoverageEligibilityTimelineCard: FC<CoverageEligibilityTimelineCardProps> = ({
   request,
   encounterId,
   isCurrent,
   latestClaimId,
   latestSuccessfulClaimId,
   afterCeValidationSatisfied = true,
+  patient,
+  abhaNumber,
 }) => {
   const queryClient = useQueryClient();
   const submitMutation = useMutation({
@@ -253,6 +296,19 @@ export const CoverageEligibilityTimelineCard: FC<
     : null;
   const response = request.latest_response;
 
+  // Demographic verification is a post-requirement once the policy validates
+  // (active + has balance). A contradiction between the payer's record and the
+  // patient's record hard-stops the flow.
+  const demographicEntry = isValidation
+    ? getValidationDemographicEntry(request)
+    : undefined;
+  const demographicChecks = demographicEntry
+    ? buildDemographicChecks(demographicEntry, patient, abhaNumber)
+    : [];
+  const hasDemographicConflict =
+    validationOutcome?.kind === "ok" &&
+    demographicChecks.some((check) => check.status === "mismatch");
+
   let footerActions: ReactNode = null;
   let headerBanner: ReactNode = null;
 
@@ -268,11 +324,21 @@ export const CoverageEligibilityTimelineCard: FC<
         <AlertDescription>{validationOutcome.message}</AlertDescription>
       </Alert>
     );
+  } else if (hasDemographicConflict) {
+    headerBanner = (
+      <DemographicMismatchBanner
+        checks={demographicChecks.filter((c) => c.status === "mismatch")}
+      />
+    );
   }
 
   if (isCurrent) {
     if (isValidation) {
-      if (validationOutcome?.kind === "ok" && afterCeValidationSatisfied) {
+      if (
+        validationOutcome?.kind === "ok" &&
+        afterCeValidationSatisfied &&
+        !hasDemographicConflict
+      ) {
         footerActions = (
           <ActionButton
             to={`coverages/new?purpose=auth-requirements&coverage_eligibility=${request.id}`}
@@ -370,7 +436,7 @@ export const CoverageEligibilityTimelineCard: FC<
       headerBanner={headerBanner}
     />
   );
-};
+};;
 
 interface ClaimTimelineCardProps extends BaseProps {
   claim: Claim;

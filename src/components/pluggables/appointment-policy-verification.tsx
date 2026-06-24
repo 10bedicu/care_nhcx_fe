@@ -2,10 +2,16 @@ import {
   Building2Icon,
   CheckCircle2Icon,
   HashIcon,
+  Loader2Icon,
+  MinusIcon,
   ScanLineIcon,
+  SendIcon,
   ShieldCheckIcon,
+  Trash2Icon,
   UmbrellaIcon,
   UserIcon,
+  WalletIcon,
+  XCircleIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -15,11 +21,17 @@ import {
 import { FC, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { AbhaNumber } from "@/types/abha_number";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { InlineLoading } from "@/components/common/loading-spinner";
+import { Patient } from "@/types/patient";
 import { Policy } from "@/types/policy";
 import { apis } from "@/apis";
+import { buildDemographicChecks } from "@/components/nhcx-encounter-tab/demographics";
+import { deriveValidationOutcome } from "@/components/nhcx-encounter-tab/flow";
+import { formatCurrency } from "@/lib/utils";
 import { resolvePmjayMemberId } from "@/components/nhcx-encounter-tab/flow-prerequisites";
 import { toast } from "sonner";
 
@@ -76,6 +88,10 @@ const AppointmentPolicyVerification: FC<AppointmentActionsProps> = ({
     queryFn: () =>
       apis.coverageEligibilityRequest.list({ appointment: appointment.id }),
     enabled: !!appointment.id,
+    refetchInterval: (query) => {
+      const results = query.state.data?.results ?? [];
+      return results.some(isAwaitingResponse) ? 5000 : false;
+    },
   });
 
   const pmjayMemberId = patient ? resolvePmjayMemberId(patient) : undefined;
@@ -174,6 +190,21 @@ const AppointmentPolicyVerification: FC<AppointmentActionsProps> = ({
 
   const savedRequests = existingRequests?.results ?? [];
 
+  const invalidateSavedRequests = () => {
+    queryClient.invalidateQueries({
+      queryKey: [
+        "coverage-eligibility-requests",
+        "appointment",
+        appointment.id,
+      ],
+    });
+    if (encounterId) {
+      queryClient.invalidateQueries({
+        queryKey: ["coverage-eligibility-requests", encounterId],
+      });
+    }
+  };
+
   return (
     <Card className={className}>
       <CardHeader className="p-3 bg-gray-50">
@@ -184,31 +215,19 @@ const AppointmentPolicyVerification: FC<AppointmentActionsProps> = ({
       </CardHeader>
       <CardContent className="space-y-4 p-3">
         {savedRequests.length > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <p className="text-xs font-medium text-muted-foreground">
               Policies saved for verification
             </p>
-            {savedRequests.map((request) => {
-              const focal =
-                request.insurance.find((i) => i.focal) ?? request.insurance[0];
-              return (
-                <div
-                  key={request.id}
-                  className="flex items-center justify-between gap-2 rounded-md border bg-primary/5 px-3 py-2 text-sm"
-                >
-                  <span className="flex items-center gap-2">
-                    <CheckCircle2Icon className="size-4 text-primary" />
-                    {focal?.policy.productname ?? "Policy"}
-                  </span>
-                  <Badge variant="secondary" className="text-xs">
-                    {request.encounter ? "Linked" : "Pending encounter"}
-                  </Badge>
-                </div>
-              );
-            })}
-            <p className="text-xs text-muted-foreground">
-              Submit the coverage check from the encounter's claims tab.
-            </p>
+            {savedRequests.map((request) => (
+              <SavedVerificationCard
+                key={request.id}
+                request={request}
+                patient={patient}
+                abhaNumber={abhaNumber}
+                onChanged={invalidateSavedRequests}
+              />
+            ))}
           </div>
         )}
 
@@ -274,6 +293,211 @@ const AppointmentPolicyVerification: FC<AppointmentActionsProps> = ({
         )}
       </CardContent>
     </Card>
+  );
+};
+
+/** True while a dispatched request is still awaiting a usable payer response. */
+function isAwaitingResponse(request: CoverageEligibilityRequest): boolean {
+  if (request.dispatch_status === "pending") return false;
+  const response = request.latest_response;
+  if (!response) return true;
+  return response.outcome === "queued" || response.outcome === "partial";
+}
+
+type SavedVerificationCardProps = {
+  request: CoverageEligibilityRequest;
+  patient?: Patient;
+  abhaNumber?: AbhaNumber;
+  onChanged: () => void;
+};
+
+const SavedVerificationCard: FC<SavedVerificationCardProps> = ({
+  request,
+  patient,
+  abhaNumber,
+  onChanged,
+}) => {
+  const focal =
+    request.insurance.find((i) => i.focal) ?? request.insurance[0];
+  const policyName = focal?.policy.productname ?? "Policy";
+
+  const isDraft = request.dispatch_status === "pending";
+  const awaiting = isAwaitingResponse(request);
+  const outcome = deriveValidationOutcome(request);
+  const response = request.latest_response;
+  const primary =
+    response?.insurances?.find((e) => e.is_primary) ??
+    response?.insurances?.[0];
+
+  const { mutate: submit, isPending: isSubmitting } = useMutation({
+    mutationFn: () => apis.coverageEligibilityRequest.check(request.id),
+    onSuccess: () => {
+      toast.success("Coverage check submitted to payer");
+      onChanged();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to submit coverage check");
+    },
+  });
+
+  const { mutate: remove, isPending: isRemoving } = useMutation({
+    mutationFn: () => apis.coverageEligibilityRequest.remove(request.id),
+    onSuccess: () => {
+      toast.success("Policy removed");
+      onChanged();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to remove policy");
+    },
+  });
+
+  const balance =
+    primary?.balance
+      ? primary.balance.allowed.value - primary.balance.used.value
+      : null;
+  const demographicChecks =
+    primary && (response?.outcome === "complete" || response?.outcome === "partial")
+      ? buildDemographicChecks(primary, patient, abhaNumber)
+      : [];
+
+  return (
+    <div className="rounded-md border bg-card">
+      <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+        <span className="flex items-center gap-2 text-sm font-medium">
+          <ShieldCheckIcon className="size-4 text-primary" />
+          {policyName}
+        </span>
+        {isDraft ? (
+          <Badge variant="secondary" className="text-xs">
+            Not submitted
+          </Badge>
+        ) : awaiting ? (
+          <Badge variant="secondary" className="text-xs">
+            Awaiting response
+          </Badge>
+        ) : (
+          <Badge
+            variant="secondary"
+            className={`text-xs ${
+              outcome.kind === "ok"
+                ? "bg-green-100 text-green-700"
+                : "bg-amber-100 text-amber-700"
+            }`}
+          >
+            {outcome.kind === "ok" ? "Verified" : "Attention"}
+          </Badge>
+        )}
+      </div>
+
+      <div className="space-y-3 p-3">
+        {isDraft && (
+          <>
+            <p className="text-xs text-muted-foreground">
+              Saved but not yet submitted. Submit to confirm the wallet balance
+              and verify the patient's demographic details with the payer.
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                className="flex-1"
+                onClick={() => submit()}
+                disabled={isSubmitting || isRemoving}
+              >
+                {isSubmitting ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : (
+                  <SendIcon className="size-4" />
+                )}
+                {isSubmitting ? "Submitting…" : "Submit & verify"}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => remove()}
+                disabled={isSubmitting || isRemoving}
+              >
+                {isRemoving ? (
+                  <Loader2Icon className="size-4 animate-spin" />
+                ) : (
+                  <Trash2Icon className="size-4" />
+                )}
+                Remove
+              </Button>
+            </div>
+          </>
+        )}
+
+        {!isDraft && awaiting && (
+          <p className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2Icon className="size-4 animate-spin" />
+            Waiting for the payer to confirm policy status, wallet balance and
+            patient details.
+          </p>
+        )}
+
+        {!isDraft && !awaiting && outcome.kind === "error" && (
+          <p className="flex items-center gap-2 text-xs text-red-600">
+            <XCircleIcon className="size-4" />
+            {request.dispatch_error ||
+              "The payer could not process this request. Try resubmitting from the claims tab."}
+          </p>
+        )}
+
+        {!isDraft && !awaiting && primary && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between rounded-md bg-muted/50 px-3 py-2">
+              <span className="flex items-center gap-2 text-sm">
+                <WalletIcon className="size-4 text-primary" />
+                Wallet balance
+              </span>
+              <span className="text-sm font-semibold">
+                {balance !== null ? formatCurrency(balance) : "Not provided"}
+              </span>
+            </div>
+
+            {primary.inforce === false && (
+              <p className="flex items-center gap-2 text-xs text-red-600">
+                <XCircleIcon className="size-4" />
+                Policy is not active for this patient.
+              </p>
+            )}
+
+            {demographicChecks.length > 0 && (
+              <div className="space-y-1">
+                <p className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                  <UserIcon className="size-3.5" />
+                  Demographic check
+                </p>
+                <div className="divide-y rounded-md border text-sm">
+                  {demographicChecks.map((check) => (
+                    <div
+                      key={check.label}
+                      className="flex items-center justify-between gap-2 px-3 py-1.5"
+                    >
+                      <span className="text-muted-foreground">
+                        {check.label}
+                      </span>
+                      <span className="flex items-center gap-2">
+                        <span className="font-medium">{check.received}</span>
+                        {check.status === "match" ? (
+                          <CheckCircle2Icon className="size-4 text-green-600" />
+                        ) : check.status === "mismatch" ? (
+                          <XCircleIcon className="size-4 text-red-600" />
+                        ) : (
+                          <MinusIcon className="size-4 text-muted-foreground" />
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 };
 

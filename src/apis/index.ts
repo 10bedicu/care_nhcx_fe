@@ -131,6 +131,15 @@ export const apis = {
         },
       );
     },
+
+    remove: async (id: string) => {
+      return await request<void>(
+        `/api/nhcx/coverage-eligibility-request/${id}/`,
+        {
+          method: "DELETE",
+        },
+      );
+    },
   },
 
   claim: {
