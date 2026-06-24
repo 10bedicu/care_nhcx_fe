@@ -363,6 +363,15 @@ function overlayClaimOnCePrefill(
     };
   });
 
+  const normalizedItems = normalizeImplantItemsFromPrefill(mergedItems);
+  const mergedItemInfoSeqs = new Set(
+    normalizedItems.flatMap((it) => it.information_sequence ?? []),
+  );
+  // prune orphaned supporting info entries that are no longer referenced by any item, unless they are plan-level
+  const supportingInfo = mapClaimSupportingInfo(claim).filter(
+    (s) => s._is_plan_level === true || mergedItemInfoSeqs.has(s.sequence),
+  );
+
   return applyEncounterPrefill(
     {
       ...ceValues,
@@ -390,15 +399,17 @@ function overlayClaimOnCePrefill(
         procedure_reference: undefined,
         procedure_code: p.procedure_code,
       })),
-      supporting_info: mapClaimSupportingInfo(claim),
+      supporting_info: supportingInfo,
       accident: claim.accident ?? undefined,
-      questionnaire_responses: (claim.questionnaire_responses ?? []).map((qr) => ({
-        sequence: qr.sequence,
-        questionnaire: qr.questionnaire,
-        category: qr.category,
-        code: qr.code,
-        item: qr.item,
-      })),
+      questionnaire_responses: (claim.questionnaire_responses ?? []).map(
+        (qr) => ({
+          sequence: qr.sequence,
+          questionnaire: qr.questionnaire,
+          category: qr.category,
+          code: qr.code,
+          item: qr.item,
+        }),
+      ),
       related: (ceValues.related || []).map((r) =>
         r.claim === relatedClaimId
           ? {
@@ -409,7 +420,7 @@ function overlayClaimOnCePrefill(
             }
           : r,
       ),
-      item: normalizeImplantItemsFromPrefill(mergedItems),
+      item: normalizedItems,
     },
     encounter,
     encounterDiagnoses ?? [],
@@ -469,7 +480,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     },
   });
 
-  const { isDirty, isValid } = useFormState({ control: form.control });
+  const { isDirty } = useFormState({ control: form.control });
   const [hasBulkPrefill, setHasBulkPrefill] = useState(false);
   const [submitMode, setSubmitMode] = useState<"submit" | "resubmit">("submit");
   const [submitMenuOpen, setSubmitMenuOpen] = useState(false);
@@ -1250,7 +1261,9 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             ) : (
               <Form {...form}>
                 <form
-                  onSubmit={form.handleSubmit(onSubmit)}
+                  onSubmit={form.handleSubmit(onSubmit, (errors) => {
+                    console.log("Claim form validation errors:", errors);
+                  })}
                   className="space-y-8"
                 >
                   {relatedClaimId && (
@@ -1320,7 +1333,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                     const submitDisabled =
                       isUnchangedPrefill ||
                       isFormPrefillLoading ||
-                      !isValid ||
                       !!form.watch("_total_amount_cap_error");
                     const submitLabel =
                       submitMode === "resubmit"
