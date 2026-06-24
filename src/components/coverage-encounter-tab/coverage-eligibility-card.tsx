@@ -602,12 +602,20 @@ function BenefitsView({
   insurances,
   disposition,
   showQuestionnaires = false,
+  patientOnly = false,
 }: {
   insurances: InsuranceEntry[];
   disposition: string | null;
   showQuestionnaires?: boolean;
+  patientOnly?: boolean;
 }) {
-  const allItems = insurances.flatMap((ins) => ins.items ?? []);
+  const primaryInsurances = insurances.filter((e) => e.is_primary);
+  const displayedInsurances =
+    patientOnly && primaryInsurances.length > 0
+      ? primaryInsurances
+      : insurances;
+
+  const allItems = displayedInsurances.flatMap((ins) => ins.items ?? []);
   const excludedItems = allItems.filter((item) => item.excluded);
   const activeItems = allItems.filter((item) => !item.excluded);
 
@@ -629,7 +637,7 @@ function BenefitsView({
       />
 
       <div className="space-y-3">
-        {insurances.map((entry, i) => (
+        {displayedInsurances.map((entry, i) => (
           <MemberCard key={i} entry={entry} />
         ))}
       </div>
@@ -752,6 +760,7 @@ function PurposeResponseContent({
           insurances={insurances}
           disposition={disposition}
           showQuestionnaires
+          patientOnly
         />
       );
   }
