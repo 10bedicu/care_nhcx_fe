@@ -60,6 +60,7 @@ import {
   hasResubmitIntent,
 } from "@/lib/resubmit-intent";
 import { createClaimFormSchema } from "./schema";
+import { deriveClaimOutcome } from "@/components/nhcx-encounter-tab/flow";
 import { CLAIM_DISCHARGE_DISPOSITION_STORE_KEY } from "./questionnaire-helpers";
 import { LamaDamaFlowController } from "./lama-dama-flow-controller";
 import { toast } from "sonner";
@@ -1106,8 +1107,8 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   const relatedClaimResponse = relatedClaim?.latest_response;
   const showPayerQuery =
     !!relatedClaimId &&
-    !!relatedClaimResponse &&
-    relatedClaimResponse.outcome === "queued";
+    !!relatedClaim &&
+    deriveClaimOutcome(relatedClaim) === "queried";
   const payerQueryContext: "preauthorization" | "claim" =
     relatedClaim?.use === "claim" ? "claim" : "preauthorization";
 
@@ -1296,6 +1297,9 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                     coverageEligibilityRequest={coverageEligibilityRequest}
                     previousClaim={prefilledClaim}
                     encounterChargeItems={encounterChargeItems ?? []}
+                    queryResponse={
+                      showPayerQuery ? relatedClaimResponse : undefined
+                    }
                   />
                   <Separator />
                   <ClaimAccidentSection form={form} />
