@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Loader2 } from "lucide-react";
 
@@ -19,6 +19,8 @@ export interface PmjayBiometricVerificationGateProps {
   patientId: string;
   insurance: PmjaySelectedInsurance[];
   process: "Preauth" | "Discharge";
+  consentQuestionnairePresent?: boolean;
+  prefillReady?: boolean;
 }
 
 // Permission slug that allows a user (e.g. Medical Super Intendent / Admin) to skip the biometric claim-consent verification.
@@ -29,10 +31,13 @@ export function PmjayBiometricVerificationGate({
   patientId,
   insurance,
   process,
+  consentQuestionnairePresent = false,
+  prefillReady = true,
 }: PmjayBiometricVerificationGateProps) {
   const queryClient = useQueryClient();
   const { setStore } = useGlobalStore();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const hasAutoOpenedRef = useRef(false);
 
   const focalPolicy = useMemo(
     () => insurance?.find((i) => i.focal),
@@ -67,7 +72,11 @@ export function PmjayBiometricVerificationGate({
         encounter_id: encounterId,
         stage: process === "Preauth" ? "preauthorization" : "claim",
       }),
-    enabled: !!encounterId && !!focalPolicy?.policy.payerid && !skipped,
+    enabled:
+      !!encounterId &&
+      !!focalPolicy?.policy.payerid &&
+      !skipped &&
+      !consentQuestionnairePresent,
   });
 
   useEffect(() => {
@@ -76,32 +85,51 @@ export function PmjayBiometricVerificationGate({
       return;
     }
 
+    if (!prefillReady) {
+      return;
+    }
+
+    if (hasAutoOpenedRef.current) {
+      return;
+    }
+
+    if (consentQuestionnairePresent) {
+      setDialogOpen(false);
+      return;
+    }
+
     if (lookupFetching) {
       return;
     }
 
-    if (!lookupData) {
-      setDialogOpen(true);
-      return;
-    }
-
-    if (lookupData.id) {
+    if (lookupData?.id) {
       setDialogOpen(false);
       return;
     }
-  }, [lookupData, lookupFetching, skipped]);
 
-  // Consent is considered obtained only when biometric verification has been
-  // recorded (lookupData.id present) and the user has not bypassed it. When it
-  // is skipped or missing, the relevant consent questionnaire becomes mandatory
-  // in the claim form (see getForcedConsentQuestionnaireFhirId). `undefined`
-  // means unknown / not applicable (no focal policy or still loading).
+    hasAutoOpenedRef.current = true;
+    setDialogOpen(true);
+  }, [
+    skipped,
+    prefillReady,
+    consentQuestionnairePresent,
+    lookupData,
+    lookupFetching,
+  ]);
+
   const consentObtained = useMemo<boolean | undefined>(() => {
     if (!focalPolicy) return undefined;
+    if (consentQuestionnairePresent) return true;
     if (skipped) return false;
     if (lookupFetching) return undefined;
     return lookupData?.id ? true : false;
-  }, [focalPolicy, skipped, lookupFetching, lookupData]);
+  }, [
+    focalPolicy,
+    consentQuestionnairePresent,
+    skipped,
+    lookupFetching,
+    lookupData,
+  ]);
 
   useEffect(() => {
     setStore(CLAIM_CONSENT_OBTAINED_STORE_KEY, consentObtained);

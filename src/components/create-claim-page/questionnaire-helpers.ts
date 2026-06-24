@@ -28,6 +28,34 @@ export function getForcedConsentQuestionnaireFhirId(
     : AUTHENTICATION_CONSENT_QUESTIONNAIRE;
 }
 
+export function getConsentQuestionnaireFhirIdForUse(
+  claimUse: ClaimUseChoice | undefined,
+): string {
+  return claimUse === "claim"
+    ? DISCHARGE_CONSENT_QUESTIONNAIRE
+    : AUTHENTICATION_CONSENT_QUESTIONNAIRE;
+}
+
+export function questionnaireResponseMatchesFhirId(
+  questionnaireFullUrl: string | undefined | null,
+  fhirId: string,
+): boolean {
+  if (!questionnaireFullUrl) return false;
+  const lastSegment = questionnaireFullUrl.split("/").filter(Boolean).pop();
+  return lastSegment === fhirId;
+}
+
+export function hasConsentQuestionnaireResponse(
+  questionnaireResponses: { questionnaire: string }[] | undefined | null,
+  claimUse: ClaimUseChoice | undefined,
+): boolean {
+  if (!questionnaireResponses?.length) return false;
+  const fhirId = getConsentQuestionnaireFhirIdForUse(claimUse);
+  return questionnaireResponses.some((qr) =>
+    questionnaireResponseMatchesFhirId(qr.questionnaire, fhirId),
+  );
+}
+
 export function getForcedDischargeQuestionnaireFhirId(
   claimUse: ClaimUseChoice | undefined,
   dischargeDisposition: EncounterDischargeDisposition | undefined,

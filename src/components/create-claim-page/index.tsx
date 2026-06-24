@@ -61,7 +61,10 @@ import {
 } from "@/lib/resubmit-intent";
 import { createClaimFormSchema } from "./schema";
 import { deriveClaimOutcome } from "@/components/nhcx-encounter-tab/flow";
-import { CLAIM_DISCHARGE_DISPOSITION_STORE_KEY } from "./questionnaire-helpers";
+import {
+  CLAIM_DISCHARGE_DISPOSITION_STORE_KEY,
+  hasConsentQuestionnaireResponse,
+} from "./questionnaire-helpers";
 import { LamaDamaFlowController } from "./lama-dama-flow-controller";
 import { toast } from "sonner";
 import { uploadFile } from "@/lib/upload-file";
@@ -514,10 +517,21 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     name: "insurance",
   });
 
-  const {
-    data: prefilledClaim,
-    isFetched: prefilledClaimFetched,
-  } = useQuery({
+  const watchedQuestionnaireResponses = useWatch({
+    control: form.control,
+    name: "questionnaire_responses",
+  });
+
+  const consentQuestionnairePresent = useMemo(
+    () =>
+      hasConsentQuestionnaireResponse(
+        watchedQuestionnaireResponses,
+        lockedUse ?? undefined,
+      ),
+    [watchedQuestionnaireResponses, lockedUse],
+  );
+
+  const { data: prefilledClaim, isFetched: prefilledClaimFetched } = useQuery({
     queryKey: ["claim", prefilledClaimId],
     queryFn: () => apis.claim.get(prefilledClaimId as string),
     enabled: !!prefilledClaimId,
@@ -935,10 +949,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         0,
       );
       const unitPrice = item.unit_price || fallbackFromChargeItems;
-      return (
-        sum +
-        unitPrice * (item.quantity?.value || 1) * (item.factor || 1)
-      );
+      return sum + unitPrice * (item.quantity?.value || 1) * (item.factor || 1);
     }, 0);
   }, [watchedItemsForTotal, chargeItemPriceById]);
 
@@ -991,7 +1002,9 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
   async function onSubmit(values: z.infer<typeof createClaimFormSchema>) {
     if (isUnchangedPrefill) {
-      toast.error("No changes noted. Please update the form before submitting.");
+      toast.error(
+        "No changes noted. Please update the form before submitting.",
+      );
       return;
     }
 
@@ -1210,6 +1223,8 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
           patientId={patientId}
           insurance={insuranceSelection || []}
           process={lockedUse === "claim" ? "Discharge" : "Preauth"}
+          consentQuestionnairePresent={consentQuestionnairePresent}
+          prefillReady={!isFormPrefillLoading}
         />
         <div className="flex items-center justify-between">
           <div>
@@ -1438,7 +1453,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       </div>
     </GlobalStoreProvider>
   );
-};
+};;
 
 function WalletBalanceSummary({
   totalAmount,
