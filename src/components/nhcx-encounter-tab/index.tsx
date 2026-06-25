@@ -24,6 +24,7 @@ import { hasDemographicMismatch } from "./demographics";
 import { useFlowPrerequisites } from "./use-flow-prerequisites";
 
 import { Button } from "@/components/ui/button";
+import { Condition, ConditionCategory } from "@/types/condition";
 import { Encounter } from "@/types/encounter";
 import { FC } from "react";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
@@ -76,10 +77,34 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
     enabled: !!patient?.id,
   });
 
+  const { data: encounterDiagnoses, isFetching: isLoadingDiagnoses } = useQuery(
+    {
+      queryKey: ["encounter-diagnoses", patient?.id, encounter?.id],
+      queryFn: async (): Promise<Condition[]> => {
+        const res = await apis.diagnosis.list(patient.id, {
+          encounter: encounter.id,
+          category: [ConditionCategory.encounter_diagnosis],
+          ordering: "-created_date",
+        });
+        return res.results ?? [];
+      },
+      enabled: !!patient?.id && !!encounter?.id,
+      staleTime: 60 * 1000,
+    },
+  );
+
   const isLoadingPrereqs = isHealthFacilityLoading || isProviderLoading;
   const hasHealthFacility = !!healthFacility;
   const hasProvider = !!provider;
   const isLoadingTimeline = isLoadingCoverages || isLoadingClaims;
+
+  // Diagnosis and care team are mandatory clinical details before any
+  // pre-authorisation or claim can be raised. Surface a warning while either
+  // is missing so the user can complete the encounter record first.
+  const hasDiagnosis = (encounterDiagnoses?.length ?? 0) > 0;
+  const hasCareTeam = (encounter?.care_team?.length ?? 0) > 0;
+  const showClinicalDetailsWarning =
+    !isLoadingDiagnoses && (!hasDiagnosis || !hasCareTeam);
 
   // Before CE-validation prerequisites gate the timeline; after CE-validation
   // prerequisites appear as a timeline entry below the validation card.
@@ -196,6 +221,27 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
               </div>
             </div>
 
+            {showClinicalDetailsWarning && (
+              <Alert variant="warning">
+                <AlertTitle>Clinical Details Required</AlertTitle>
+                <AlertDescription className="space-y-3">
+                  <p>
+                    {!hasDiagnosis && !hasCareTeam
+                      ? "This encounter is missing a diagnosis and a care team. Add both before raising a pre-authorisation or claim."
+                      : !hasDiagnosis
+                        ? "This encounter is missing a diagnosis. Add one before raising a pre-authorisation or claim."
+                        : "This encounter is missing a care team. Add one before raising a pre-authorisation or claim."}
+                  </p>
+                  <Link
+                    href={`/facility/${encounter?.facility.id}/patient/${patient?.id}/encounter/${encounter?.id}/updates`}
+                  >
+                    <Button variant="outline" size="sm">
+                      Update Encounter
+                    </Button>
+                  </Link>
+                </AlertDescription>
+              </Alert>
+            )}
             {beforeCeValidation.isLoading && <TimelineSkeleton count={2} />}
 
             {!beforeCeValidation.isLoading &&
