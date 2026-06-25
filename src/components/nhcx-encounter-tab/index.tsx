@@ -124,7 +124,9 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
     )[0]?.id;
 
   const encounterClaims = claims?.results ?? [];
-  const latestClaimId = findLatestClaim(encounterClaims)?.id;
+  const latestClaim = findLatestClaim(encounterClaims);
+  const latestClaimId =
+    latestClaim?.status === "cancelled" ? undefined : latestClaim?.id;
   const latestSuccessfulClaimId =
     findLatestClaimWithSuccessfulResponse(encounterClaims)?.id;
 
