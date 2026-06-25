@@ -1,7 +1,7 @@
 import { CodeableConcept, TaskInput, TaskOutput } from "@medplum/fhirtypes";
 import { Communication, CommunicationRequest } from "./communication";
 
-import { PaymentReconciliation } from "./payment";
+import { PaymentNotice } from "./payment";
 import { User } from "./user";
 
 export type TaskBase = {
@@ -18,6 +18,9 @@ export type TaskBase = {
   claim: string;
   part_of?: string;
   focus?: unknown;
+  dispatch_status: "pending" | "awaiting" | "complete" | "error";
+  dispatched_at: string | null;
+  dispatch_error: string;
   use_case:
     | "communication_request"
     | "communication_response"
@@ -46,7 +49,7 @@ export type CommunicationTask = TaskBase & {
 
 export type PaymentNoticeTask = TaskBase & {
   use_case: "payment_notice_request";
-  focus: PaymentReconciliation;
+  focus: PaymentNotice;
 };
 
 export type ProcessAcknowledgementTask = TaskBase & {

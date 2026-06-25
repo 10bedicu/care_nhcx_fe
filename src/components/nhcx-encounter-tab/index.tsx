@@ -1,0 +1,403 @@
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ArrowRightIcon, ShieldCheckIcon } from "lucide-react";
+import {
+  ClaimTimelineCard,
+  CoverageEligibilityTimelineCard,
+} from "./timeline-cards";
+import {
+  EncounterPrereqsSkeleton,
+  TimelineSkeleton,
+} from "@/components/common/timeline-skeleton";
+import {
+  buildTimeline,
+  deriveValidationOutcome,
+  findLatestClaim,
+  findLatestClaimWithSuccessfulResponse,
+  hasValidationPurpose,
+  isLatestRecord,
+} from "./flow";
+
+import FlowPrerequisitesGate, {
+  FlowPrerequisitesTimelineGate,
+} from "./flow-prerequisites-gate";
+import { hasDemographicMismatch } from "./demographics";
+import { useFlowPrerequisites } from "./use-flow-prerequisites";
+
+import { Button } from "@/components/ui/button";
+import { Condition, ConditionCategory } from "@/types/condition";
+import { Encounter } from "@/types/encounter";
+import { FC } from "react";
+import { GlobalStoreProvider } from "@/hooks/use-global-store";
+import { Link } from "raviger";
+import { Patient } from "@/types/patient";
+import { apis } from "@/apis";
+import { useQuery } from "@tanstack/react-query";
+
+export type EncounterTabProps = {
+  encounter: Encounter;
+  patient: Patient;
+};
+
+const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
+  const { data: coverages, isFetching: isLoadingCoverages } = useQuery({
+    queryKey: ["coverage-eligibility-requests", encounter?.id],
+    queryFn: () =>
+      apis.coverageEligibilityRequest.list({
+        encounter: encounter?.id,
+      }),
+    enabled: !!encounter?.id,
+  });
+
+  const { data: claims, isFetching: isLoadingClaims } = useQuery({
+    queryKey: ["claims", encounter?.id],
+    queryFn: () =>
+      apis.claim.list({
+        encounter: encounter?.id,
+      }),
+    enabled: !!encounter?.id,
+  });
+
+  const { data: healthFacility, isLoading: isHealthFacilityLoading } = useQuery(
+    {
+      queryKey: ["healthFacility", encounter?.facility.id],
+      queryFn: () => apis.healthFacility.get(encounter?.facility.id),
+      enabled: !!encounter?.facility.id,
+    },
+  );
+
+  const { data: provider, isLoading: isProviderLoading } = useQuery({
+    queryKey: ["provider", encounter?.facility.id],
+    queryFn: () => apis.provider.get(encounter?.facility.id),
+    enabled: !!encounter?.facility.id,
+  });
+
+  const { data: abhaNumber } = useQuery({
+    queryKey: ["abhaNumber", patient?.id],
+    queryFn: () => apis.abhaNumber.get(patient.id),
+    enabled: !!patient?.id,
+  });
+
+  const { data: encounterDiagnoses, isFetching: isLoadingDiagnoses } = useQuery(
+    {
+      queryKey: ["encounter-diagnoses", patient?.id, encounter?.id],
+      queryFn: async (): Promise<Condition[]> => {
+        const res = await apis.diagnosis.list(patient.id, {
+          encounter: encounter.id,
+          category: [ConditionCategory.encounter_diagnosis],
+          ordering: "-created_date",
+        });
+        return res.results ?? [];
+      },
+      enabled: !!patient?.id && !!encounter?.id,
+      staleTime: 60 * 1000,
+    },
+  );
+
+  const isLoadingPrereqs = isHealthFacilityLoading || isProviderLoading;
+  const hasHealthFacility = !!healthFacility;
+  const hasProvider = !!provider;
+  const isLoadingTimeline = isLoadingCoverages || isLoadingClaims;
+
+  // Diagnosis and care team are mandatory clinical details before any
+  // pre-authorisation or claim can be raised. Surface a warning while either
+  // is missing so the user can complete the encounter record first.
+  const hasDiagnosis = (encounterDiagnoses?.length ?? 0) > 0;
+  const hasCareTeam = (encounter?.care_team?.length ?? 0) > 0;
+  const showClinicalDetailsWarning =
+    !isLoadingDiagnoses && (!hasDiagnosis || !hasCareTeam);
+
+  // Before CE-validation prerequisites gate the timeline; after CE-validation
+  // prerequisites appear as a timeline entry below the validation card.
+  const flowPrerequisites = useFlowPrerequisites(encounter, patient);
+  const { beforeCeValidation, afterCeValidation } = flowPrerequisites;
+
+  const encounterCoverages = coverages?.results ?? [];
+
+  // Determine guided headline state. The CTA is shown when no CE:V exists yet,
+  // or when the latest validation request hard-stops the flow (so the user can
+  // start a fresh check after fixing the underlying issue).
+  const validationRequests = encounterCoverages.filter(hasValidationPurpose);
+  const latestValidation = validationRequests
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.created_date).getTime() - new Date(a.created_date).getTime(),
+    )[0];
+  const validationOutcome = latestValidation
+    ? deriveValidationOutcome(latestValidation)
+    : null;
+
+  const isHardStop =
+    validationOutcome?.kind === "policy-inactive" ||
+    validationOutcome?.kind === "no-balance";
+
+  // Demographic verification is a post-requirement: once the policy validates,
+  // a contradiction between the payer's record and the patient's record blocks
+  // the flow until the details are corrected.
+  const demographicMismatch = latestValidation
+    ? hasDemographicMismatch(latestValidation, patient, abhaNumber)
+    : false;
+
+  const showInitialCTA = !latestValidation;
+
+  // Track the most recent CE id so we can propagate it through claim actions.
+  const latestCoverageEligibilityId = encounterCoverages
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.created_date).getTime() - new Date(a.created_date).getTime(),
+    )[0]?.id;
+
+  const encounterClaims = claims?.results ?? [];
+  const latestClaim = findLatestClaim(encounterClaims);
+  const latestClaimId =
+    latestClaim?.status === "cancelled" ? undefined : latestClaim?.id;
+  const latestSuccessfulClaimId =
+    findLatestClaimWithSuccessfulResponse(encounterClaims)?.id;
+
+  const timeline = buildTimeline(encounterCoverages, encounterClaims, {
+    afterCeValidationSatisfied: afterCeValidation.isSatisfied,
+  });
+
+  return (
+    <GlobalStoreProvider
+      initialStore={{
+        encounter,
+        patient,
+      }}
+    >
+      <div className="min-h-screen bg-gray-50 p-6 space-y-6">
+        {isLoadingPrereqs && <EncounterPrereqsSkeleton />}
+
+        {!isLoadingPrereqs && !hasHealthFacility && (
+          <Alert variant="warning">
+            <AlertTitle>Health Facility Required</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>
+                No health facility is linked to this facility. Please go to
+                Settings → General to link a health facility before proceeding.
+              </p>
+              <Link
+                href={`/facility/${encounter?.facility.id}/settings/general`}
+              >
+                <Button variant="outline" size="sm">
+                  Go to Settings
+                </Button>
+              </Link>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {!isLoadingPrereqs && hasHealthFacility && !hasProvider && (
+          <Alert variant="warning">
+            <AlertTitle>NHCX Provider Required</AlertTitle>
+            <AlertDescription className="space-y-3">
+              <p>
+                No NHCX provider is configured for this facility. Please go to
+                Settings → General to create an NHCX provider before proceeding.
+              </p>
+              <Link
+                href={`/facility/${encounter?.facility.id}/settings/general`}
+              >
+                <Button variant="outline" size="sm">
+                  Go to Settings
+                </Button>
+              </Link>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {!isLoadingPrereqs && hasHealthFacility && hasProvider && (
+          <>
+            <div className="flex justify-between items-start gap-4">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Insurance Claim Flow
+                </h1>
+                <p className="text-sm text-gray-500">
+                  Step-by-step coverage validation, pre-authorization and claim
+                  submission for this encounter.
+                </p>
+              </div>
+            </div>
+
+            {showClinicalDetailsWarning && (
+              <Alert variant="warning">
+                <AlertTitle>Clinical Details Required</AlertTitle>
+                <AlertDescription className="space-y-3">
+                  <p>
+                    {!hasDiagnosis && !hasCareTeam
+                      ? "This encounter is missing a diagnosis and a care team. Add both before raising a pre-authorisation or claim."
+                      : !hasDiagnosis
+                        ? "This encounter is missing a diagnosis. Add one before raising a pre-authorisation or claim."
+                        : "This encounter is missing a care team. Add one before raising a pre-authorisation or claim."}
+                  </p>
+                  <Link
+                    href={`/facility/${encounter?.facility.id}/patient/${patient?.id}/encounter/${encounter?.id}/updates`}
+                  >
+                    <Button variant="outline" size="sm">
+                      Update Encounter
+                    </Button>
+                  </Link>
+                </AlertDescription>
+              </Alert>
+            )}
+            {beforeCeValidation.isLoading && <TimelineSkeleton count={2} />}
+
+            {!beforeCeValidation.isLoading &&
+              !beforeCeValidation.isSatisfied && (
+                <FlowPrerequisitesGate
+                  title="PMJAY requirements not met"
+                  description="The following details are mandatory before coverage eligibility validation can be started for this"
+                  state={beforeCeValidation}
+                  ageUnknown={flowPrerequisites.ageUnknown}
+                  patientUpdateHref={flowPrerequisites.patientUpdateHref}
+                  isChild={flowPrerequisites.isChild}
+                />
+              )}
+
+            {beforeCeValidation.isSatisfied && (
+              <>
+                {!isLoadingTimeline && showInitialCTA && (
+                  <div className="rounded-lg border border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10 p-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-full bg-primary/10 p-2.5">
+                        <ShieldCheckIcon className="h-6 w-6 text-primary" />
+                      </div>
+                      <div>
+                        <h2 className="text-base font-semibold text-gray-900">
+                          Start with a Coverage Balance Check
+                        </h2>
+                        <p className="text-sm text-gray-600 mt-0.5">
+                          Confirm the patient’s policy is active and has wallet
+                          balance before checking what is needed for
+                          pre-authorisation.
+                        </p>
+                      </div>
+                    </div>
+                    <Link href="coverages/new?purpose=validation">
+                      <Button size="lg" className="gap-2">
+                        Check Coverage Balance
+                        <ArrowRightIcon className="h-4 w-4" />
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+
+                {!isLoadingTimeline && isHardStop && (
+                  <Alert className="border-red-300 bg-red-50 text-red-800">
+                    <AlertTitle>Flow blocked</AlertTitle>
+                    <AlertDescription className="space-y-3">
+                      <p>
+                        {validationOutcome?.kind === "policy-inactive"
+                          ? "The patient’s policy is inactive."
+                          : "The patient’s wallet balance is exhausted."}{" "}
+                        No further authorisation or claim actions can be taken
+                        on this encounter.
+                      </p>
+                      <div>
+                        <Link href="coverages/new?purpose=validation">
+                          <Button variant="outline" size="sm">
+                            Re-check Coverage Balance
+                          </Button>
+                        </Link>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {!isLoadingTimeline && !isHardStop && demographicMismatch && (
+                  <Alert className="border-red-300 bg-red-50 text-red-800">
+                    <AlertTitle>Flow blocked: demographic mismatch</AlertTitle>
+                    <AlertDescription className="space-y-3">
+                      <p>
+                        The patient’s details do not match the records returned
+                        by the payer. Correct the patient’s details so they
+                        match, then re-run the coverage check before proceeding
+                        with pre-authorisation or claims.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {flowPrerequisites.patientUpdateHref && (
+                          <Link href={flowPrerequisites.patientUpdateHref}>
+                            <Button variant="outline" size="sm">
+                              Update Patient Details
+                            </Button>
+                          </Link>
+                        )}
+                        <Link href="coverages/new?purpose=validation">
+                          <Button variant="outline" size="sm">
+                            Re-check Coverage Balance
+                          </Button>
+                        </Link>
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <div className="space-y-4">
+                  {isLoadingTimeline && <TimelineSkeleton count={3} />}
+
+                  {!isLoadingTimeline &&
+                    timeline.length === 0 &&
+                    !showInitialCTA && (
+                      <div className="text-center py-8 text-gray-500">
+                        No activity yet.
+                      </div>
+                    )}
+
+                  {timeline.map((entry) => {
+                    if (entry.kind === "prerequisites-gate") {
+                      return (
+                        <FlowPrerequisitesTimelineGate
+                          key={`gate-${entry.anchor}-${entry.phase}`}
+                          title="Additional details required"
+                          description="Complete the following before proceeding with pre-authorisation or claim submission."
+                          state={afterCeValidation}
+                        />
+                      );
+                    }
+
+                    const isCurrent = isLatestRecord(timeline, entry);
+                    if (entry.kind === "ce") {
+                      return (
+                        <CoverageEligibilityTimelineCard
+                          key={`ce-${entry.record.id}`}
+                          request={entry.record}
+                          encounterId={encounter.id}
+                          isCurrent={isCurrent}
+                          latestClaimId={latestClaimId}
+                          latestSuccessfulClaimId={latestSuccessfulClaimId}
+                          afterCeValidationSatisfied={
+                            afterCeValidation.isSatisfied
+                          }
+                          patient={patient}
+                          abhaNumber={abhaNumber}
+                        />
+                      );
+                    }
+                    return (
+                      <ClaimTimelineCard
+                        key={`claim-${entry.record.id}`}
+                        claim={entry.record}
+                        encounterId={encounter.id}
+                        encounterStatus={encounter.status}
+                        isCurrent={isCurrent}
+                        latestCoverageEligibilityId={
+                          latestCoverageEligibilityId
+                        }
+                        latestClaimId={latestClaimId}
+                        latestSuccessfulClaimId={latestSuccessfulClaimId}
+                      />
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </GlobalStoreProvider>
+  );
+};;;
+
+export default NhcxEncounterTab;

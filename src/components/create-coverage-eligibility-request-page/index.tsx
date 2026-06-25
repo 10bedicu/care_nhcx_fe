@@ -1,22 +1,47 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  COVERAGE_ELIGIBILITY_REQUEST_PURPOSE_CHOICES,
+  CoverageEligibilityRequestPurposeChoice,
+} from "@/types/coverage_eligibility";
+import { Condition, ConditionCategory } from "@/types/condition";
+import { FC, useEffect, useMemo, useRef, useState } from "react";
+import { useForm, useFormState } from "react-hook-form";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useNavigate, useQueryParams } from "raviger";
 
+import { AlertCircleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CoverageEligibilityRequestInsuranceSection } from "./coverage-eligibility-request-insurance-section";
 import { CoverageEligibilityRequestItemSection } from "./coverage-eligibility-request-item-section";
 import { CoverageEligibilityRequestOtherSection } from "./coverage-eligibility-request-other-section";
-import { FC } from "react";
 import { Form } from "@/components/ui/form";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
 import { InsurancePlanDetailsPanel } from "../insurance-plan-details-panel";
+import { FormPrefillSkeleton } from "@/components/common/form-prefill-skeleton";
 import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
+import { normalizeImplantItemsFromPrefill } from "@/lib/benefit-item-validation";
+import { setResubmitIntent } from "@/lib/resubmit-intent";
 import { toast } from "@/lib/utils";
 import { uploadFile } from "@/lib/upload-file";
-import { useForm } from "react-hook-form";
-import { useNavigate } from "raviger";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+
+function parsePurposeQueryParam(
+  value: unknown,
+): CoverageEligibilityRequestPurposeChoice | null {
+  if (typeof value !== "string") return null;
+  const lower = value.toLowerCase();
+  const match = COVERAGE_ELIGIBILITY_REQUEST_PURPOSE_CHOICES.find(
+    (choice) => choice === lower,
+  );
+  return match ?? null;
+}
+
+function parseStringParam(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
 
 export type CreateCoverageEligibilityRequestPageProps = {
   facilityId: string;
@@ -29,26 +54,188 @@ const CreateCoverageEligibilityRequestPage: FC<
 > = ({ facilityId, patientId, encounterId }) => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [queryParams] = useQueryParams();
+
+  const lockedPurpose = useMemo(
+    () => parsePurposeQueryParam(queryParams?.purpose),
+    [queryParams?.purpose],
+  );
+
+  const linkedCoverageEligibilityId = useMemo(
+    () => parseStringParam(queryParams?.coverage_eligibility),
+    [queryParams?.coverage_eligibility],
+  );
+
+  // The `mode` param distinguishes how the auth-requirements form was entered:
+  //   - "enhancement": enhancing an already-approved pre-auth -> enhancement
+  //     validation applies.
+  //   - "resubmit": resubmitting -> enhancement validation skipped and the
+  //     resubmit intent is carried through to the claim form.
+  //   - undefined: initial / cancelled / pre-approval building -> no enhancement
+  //     validation.
+  // Enhancement and resubmit are mutually exclusive, so a single enum models them.
+  const ceMode = useMemo(
+    () => parseStringParam(queryParams?.mode),
+    [queryParams?.mode],
+  );
+  const isResubmitMode = ceMode === "resubmit";
+  const isEnhancementMode = ceMode === "enhancement";
+
+  const initialPurpose: CoverageEligibilityRequestPurposeChoice[] = useMemo(
+    () => (lockedPurpose ? [lockedPurpose] : ["validation"]),
+    [lockedPurpose],
+  );
 
   const form = useForm<
     z.infer<typeof createCoverageEligibilityRequestFormSchema>
   >({
     resolver: zodResolver(createCoverageEligibilityRequestFormSchema),
+    mode: "onChange",
     defaultValues: {
       facility: facilityId,
       patient: patientId,
       encounter: encounterId,
-      status: "draft",
+      status: "active",
       priority: "normal",
+      purpose: initialPurpose,
     },
   });
 
-  const { mutate: checkCoverageEligibility } = useMutation({
+  const { isDirty, isValid } = useFormState({ control: form.control });
+  const [hasLinkedCePrefill, setHasLinkedCePrefill] = useState(false);
+  const [prefillNonce, setPrefillNonce] = useState(0);
+  const isUnchangedPrefill = hasLinkedCePrefill && !isDirty;
+
+  const isAuthRequirements = lockedPurpose === "auth-requirements";
+
+  const didPrefillFromLinkedCeRef = useRef(false);
+
+  const { data: linkedCoverageEligibilityRequest, isFetching: isLinkedCeLoading } =
+    useQuery({
+    queryKey: ["coverage-eligibility-request", linkedCoverageEligibilityId],
+    queryFn: () =>
+      apis.coverageEligibilityRequest.get(
+        linkedCoverageEligibilityId as string,
+      ),
+    enabled: !!linkedCoverageEligibilityId,
+  });
+
+  const requireEnhancementAllowed = useMemo(
+    () => Boolean(isAuthRequirements && isEnhancementMode),
+    [isAuthRequirements, isEnhancementMode],
+  );
+
+  const prefilledItemSequences = useMemo(() => {
+    if (!linkedCoverageEligibilityRequest) return new Set<number>();
+    return new Set(
+      (linkedCoverageEligibilityRequest.item ?? []).map((it, idx) =>
+        typeof it.sequence === "number" && it.sequence > 0
+          ? it.sequence
+          : idx + 1,
+      ),
+    );
+  }, [linkedCoverageEligibilityRequest]);
+
+  const { data: encounterDiagnoses, isFetching: isDiagnosesLoading } = useQuery({
+    queryKey: ["cer-encounter-diagnoses", patientId, encounterId],
+    queryFn: async (): Promise<Condition[]> => {
+      const res = await apis.diagnosis.list(patientId, {
+        encounter: encounterId,
+        category: [ConditionCategory.encounter_diagnosis],
+        ordering: "-created_date",
+      });
+      return res.results || [];
+    },
+    enabled: !!patientId && !!encounterId && isAuthRequirements,
+    staleTime: 60 * 1000,
+  });
+
+  useEffect(() => {
+    if (didPrefillFromLinkedCeRef.current) return;
+    if (!linkedCoverageEligibilityId) return;
+    if (!linkedCoverageEligibilityRequest) return;
+
+    didPrefillFromLinkedCeRef.current = true;
+
+    const current = form.getValues();
+
+    const ceInsurance = linkedCoverageEligibilityRequest.insurance ?? [];
+    const ceItems = linkedCoverageEligibilityRequest.item ?? [];
+    const ceSupportingInfo =
+      linkedCoverageEligibilityRequest.supporting_info ?? [];
+
+    const mappedInsurance = ceInsurance.map((ins, idx) => ({
+      sequence:
+        typeof ins.sequence === "number" && ins.sequence > 0
+          ? ins.sequence
+          : idx + 1,
+      focal: !!ins.focal,
+      policy: ins.policy,
+    }));
+    if (mappedInsurance.length > 0 && !mappedInsurance.some((i) => i.focal)) {
+      mappedInsurance[0].focal = true;
+    }
+
+    const supportingInfo = ceSupportingInfo
+      .filter((s) => s.value_string || s.value_attachment)
+      .map((s) => ({
+        sequence: s.sequence,
+        value_string: s.value_string,
+        value_attachment: s.value_attachment as unknown as string | undefined,
+      }));
+
+    const mappedItems = normalizeImplantItemsFromPrefill(
+      ceItems.map((it, idx) => ({
+        sequence:
+          typeof it.sequence === "number" && it.sequence > 0
+            ? it.sequence
+            : idx + 1,
+        supporting_info_sequence: it.supporting_info_sequence ?? [],
+        category: it.category,
+        product_or_service: it.product_or_service,
+        modifier: it.modifier ?? [],
+        quantity: {
+          value: Number(it.quantity?.value) > 0 ? Number(it.quantity?.value) : 1,
+          unit: it.quantity?.unit,
+        },
+        diagnosis: (it.diagnosis ?? []).map((d) => ({
+          diagnosis_reference: d.diagnosis_reference?.id,
+          diagnosis_code: d.diagnosis_code,
+        })),
+      })),
+    );
+
+    if (mappedInsurance.length > 0) {
+      current.insurance = mappedInsurance;
+    }
+    if (supportingInfo.length > 0) {
+      current.supporting_info = supportingInfo;
+    }
+    if (mappedItems.length > 0) {
+      current.item = mappedItems;
+    }
+
+    form.reset(current, { keepDefaultValues: false });
+    setHasLinkedCePrefill(true);
+    setPrefillNonce((n) => n + 1);
+  }, [linkedCoverageEligibilityId, linkedCoverageEligibilityRequest, form]);
+
+  const defaultItemDiagnoses = useMemo(
+    () =>
+      (encounterDiagnoses ?? []).map((c) => ({
+        diagnosis_reference: undefined as string | undefined,
+        diagnosis_code: c.code,
+      })),
+    [encounterDiagnoses],
+  );
+
+  const { mutate: checkCoverageEligibility, isPending: checkIsPending } =
+    useMutation({
     mutationFn: apis.coverageEligibilityRequest.check,
     onSuccess: () => {
       toast.success("Coverage check submitted successfully");
       navigate(
-        `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/coverages`
+        `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`,
       );
     },
   });
@@ -61,6 +248,9 @@ const CreateCoverageEligibilityRequestPage: FC<
     onSuccess: (data) => {
       form.reset();
       toast.success("Coverage check created successfully");
+      if (isResubmitMode) {
+        setResubmitIntent(encounterId);
+      }
       checkCoverageEligibility(data.id);
       queryClient.invalidateQueries({
         queryKey: ["coverage-eligibility-requests", encounterId],
@@ -68,9 +258,26 @@ const CreateCoverageEligibilityRequestPage: FC<
     },
   });
 
+  const isFormPrefillLoading =
+    (!!linkedCoverageEligibilityId &&
+      (isLinkedCeLoading || !hasLinkedCePrefill)) ||
+    (isAuthRequirements &&
+      !!patientId &&
+      !!encounterId &&
+      isDiagnosesLoading &&
+      !hasLinkedCePrefill);
+
+  const isSubmitting =
+    createCoverageEligibilityRequestIsPending || checkIsPending;
+
   async function onSubmit(
-    values: z.infer<typeof createCoverageEligibilityRequestFormSchema>
+    values: z.infer<typeof createCoverageEligibilityRequestFormSchema>,
   ) {
+    if (isUnchangedPrefill) {
+      toast.error("No changes noted. Please update the form before submitting.");
+      return;
+    }
+
     try {
       const updatedValues = { ...values };
 
@@ -91,7 +298,7 @@ const CreateCoverageEligibilityRequestPage: FC<
 
               const uploadResponse = await uploadFile(
                 info.value_file,
-                fileUploadRequest
+                fileUploadRequest,
               );
 
               updatedValues.supporting_info[i].value_attachment =
@@ -101,7 +308,7 @@ const CreateCoverageEligibilityRequestPage: FC<
             } catch (error) {
               console.error("Error uploading file:", error);
               throw new Error(
-                `Failed to upload file: ${info.value_file?.name}`
+                `Failed to upload file: ${info.value_file?.name}`,
               );
             }
           }
@@ -109,7 +316,6 @@ const CreateCoverageEligibilityRequestPage: FC<
       }
 
       createCoverageEligibilityRequest(updatedValues);
-      console.log(values);
     } catch (error) {
       console.error("Error in onSubmit:", error);
     }
@@ -126,9 +332,23 @@ const CreateCoverageEligibilityRequestPage: FC<
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-medium">Check Coverage Eligibility</h3>
+            <h3 className="text-lg font-medium">
+              {lockedPurpose === "auth-requirements"
+                ? "Check Pre-Authorization Requirements"
+                : lockedPurpose === "validation"
+                  ? "Check Coverage Balance"
+                  : lockedPurpose === "discovery"
+                    ? "Coverage Discovery"
+                    : lockedPurpose === "benefits"
+                      ? "Benefits Check"
+                      : "Check Coverage Eligibility"}
+            </h3>
             <p className="text-sm text-muted-foreground">
-              Check the coverage eligibility for the patient.
+              {lockedPurpose === "auth-requirements"
+                ? "Discover what documents and questionnaires are required for pre-authorisation."
+                : lockedPurpose === "validation"
+                  ? "Confirm the policy is active and check the available wallet balance."
+                  : "Check the coverage eligibility for the patient."}
             </p>
           </div>
           <Button
@@ -136,7 +356,7 @@ const CreateCoverageEligibilityRequestPage: FC<
             variant="outline"
             onClick={() => {
               navigate(
-                `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/coverages`
+                `/facility/${facilityId}/patient/${patientId}/encounter/${encounterId}/claims`,
               );
             }}
           >
@@ -147,28 +367,76 @@ const CreateCoverageEligibilityRequestPage: FC<
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
-            <Form {...form}>
-              <form
-                onSubmit={form.handleSubmit(onSubmit)}
-                className="space-y-8"
-              >
-                <CoverageEligibilityRequestInsuranceSection form={form} />
-                <Separator />
-                <CoverageEligibilityRequestItemSection form={form} />
-                <Separator />
-                <CoverageEligibilityRequestOtherSection form={form} />
-                <Separator />
-
-                <Button
-                  className="w-full"
-                  size="lg"
-                  type="submit"
-                  loading={createCoverageEligibilityRequestIsPending}
+            {isFormPrefillLoading ? (
+              <FormPrefillSkeleton />
+            ) : (
+              <Form {...form}>
+                <form
+                  onSubmit={form.handleSubmit(onSubmit)}
+                  className="space-y-8"
                 >
-                  Check Coverage Eligibility
-                </Button>
-              </form>
-            </Form>
+                  <CoverageEligibilityRequestInsuranceSection
+                    form={form}
+                    readOnly={
+                      lockedPurpose !== null && lockedPurpose !== "validation"
+                    }
+                  />
+                  <Separator />
+                  {lockedPurpose !== "validation" && (
+                    <>
+                      <CoverageEligibilityRequestItemSection
+                        key={`cer-items-${prefillNonce}`}
+                        form={form}
+                        defaultItemDiagnoses={
+                          isAuthRequirements ? defaultItemDiagnoses : []
+                        }
+                        requireEnhancementAllowed={requireEnhancementAllowed}
+                        prefilledItemSequences={prefilledItemSequences}
+                      />
+                      <Separator />
+                    </>
+                  )}
+                  <CoverageEligibilityRequestOtherSection
+                    form={form}
+                    lockedPurpose={lockedPurpose}
+                  />
+                  <Separator />
+
+                  {isUnchangedPrefill && (
+                    <Alert
+                      variant="destructive"
+                      className="flex items-center gap-2"
+                    >
+                      <AlertCircleIcon className="h-4 w-4" />
+                      <AlertDescription>
+                        No changes noted. Please update the form before
+                        submitting.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    type="submit"
+                    loading={isSubmitting}
+                    disabled={
+                      isUnchangedPrefill || isFormPrefillLoading || !isValid
+                    }
+                  >
+                    {lockedPurpose === "auth-requirements"
+                      ? "Check Pre-Authorization Requirements"
+                      : lockedPurpose === "validation"
+                        ? "Check Coverage Balance"
+                        : lockedPurpose === "discovery"
+                          ? "Discover Coverage"
+                          : lockedPurpose === "benefits"
+                            ? "Check Benefits"
+                            : "Check Coverage Eligibility"}
+                  </Button>
+                </form>
+              </Form>
+            )}
           </div>
 
           <div className="lg:col-span-1">

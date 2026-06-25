@@ -7,12 +7,6 @@ const getWindowDimensions = () => {
   };
 };
 
-/**
- * A hook that returns the current window dimensions.
- * @example
- * const { height, width } = useWindowDimensions();
- * @returns The current window dimensions.
- */
 export default function useWindowDimensions() {
   const [windowDimensions, setWindowDimensions] = useState(
     getWindowDimensions()

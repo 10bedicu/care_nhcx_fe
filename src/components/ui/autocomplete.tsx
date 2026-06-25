@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
+import { CheckIcon, ChevronsUpDownIcon, Loader2Icon } from "lucide-react";
 import {
   Command,
   CommandDialog,
@@ -34,6 +34,7 @@ interface AutocompleteProps {
   placeholder?: string;
   noOptionsMessage?: string;
   disabled?: boolean;
+  isLoading?: boolean;
   align?: "start" | "center" | "end";
   popoverClassName?: string;
   "data-cy"?: string;
@@ -47,6 +48,7 @@ export default function Autocomplete({
   placeholder = "Select...",
   noOptionsMessage = "No options found",
   disabled,
+  isLoading = false,
   align = "center",
   popoverClassName,
   "data-cy": dataCy,
@@ -64,7 +66,13 @@ export default function Autocomplete({
         className="outline-hidden border-none ring-0 shadow-none"
       />
       <CommandList>
-        <CommandEmpty>{noOptionsMessage}</CommandEmpty>
+        {isLoading ? (
+          <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+            <Loader2Icon className="h-4 w-4 animate-spin" />
+            Searching…
+          </div>
+        ) : null}
+        <CommandEmpty>{isLoading ? "Searching…" : noOptionsMessage}</CommandEmpty>
         <CommandGroup>
           {options.map((option) => (
             <CommandItem
@@ -121,7 +129,11 @@ export default function Autocomplete({
               ? options.find((option) => option.value === value)?.label
               : placeholder}
           </span>
-          <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+          {isLoading ? (
+            <Loader2Icon className="ml-2 size-4 shrink-0 animate-spin opacity-70" />
+          ) : (
+            <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+          )}
         </Button>
         <CommandDialog open={open} onOpenChange={setOpen}>
           {commandContent}
@@ -148,7 +160,11 @@ export default function Autocomplete({
           <span className={cn("truncate", !selectedOption && "text-gray-500")}>
             {selectedOption ? selectedOption.label : placeholder}
           </span>
-          <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+          {isLoading ? (
+            <Loader2Icon className="ml-2 size-4 shrink-0 animate-spin opacity-70" />
+          ) : (
+            <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+          )}
         </Button>
       </PopoverTrigger>
       <PopoverContent

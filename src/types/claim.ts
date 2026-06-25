@@ -53,6 +53,11 @@ export type ClaimCareTeam = {
   role?: Coding;
 };
 
+export type ClaimSupportingInfoResource = {
+  resource_type: string;
+  resource_id: string;
+};
+
 export type ClaimSupportingInfo = {
   sequence: number;
   category: Coding;
@@ -60,6 +65,7 @@ export type ClaimSupportingInfo = {
   timing?: Period;
   value_string?: string;
   value_attachment?: FileUpload;
+  value_resource?: ClaimSupportingInfoResource;
 };
 
 export type ClaimProcedure = {
@@ -92,7 +98,8 @@ export type ClaimItem = {
   information_sequence: number[];
   category?: Coding;
   product_or_service: Coding;
-  charge_item?: ChargeItem;
+  charge_items: ChargeItem[];
+  modifier?: Coding[];
   program_code: Coding[];
   serviced_period?: Period;
   quantity: Quantity;
@@ -106,16 +113,69 @@ export type ClaimAccident = {
   location?: string;
 };
 
+export type ClaimQuestionnaireResponseAnswer = {
+  value_boolean?: boolean;
+  value_decimal?: number;
+  value_integer?: number;
+  value_date?: string;
+  value_date_time?: string;
+  value_time?: string;
+  value_string?: string;
+  value_uri?: string;
+  value_coding?: Coding;
+  value_quantity?: { value: number; unit?: string };
+  value_attachment?: string;
+};
+
+export type ClaimQuestionnaireResponseItem = {
+  link_id: string;
+  text?: string;
+  answer: ClaimQuestionnaireResponseAnswer[];
+  item?: ClaimQuestionnaireResponseItem[];
+};
+
+export type ClaimQuestionnaireResponse = {
+  sequence: number;
+  questionnaire: string;
+  category: Coding;
+  code: Coding;
+  item: ClaimQuestionnaireResponseItem[];
+};
+
 export type ClaimPayee = unknown;
 
+export type ClaimResponseErrorEntry = ClaimResponseError & {
+  expression?: string[];
+};
+
+export type ClaimResponseAdjudication = {
+  category: { coding: Coding[] };
+  amount?: { value: number; currency?: string };
+  value?: number;
+  reason?: { coding: Coding[] };
+};
+
+export type ClaimResponseIdentifier = {
+  type: { coding: Coding[] };
+  value: string;
+  system?: string;
+};
+
 export type ClaimResponse = {
+  id?: string;
+  request: string; // uuid
+  use?: "preauthorization" | "claim" | "predetermination" | null;
+  status?: "active" | "cancelled" | null;
+  pre_auth_ref?: string | null;
+  adjudication?: ClaimResponseAdjudication[] | null;
+  identifier?: ClaimResponseIdentifier[] | null;
+  type?: { coding: Coding[] } | null;
   outcome: string;
-  disposition?: string;
+  disposition?: string | null;
   item?: ClaimResponseItem[];
   add_item?: ClaimResponseAddItem[];
   total?: ClaimResponseTotal[];
-  error?: ClaimResponseError[];
-  request: string; // uuid
+  error?: ClaimResponseErrorEntry[];
   created_date: string;
   modified_date?: string;
 };
@@ -141,7 +201,13 @@ export type Claim = {
   item: ClaimItem[];
   accident?: ClaimAccident;
   payee?: ClaimPayee;
+  dispatch_status: "pending" | "awaiting" | "partial" | "complete" | "error";
+  dispatched_at: string | null;
+  dispatch_error: string;
+  payment_received: boolean;
+  is_paid: boolean;
   latest_response?: ClaimResponse;
+  questionnaire_responses?: ClaimQuestionnaireResponse[];
   created_date: string;
   modified_date?: string;
   created_by: User;

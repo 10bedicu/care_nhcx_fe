@@ -9,6 +9,7 @@ type ValuesetSelectProps = {
   value: Coding | undefined;
   onSelect: (code: Coding) => void;
   count?: number;
+  disabled?: boolean;
 };
 
 export default function ValuesetSelect({
@@ -16,10 +17,11 @@ export default function ValuesetSelect({
   value,
   onSelect,
   count = 10,
+  disabled,
 }: ValuesetSelectProps) {
   const [search, setSearch] = useState("");
 
-  const { data: valueset } = useQuery({
+  const { data: valueset, isFetching } = useQuery({
     queryKey: ["valueset", system, "expand", count, search],
     queryFn: () => apis.valueset.expand(system, { count, search }),
   });
@@ -48,6 +50,8 @@ export default function ValuesetSelect({
         }
       }}
       onSearch={setSearch}
+      disabled={disabled}
+      isLoading={isFetching}
     />
   );
 }

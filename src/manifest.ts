@@ -2,18 +2,20 @@ import { lazy } from "react";
 import routes from "./routes";
 
 const manifest = {
-  plugin: "care_hcx",
+  plugin: "care_nhcx",
   routes,
   extends: [],
   components: {
     FacilityHomeActions: lazy(
-      () => import("./components/pluggables/facility-home-actions")
+      () => import("./components/pluggables/facility-home-actions"),
+    ),
+    AppointmentActions: lazy(
+      () => import("./components/pluggables/appointment-policy-verification"),
     ),
   },
   navItems: [],
   encounterTabs: {
-    claims: lazy(() => import("./components/claim-encounter-tab/index")),
-    coverages: lazy(() => import("./components/coverage-encounter-tab/index")),
+    claims: lazy(() => import("./components/nhcx-encounter-tab/index")),
   },
 };
 

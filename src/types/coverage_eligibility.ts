@@ -1,8 +1,4 @@
 import { Coding, Quantity } from "./base";
-import {
-  CoverageEligibilityResponseError,
-  CoverageEligibilityResponseInsurance,
-} from "@medplum/fhirtypes";
 
 import { ChargeItem } from "./charge_item";
 import { Condition } from "./condition";
@@ -44,6 +40,7 @@ export type CoverageEligibilityRequestSupportingInfo = {
 };
 
 export type CoverageEligibilityRequestInsurance = {
+  sequence: number;
   focal: boolean;
   policy: Policy;
 };
@@ -54,24 +51,81 @@ export type CoverageEligibilityRequestItemDiagnosis = {
 };
 
 export type CoverageEligibilityRequestItem = {
+  sequence: number;
   supporting_info_sequence: number[];
   category: Coding;
   product_or_service: Coding;
-  charge_item?: ChargeItem;
+  charge_items: ChargeItem[];
+  modifier?: Coding[];
   quantity: Quantity;
   unit_price: number;
   diagnosis: CoverageEligibilityRequestItemDiagnosis[];
 };
 
-export type CoverageEligibilityResponse = {
-  outcome: string;
-  disposition?: string;
-  insurance?: CoverageEligibilityResponseInsurance[];
-  error?: CoverageEligibilityResponseError[];
-  request: string; // uuid
-  created_date: string;
-  modified_date?: string;
+export type Money = {
+  value: number;
+  currency: string;
 };
+
+export type Balance = {
+  allowed: Money;
+  used: Money;
+};
+
+export type ProcedureDocument = {
+  code: string;
+  display: string;
+};
+
+export type ProcedureQuestionnaire = {
+  id: string;
+  display: string;
+  url: string;
+};
+
+export type EligibilityProcedure = {
+  code: string;
+  display: string | null;
+  category: { code: string; display: string } | null;
+  excluded: boolean;
+  allowed_amount: Money | null;
+  authorization_required: boolean;
+  required_documents: ProcedureDocument[];
+  required_questionnaires: ProcedureQuestionnaire[];
+};
+
+export type InsuranceEntry = {
+  pmjay_id: string;
+  is_primary: boolean;
+  name: string | null;
+  dob: string | null;
+  gender: string | null;
+  abha_id: string | null;
+  inforce: boolean;
+  plan_name: string | null;
+  plan_id: string | null;
+  policy_period: { start: string; end: string } | null;
+  balance: Balance | null;
+  items: EligibilityProcedure[];
+};
+
+export type CoverageEligibilityResponse = {
+  id: string;
+  outcome: "complete" | "error" | "partial" | "queued";
+  disposition: string | null;
+  insurances: InsuranceEntry[] | null;
+  error: object | null;
+  created_date: string;
+};
+
+export const DISPATCH_STATUS_CHOICES = [
+  "pending",
+  "awaiting",
+  "partial",
+  "complete",
+  "error",
+] as const;
+export type DispatchStatusChoice = (typeof DISPATCH_STATUS_CHOICES)[number];
 
 export type CoverageEligibilityRequest = {
   id: string;
@@ -81,12 +135,17 @@ export type CoverageEligibilityRequest = {
   provider: string; // uuid
   patient: string; // uuid
   encounter?: string; // uuid
+  appointment?: string; // uuid
   insurer: Participant;
   supporting_info: CoverageEligibilityRequestSupportingInfo[];
   insurance: CoverageEligibilityRequestInsurance[];
   item: CoverageEligibilityRequestItem[];
 
-  latest_response?: CoverageEligibilityResponse;
+  dispatch_status: DispatchStatusChoice;
+  dispatched_at: string | null;
+  dispatch_error: string;
+
+  latest_response: CoverageEligibilityResponse | null;
   created_date: string;
   modified_date?: string;
   created_by: User;

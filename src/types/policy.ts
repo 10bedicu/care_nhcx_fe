@@ -7,4 +7,5 @@ export type Policy = {
   productid: string;
   productname: string;
   processingid: string;
+  policy_period?: { start: string; end: string } | null;
 };

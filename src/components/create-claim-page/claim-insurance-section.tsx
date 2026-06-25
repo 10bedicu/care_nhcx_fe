@@ -1,6 +1,8 @@
 import {
   Building2Icon,
+  CheckCircle2Icon,
   HashIcon,
+  LockIcon,
   ScanLineIcon,
   UmbrellaIcon,
   UserIcon,
@@ -12,35 +14,174 @@ import {
   FormItem,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  PolicyIdentifierTab,
+  PolicyLookupTabs,
+} from "@/components/common/policy-lookup-tabs";
+import { InlineLoading } from "@/components/common/loading-spinner";
+import { useEffect, useState } from "react";
 
 import { Checkbox } from "../ui/checkbox";
 import { Policy } from "@/types/policy";
 import { UseFormReturn } from "react-hook-form";
 import { apis } from "@/apis";
+import { resolvePmjayMemberId } from "@/components/nhcx-encounter-tab/flow-prerequisites";
 import { createClaimFormSchema } from "./schema";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 
 interface ClaimInsuranceSectionProps {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
+  /**
+   * When true the search UI is hidden and the selected insurances are shown
+   * as non-interactive read-only cards. Used when insurance is derived from
+   * a linked CE:AR or previous claim.
+   */
+  readOnly?: boolean;
 }
 
-export function ClaimInsuranceSection({ form }: ClaimInsuranceSectionProps) {
-  const { data: abhaNumber } = useQuery({
-    queryKey: ["abhaNumber", form.getValues("patient")],
-    queryFn: () => apis.abhaNumber.get(form.getValues("patient")),
-    enabled: !!form.getValues("patient"),
+type SearchParams = {
+  identifiertype: "AbhaNumber" | "MobileNo" | "MemberId";
+  identifiervalue: string;
+};
+
+export function ClaimInsuranceSection({ form, readOnly = false }: ClaimInsuranceSectionProps) {
+  const [activeTab, setActiveTab] = useState<PolicyIdentifierTab>("abha");
+  const [mobileInput, setMobileInput] = useState("");
+  const [memberIdInput, setMemberIdInput] = useState("");
+  const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
+  const [manualPolicies, setManualPolicies] = useState<Policy[]>([]);
+
+  const patientId = form.watch("patient");
+
+  const { data: abhaNumber, isFetching: isAbhaLoading } = useQuery({
+    queryKey: ["abhaNumber", patientId],
+    queryFn: () => apis.abhaNumber.get(patientId),
+    enabled: !!patientId && !readOnly,
   });
 
-  const { data: policies } = useQuery({
-    queryKey: ["policies", abhaNumber?.abha_number],
-    queryFn: () =>
-      apis.gateway.policies({
-        identifiertype: "AbhaNumber",
-        identifiervalue: abhaNumber?.abha_number?.replace(/-/g, "") ?? "",
-      }),
-    enabled: !!abhaNumber?.abha_number,
+  const { data: patient } = useQuery({
+    queryKey: ["patient", patientId],
+    queryFn: () => apis.patient.get(patientId),
+    enabled: !!patientId && !readOnly,
   });
+
+  const pmjayMemberId = patient ? resolvePmjayMemberId(patient) : undefined;
+
+  useEffect(() => {
+    if (readOnly) return;
+    if (abhaNumber?.mobile) {
+      setMobileInput(abhaNumber.mobile);
+    }
+  }, [abhaNumber?.mobile, readOnly]);
+
+  useEffect(() => {
+    if (readOnly) return;
+    if (pmjayMemberId) {
+      setMemberIdInput(pmjayMemberId);
+    }
+  }, [pmjayMemberId, readOnly]);
+
+  useEffect(() => {
+    if (readOnly) return;
+    if (activeTab === "abha" && abhaNumber?.abha_number) {
+      setSearchParams({
+        identifiertype: "AbhaNumber",
+        identifiervalue: abhaNumber.abha_number.replace(/-/g, ""),
+      });
+    } else if (activeTab === "mobile" && abhaNumber?.mobile) {
+      setSearchParams({
+        identifiertype: "MobileNo",
+        identifiervalue: abhaNumber.mobile,
+      });
+    } else if (activeTab !== "memberId") {
+      setSearchParams(null);
+    }
+  }, [activeTab, abhaNumber, readOnly]);
+
+  const handleTabChange = (tab: PolicyIdentifierTab) => {
+    setActiveTab(tab);
+    setSearchParams(null);
+  };
+
+  const handleSearch = () => {
+    if (activeTab === "mobile" && mobileInput) {
+      setSearchParams({ identifiertype: "MobileNo", identifiervalue: mobileInput });
+    } else if (activeTab === "memberId" && memberIdInput) {
+      setSearchParams({ identifiertype: "MemberId", identifiervalue: memberIdInput });
+    }
+  };
+
+  const { data: policies, isFetching: isPoliciesLoading } = useQuery({
+    queryKey: ["policies", searchParams],
+    queryFn: () => apis.gateway.policies(searchParams!),
+    enabled: !!searchParams && !readOnly,
+  });
+
+  const selectedInsurances = form.watch("insurance") ?? [];
+
+  if (readOnly) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center space-x-3 mb-6">
+          <div className="p-2 bg-primary/10 rounded-lg">
+            <UmbrellaIcon className="w-5 h-5 text-primary" />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-semibold">Insurance</h3>
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <LockIcon className="h-3 w-3" />
+                Read-only
+              </span>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Insurance derived from the linked record.
+            </p>
+          </div>
+        </div>
+
+        <FormField
+          control={form.control}
+          name="insurance"
+          render={() => (
+            <FormItem>
+              <FormControl>
+                {selectedInsurances.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No insurance selected.</p>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {selectedInsurances.map((ins) => (
+                      <ReadOnlyPolicyCard
+                        key={ins.policy.sno}
+                        policy={ins.policy}
+                        isFocal={ins.focal}
+                      />
+                    ))}
+                  </div>
+                )}
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </div>
+    );
+  }
+
+  // Policies that were prefilled but never returned by the lookup — render them
+  // as already-selected so the user does not have to re-search.
+  const prefilledPolicies = selectedInsurances
+    .map((ins) => ins.policy)
+    .filter((policy) => !policies?.some((p) => p.sno === policy.sno));
+
+  const displayedPolicies = [
+    ...(policies ?? []),
+    ...prefilledPolicies.filter(
+      (p) => !manualPolicies.some((m) => m.sno === p.sno),
+    ),
+    ...manualPolicies,
+  ];
 
   return (
     <div className="space-y-6">
@@ -56,6 +197,23 @@ export function ClaimInsuranceSection({ form }: ClaimInsuranceSectionProps) {
         </div>
       </div>
 
+      <PolicyLookupTabs
+        abhaValue={abhaNumber?.abha_number ?? ""}
+        mobileValue={mobileInput}
+        memberIdValue={memberIdInput}
+        onMobileChange={setMobileInput}
+        onMemberIdChange={setMemberIdInput}
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        onSearch={handleSearch}
+        isLoading={isPoliciesLoading || isAbhaLoading}
+        onManualAdd={(policy) => setManualPolicies((prev) => [...prev, policy])}
+      />
+
+      {isPoliciesLoading && (
+        <InlineLoading label="Searching policies…" className="mt-2" />
+      )}
+
       <div>
         <FormField
           control={form.control}
@@ -65,11 +223,10 @@ export function ClaimInsuranceSection({ form }: ClaimInsuranceSectionProps) {
               <FormItem className="w-full">
                 <FormControl>
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {policies?.map((policy, index) => (
+                    {displayedPolicies.map((policy, index) => (
                       <PolicyCard
-                        key={index}
+                        key={policy.sno ?? index}
                         policy={policy}
-                        index={index + 1}
                         form={form}
                       />
                     ))}
@@ -85,16 +242,81 @@ export function ClaimInsuranceSection({ form }: ClaimInsuranceSectionProps) {
   );
 }
 
+type ReadOnlyPolicyCardProps = {
+  policy: Policy;
+  isFocal: boolean;
+};
+
+const ReadOnlyPolicyCard = ({ policy, isFocal }: ReadOnlyPolicyCardProps) => (
+  <Card className="ring-2 ring-primary bg-primary/5">
+    <CardHeader className="pb-3">
+      <div className="flex items-center justify-between">
+        <CardTitle className="text-lg flex items-center gap-2">
+          {policy.productname}
+        </CardTitle>
+        {isFocal && (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
+            <CheckCircle2Icon className="h-3.5 w-3.5" />
+            Focal
+          </span>
+        )}
+      </div>
+    </CardHeader>
+
+    <CardContent className="space-y-3">
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        <div className="flex items-center gap-2">
+          <HashIcon className="h-4 w-4 text-muted-foreground" />
+          <div>
+            <p className="text-xs text-gray-500">S.No</p>
+            <p className="font-medium text-muted-foreground">{policy.sno}</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <ScanLineIcon className="h-4 w-4 text-muted-foreground" />
+          <div>
+            <p className="text-xs text-gray-500">Product ID</p>
+            <p className="font-medium text-muted-foreground">
+              {policy.productid}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <UserIcon className="h-4 w-4 text-muted-foreground" />
+          <div>
+            <p className="text-xs text-gray-500">Member ID</p>
+            <p className="font-medium text-muted-foreground">
+              {policy.memberid}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Building2Icon className="h-4 w-4 text-muted-foreground" />
+          <div>
+            <p className="text-xs text-gray-500">Payer ID</p>
+            <p className="font-medium text-muted-foreground">
+              {policy.payerid}
+            </p>
+          </div>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+);
+
 type PolicyCardProps = {
   policy: Policy;
-  index: number;
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
 };
 
-const PolicyCard = ({ policy, index, form }: PolicyCardProps) => {
-  const selectedInsurance = form
-    .watch("insurance")
-    ?.find((insurance) => insurance.sequence === index);
+const PolicyCard = ({ policy, form }: PolicyCardProps) => {
+  const selectedInsurances = form.watch("insurance") ?? [];
+  const selectedInsurance = selectedInsurances.find(
+    (insurance) => insurance.policy.sno === policy.sno
+  );
 
   const isSelected = !!selectedInsurance;
   const isFocal = selectedInsurance?.focal;
@@ -103,15 +325,17 @@ const PolicyCard = ({ policy, index, form }: PolicyCardProps) => {
     if (isSelected) {
       form.setValue(
         "insurance",
-        form
-          .getValues("insurance")
-          .filter((insurance) => insurance.sequence !== index)
+        selectedInsurances.filter(
+          (insurance) => insurance.policy.sno !== policy.sno
+        )
       );
     } else {
+      const existingSeqs = selectedInsurances.map((i) => i.sequence);
+      const nextSeq = Math.max(0, ...existingSeqs) + 1;
       form.setValue("insurance", [
-        ...(form.getValues("insurance") ?? []),
+        ...selectedInsurances,
         {
-          sequence: index,
+          sequence: nextSeq,
           policy: policy,
           focal: false,
         },
@@ -122,13 +346,11 @@ const PolicyCard = ({ policy, index, form }: PolicyCardProps) => {
   const handleFocalPolicyChange = (focal: boolean) => {
     form.setValue(
       "insurance",
-      form
-        .getValues("insurance")
-        .map((insurance) =>
-          insurance.sequence === index
-            ? { ...insurance, focal }
-            : { ...insurance, focal: focal ? false : insurance.focal }
-        )
+      selectedInsurances.map((insurance) =>
+        insurance.policy.sno === policy.sno
+          ? { ...insurance, focal }
+          : { ...insurance, focal: focal ? false : insurance.focal }
+      )
     );
   };
 
@@ -152,13 +374,13 @@ const PolicyCard = ({ policy, index, form }: PolicyCardProps) => {
                 onClick={(e) => e.stopPropagation()}
               >
                 <Checkbox
-                  id={`focal-${index}`}
+                  id={`focal-${policy.sno}`}
                   checked={isFocal}
                   onCheckedChange={handleFocalPolicyChange}
                   className="border-black"
                 />
                 <label
-                  htmlFor={`focal-${index}`}
+                  htmlFor={`focal-${policy.sno}`}
                   className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
                 >
                   Focal Policy

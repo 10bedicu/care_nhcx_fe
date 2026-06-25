@@ -60,13 +60,14 @@ export async function request<Response>(
 }
 
 export const queryString = (
-  params?: Record<string, string | number | boolean>
+  params?: Record<string, string | number | boolean | undefined>
 ) => {
   if (!params) {
     return "";
   }
 
   const paramString = Object.keys(params)
+    .filter((key) => params[key] !== undefined)
     .map((key) => `${key}=${params[key]}`)
     .join("&");
 
