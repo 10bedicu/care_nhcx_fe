@@ -334,6 +334,7 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
                         key={`claim-${entry.record.id}`}
                         claim={entry.record}
                         encounterId={encounter.id}
+                        encounterStatus={encounter.status}
                         isCurrent={isCurrent}
                         latestCoverageEligibilityId={
                           latestCoverageEligibilityId

@@ -8,6 +8,16 @@ import {
 } from "./flow-prerequisites";
 
 import { Claim } from "@/types/claim";
+import { EncounterStatus } from "@/types/encounter";
+
+export const CLAIM_ELIGIBLE_ENCOUNTER_STATUSES: EncounterStatus[] = [
+  EncounterStatus.DISCHARGED,
+  EncounterStatus.COMPLETED,
+];
+
+export function isEncounterDischarged(status: EncounterStatus): boolean {
+  return CLAIM_ELIGIBLE_ENCOUNTER_STATUSES.includes(status);
+}
 
 export type ValidationOutcome =
   | { kind: "pending" }

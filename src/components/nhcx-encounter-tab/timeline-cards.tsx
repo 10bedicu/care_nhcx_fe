@@ -22,12 +22,19 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn, toast } from "@/lib/utils";
 import {
   deriveClaimOutcome,
   deriveValidationOutcome,
   hasAuthRequirementsPurpose,
   hasValidationPurpose,
+  isEncounterDischarged,
 } from "./flow";
 import {
   buildDemographicChecks,
@@ -43,6 +50,7 @@ import { Coding } from "@/types/base";
 import CoverageEligibilityCard from "../coverage-encounter-tab/coverage-eligibility-card";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { DemographicCheck } from "./demographics";
+import { EncounterStatus } from "@/types/encounter";
 import { Patient } from "@/types/patient";
 import { ReasonDialog } from "./reason-dialog";
 import { apis } from "@/apis";
@@ -61,6 +69,7 @@ function ActionButton({
   size = "sm",
   onClick,
   disabled,
+  tooltip,
 }: {
   to?: string;
   label: ReactNode;
@@ -75,6 +84,7 @@ function ActionButton({
   size?: "sm" | "default";
   onClick?: () => void;
   disabled?: boolean;
+  tooltip?: ReactNode;
 }) {
   const inner = (
     <>
@@ -83,18 +93,42 @@ function ActionButton({
     </>
   );
 
-  if (to) {
-    return (
-      <Button asChild variant={variant} size={size} disabled={disabled}>
+  // A disabled link still navigates on click, so render a plain disabled button
+  // (no anchor) when the action is gated.
+  let button: ReactNode;
+  if (to && !disabled) {
+    button = (
+      <Button asChild variant={variant} size={size}>
         <a href={to}>{inner}</a>
       </Button>
     );
+  } else {
+    button = (
+      <Button
+        variant={variant}
+        size={size}
+        onClick={onClick}
+        disabled={disabled}
+      >
+        {inner}
+      </Button>
+    );
   }
-  return (
-    <Button variant={variant} size={size} onClick={onClick} disabled={disabled}>
-      {inner}
-    </Button>
-  );
+
+  if (disabled && tooltip) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">{button}</span>
+          </TooltipTrigger>
+          <TooltipContent>{tooltip}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  return button;
 }
 
 interface MenuItem {
@@ -446,6 +480,8 @@ interface ClaimTimelineCardProps extends BaseProps {
   latestClaimId?: string;
   /** The most recent claim with a successful payer response — passed as `related`. */
   latestSuccessfulClaimId?: string;
+  /** Current encounter status — claims can only be raised once the patient is discharged. */
+  encounterStatus: EncounterStatus;
 }
 
 export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
@@ -455,6 +491,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   latestCoverageEligibilityId,
   latestClaimId,
   latestSuccessfulClaimId,
+  encounterStatus,
 }) => {
   const queryClient = useQueryClient();
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -657,6 +694,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
       // dispatchStatus is "partial" or "complete" — derive from the response.
       if (isPreauth) {
         if (outcome === "approved" || outcome === "partially-approved") {
+          const patientDischarged = isEncounterDischarged(encounterStatus);
           primaryActions = [
             <ActionButton
               key="claim"
@@ -667,6 +705,8 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
               })}
               label="Proceed to Claim"
               icon={<ArrowRightIcon className="h-4 w-4" />}
+              disabled={!patientDischarged}
+              tooltip="The patient must be discharged before a claim can be raised."
             />,
           ];
           extraMenuItems = [
