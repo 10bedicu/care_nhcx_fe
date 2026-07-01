@@ -22,6 +22,7 @@ import FlowPrerequisitesGate, {
 } from "./flow-prerequisites-gate";
 import { hasDemographicMismatch } from "./demographics";
 import { useFlowPrerequisites } from "./use-flow-prerequisites";
+import { useLinkPatientValidation } from "./use-link-patient-validation";
 
 import { Button } from "@/components/ui/button";
 import { Condition, ConditionCategory } from "@/types/condition";
@@ -39,7 +40,7 @@ export type EncounterTabProps = {
 };
 
 const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
-  const { data: coverages, isFetching: isLoadingCoverages } = useQuery({
+  const { data: coverages, isLoading: isLoadingCoverages } = useQuery({
     queryKey: ["coverage-eligibility-requests", encounter?.id],
     queryFn: () =>
       apis.coverageEligibilityRequest.list({
@@ -48,7 +49,16 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
     enabled: !!encounter?.id,
   });
 
-  const { data: claims, isFetching: isLoadingClaims } = useQuery({
+  const encounterCoverages = coverages?.results ?? [];
+  const hasEncounterValidation = encounterCoverages.some(hasValidationPurpose);
+
+  const { isLinking } = useLinkPatientValidation({
+    encounterId: encounter?.id,
+    patientId: patient?.id,
+    hasEncounterValidation,
+  });
+
+  const { data: claims, isLoading: isLoadingClaims } = useQuery({
     queryKey: ["claims", encounter?.id],
     queryFn: () =>
       apis.claim.list({
@@ -96,7 +106,10 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
   const isLoadingPrereqs = isHealthFacilityLoading || isProviderLoading;
   const hasHealthFacility = !!healthFacility;
   const hasProvider = !!provider;
-  const isLoadingTimeline = isLoadingCoverages || isLoadingClaims;
+  const isLoadingTimeline =
+    isLinking ||
+    (isLoadingCoverages && coverages === undefined) ||
+    (isLoadingClaims && claims === undefined);
 
   // Diagnosis and care team are mandatory clinical details before any
   // pre-authorisation or claim can be raised. Surface a warning while either
@@ -110,8 +123,6 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
   // prerequisites appear as a timeline entry below the validation card.
   const flowPrerequisites = useFlowPrerequisites(encounter, patient);
   const { beforeCeValidation, afterCeValidation } = flowPrerequisites;
-
-  const encounterCoverages = coverages?.results ?? [];
 
   // Determine guided headline state. The CTA is shown when no CE:V exists yet,
   // or when the latest validation request hard-stops the flow (so the user can
@@ -398,6 +409,6 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
       </div>
     </GlobalStoreProvider>
   );
-};;;
+};
 
 export default NhcxEncounterTab;

@@ -88,6 +88,10 @@ export const apis = {
     list: async (query?: {
       encounter?: string;
       appointment?: string;
+      patient?: string;
+      purpose?: string;
+      created_after?: string;
+      unique_by_policy?: boolean;
       ordering?:
         | "created_date"
         | "-created_date"
@@ -105,7 +109,12 @@ export const apis = {
       );
     },
 
-    latest: async (query?: { encounter?: string; purpose?: string }) => {
+    latest: async (query?: {
+      encounter?: string;
+      patient?: string;
+      purpose?: string;
+      created_after?: string;
+    }) => {
       return await request<CoverageEligibilityRequest>(
         `/api/nhcx/coverage-eligibility-request/latest` + queryString(query),
       );
@@ -128,6 +137,16 @@ export const apis = {
         `/api/nhcx/coverage-eligibility-request/${id}/check/`,
         {
           method: "POST",
+        },
+      );
+    },
+
+    linkEncounter: async (id: string, encounterId: string) => {
+      return await request<CoverageEligibilityRequest>(
+        `/api/nhcx/coverage-eligibility-request/${id}/link_encounter/`,
+        {
+          method: "POST",
+          body: JSON.stringify({ encounter: encounterId }),
         },
       );
     },

@@ -9,8 +9,8 @@ const manifest = {
     FacilityHomeActions: lazy(
       () => import("./components/pluggables/facility-home-actions"),
     ),
-    AppointmentActions: lazy(
-      () => import("./components/pluggables/appointment-policy-verification"),
+    PatientHomeQuickActions: lazy(
+      () => import("./components/pluggables/patient-home-policy-verification"),
     ),
   },
   navItems: [],
