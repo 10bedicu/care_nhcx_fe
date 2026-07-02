@@ -2139,6 +2139,18 @@ function ItemValidationEffects({
       });
       return;
     }
+
+    if (productCode === LAMA_DAMA_PROCEDURE_BENEFIT_CODE) {
+      form.setValue(`item.${index}.unit_price`, benefitLimit ?? 0, {
+        shouldDirty: false,
+      });
+      form.setValue(`item.${index}._amount_cap_error`, undefined, {
+        shouldDirty: false,
+        shouldValidate: true,
+      });
+      return;
+    }
+
     const capped =
       benefitLimit != null
         ? Math.min(chargeItemsTotal, benefitLimit)
@@ -2157,7 +2169,14 @@ function ItemValidationEffects({
         shouldValidate: true,
       });
     }
-  }, [chargeItemsTotal, benefitLimit, form, index, isItemDisabled]);
+  }, [
+    chargeItemsTotal,
+    benefitLimit,
+    form,
+    index,
+    isItemDisabled,
+    productCode,
+  ]);
 
   useEffect(() => {
     if (isItemDisabled) {
