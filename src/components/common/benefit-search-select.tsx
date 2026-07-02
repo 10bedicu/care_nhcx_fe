@@ -30,6 +30,42 @@ function formatBenefitLabel(
   return procedure;
 }
 
+function BenefitOption({
+  typeCode,
+  typeDisplay,
+  categoryCode,
+  categoryDisplay,
+}: {
+  typeCode: string;
+  typeDisplay: string;
+  categoryCode?: string;
+  categoryDisplay?: string;
+}) {
+  const hasCategory = Boolean(categoryCode || categoryDisplay);
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5 py-0.5">
+      <div className="flex min-w-0 items-baseline gap-2">
+        <span className="shrink-0 font-mono text-xs font-medium text-primary">
+          {typeCode}
+        </span>
+        <span className="truncate text-sm font-medium text-foreground">
+          {typeDisplay}
+        </span>
+      </div>
+      {hasCategory && (
+        <div className="flex min-w-0 items-baseline gap-2 text-xs text-muted-foreground">
+          {categoryCode && (
+            <span className="shrink-0 font-mono">{categoryCode}</span>
+          )}
+          {categoryDisplay && (
+            <span className="truncate">{categoryDisplay}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * Searches InsurancePlanBenefit records instead of a FHIR valueset.
  * Requires insurancePlanId (derived from the focal policy's plan lookup).
@@ -79,6 +115,14 @@ export default function BenefitSearchSelect({
       b.coverage_type_code,
       b.coverage_type_display,
     ),
+    display: (
+      <BenefitOption
+        typeCode={b.type_code}
+        typeDisplay={b.type_display}
+        categoryCode={b.coverage_type_code}
+        categoryDisplay={b.coverage_type_display}
+      />
+    ),
     value: b.id,
   }));
 
@@ -99,6 +143,14 @@ export default function BenefitSearchSelect({
         value.display ?? value.code,
         categoryCode,
         categoryDisplay,
+      ),
+      display: (
+        <BenefitOption
+          typeCode={value.code}
+          typeDisplay={value.display ?? value.code}
+          categoryCode={categoryCode}
+          categoryDisplay={categoryDisplay}
+        />
       ),
       value: `__existing__${value.code}__${categoryCode ?? ""}`,
     });
