@@ -333,14 +333,16 @@ const PolicyCard = ({ policy, index, form }: PolicyCardProps) => {
         { shouldValidate: true, shouldDirty: true }
       );
     } else {
+      const currentInsurances = form.getValues("insurance") ?? [];
+      const hasFocal = currentInsurances.some((insurance) => insurance.focal);
       form.setValue(
         "insurance",
         [
-          ...(form.getValues("insurance") ?? []),
+          ...currentInsurances,
           {
             sequence: index,
             policy: policy,
-            focal: false,
+            focal: !hasFocal,
           },
         ],
         { shouldValidate: true, shouldDirty: true }
