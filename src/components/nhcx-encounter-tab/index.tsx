@@ -1,5 +1,5 @@
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ArrowRightIcon, ShieldCheckIcon } from "lucide-react";
+import { ArrowRightIcon, RefreshCwIcon, ShieldCheckIcon } from "lucide-react";
 import {
   ClaimTimelineCard,
   CoverageEligibilityTimelineCard,
@@ -33,7 +33,8 @@ import { GlobalStoreProvider } from "@/hooks/use-global-store";
 import { Link } from "raviger";
 import { Patient } from "@/types/patient";
 import { apis } from "@/apis";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
 export type EncounterTabProps = {
   encounter: Encounter;
@@ -41,6 +42,18 @@ export type EncounterTabProps = {
 };
 
 const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
+  const queryClient = useQueryClient();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ refetchType: "active" });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const { data: coverages, isLoading: isLoadingCoverages } = useQuery({
     queryKey: ["coverage-eligibility-requests", encounter?.id],
     queryFn: () =>
@@ -262,6 +275,18 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
                   submission for this encounter.
                 </p>
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2 shrink-0"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+              >
+                <RefreshCwIcon
+                  className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+                />
+                Refresh
+              </Button>
             </div>
 
             {showClinicalDetailsWarning && (
