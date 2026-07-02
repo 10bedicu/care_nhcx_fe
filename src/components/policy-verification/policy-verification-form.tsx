@@ -243,7 +243,14 @@ export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
     createRequest(buildCreatePayload(patientId, facilityId, selectedPolicy));
   };
 
-  const pastVerifications = existingRequests?.results ?? [];
+  const pastVerifications = (existingRequests?.results ?? []).filter(
+    (request) => {
+      const isDraft = request.dispatch_status === "pending";
+      const awaiting = isAwaitingResponse(request);
+      const isOutdated = !isDraft && !awaiting && isValidationStale(request);
+      return !isOutdated;
+    },
+  );
 
   const isVerifying = !!verifyingPolicyKey || isCreating;
 
