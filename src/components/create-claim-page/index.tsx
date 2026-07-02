@@ -1457,10 +1457,14 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                       isUnchangedPrefill ||
                       isFormPrefillLoading ||
                       !!form.watch("_total_amount_cap_error");
+                    const useNoun =
+                      lockedUse === "preauthorization"
+                        ? "Pre-Authorization"
+                        : "Claim";
                     const submitLabel =
                       submitMode === "resubmit"
-                        ? "Create & Resubmit Claim"
-                        : "Create Claim";
+                        ? `Create & Resubmit ${useNoun}`
+                        : `Create & Submit ${useNoun}`;
 
                     if (!canManuallyResubmit) {
                       return (
@@ -1471,7 +1475,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                           loading={isSubmitting}
                           disabled={submitDisabled}
                         >
-                          Create Claim
+                          {`Create & Submit ${useNoun}`}
                         </Button>
                       );
                     }

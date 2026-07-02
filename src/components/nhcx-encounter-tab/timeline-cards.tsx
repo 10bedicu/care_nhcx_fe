@@ -377,7 +377,7 @@ export const CoverageEligibilityTimelineCard: FC<CoverageEligibilityTimelineCard
         footerActions = (
           <ActionButton
             to={`coverages/new?purpose=auth-requirements&coverage_eligibility=${request.id}`}
-            label="Check Pre-Authorization Requirements"
+            label="Check Auth Requirements"
             icon={<ShieldAlertIcon className="h-4 w-4" />}
           />
         );
@@ -561,7 +561,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   const outcome = deriveClaimOutcome(claim);
   const isPreauth = claim.use === "preauthorization";
   const isClaim = claim.use === "claim";
-  const useLabel = isPreauth ? "Preauth" : "Claim";
+  const useLabel = isPreauth ? "Pre-Authorization" : "Claim";
   const dispatchStatus = claim.dispatch_status;
 
   const ceQueryParam = latestCoverageEligibilityId
@@ -689,7 +689,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
             coverageEligibilityId: latestCoverageEligibilityId,
             ...claimRedirectParams,
           })}
-          label="Retry again"
+          label="Retry Again"
           icon={<RotateCwIcon className="h-4 w-4" />}
         />,
       ];
@@ -736,7 +736,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
                 coverageEligibilityId: latestCoverageEligibilityId,
                 ...claimRedirectParams,
               })}
-              label="Resubmit"
+              label={outcome === "queried" ? "Respond to Query" : "Resubmit"}
               icon={<RotateCwIcon className="h-4 w-4" />}
             />,
           ];
@@ -779,7 +779,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
                 coverageEligibilityId: latestCoverageEligibilityId,
                 ...claimRedirectParams,
               })}
-              label="Resubmit"
+              label="Respond to Query"
               icon={<RotateCwIcon className="h-4 w-4" />}
             />,
           ];

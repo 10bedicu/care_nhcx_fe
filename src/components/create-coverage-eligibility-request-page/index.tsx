@@ -334,7 +334,7 @@ const CreateCoverageEligibilityRequestPage: FC<
           <div>
             <h3 className="text-lg font-medium">
               {lockedPurpose === "auth-requirements"
-                ? "Check Pre-Authorization Requirements"
+                ? "Check Auth Requirements"
                 : lockedPurpose === "validation"
                   ? "Check Coverage Balance"
                   : lockedPurpose === "discovery"
@@ -425,7 +425,7 @@ const CreateCoverageEligibilityRequestPage: FC<
                     }
                   >
                     {lockedPurpose === "auth-requirements"
-                      ? "Check Pre-Authorization Requirements"
+                      ? "Check Auth Requirements"
                       : lockedPurpose === "validation"
                         ? "Check Coverage Balance"
                         : lockedPurpose === "discovery"
