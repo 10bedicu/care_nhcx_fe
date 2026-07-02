@@ -26,6 +26,7 @@ import { useLinkPatientValidation } from "./use-link-patient-validation";
 
 import { Button } from "@/components/ui/button";
 import { Condition, ConditionCategory } from "@/types/condition";
+import { CyclicalConsentPanel } from "./cyclical-consent-panel";
 import { Encounter } from "@/types/encounter";
 import { FC } from "react";
 import { GlobalStoreProvider } from "@/hooks/use-global-store";
@@ -65,6 +66,29 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
         encounter: encounter?.id,
       }),
     enabled: !!encounter?.id,
+  });
+
+  const { data: encounterAccount } = useQuery({
+    queryKey: ["encounter-account", encounter?.facility.id, encounter?.id],
+    queryFn: async () => {
+      const res = await apis.account.list(encounter.facility.id, {
+        encounter: encounter?.id,
+      });
+      return res.results?.[0] ?? null;
+    },
+    enabled: !!encounter?.facility.id && !!encounter?.id,
+  });
+
+  const { data: accountPreAuths } = useQuery({
+    queryKey: ["account-preauths", encounterAccount?.id],
+    queryFn: async () => {
+      const res = await apis.claim.list({ account: encounterAccount!.id });
+      return (res.results ?? []).filter(
+        (claim) =>
+          claim.use === "preauthorization" && claim.status !== "cancelled",
+      );
+    },
+    enabled: !!encounterAccount?.id,
   });
 
   const { data: healthFacility, isLoading: isHealthFacilityLoading } = useQuery(
@@ -159,7 +183,15 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
         new Date(b.created_date).getTime() - new Date(a.created_date).getTime(),
     )[0]?.id;
 
-  const encounterClaims = claims?.results ?? [];
+  const encounterOwnClaims = claims?.results ?? [];
+  const encounterOwnClaimIds = new Set(encounterOwnClaims.map((c) => c.id));
+  const linkedCyclePreAuth = (accountPreAuths ?? []).find(
+    (c) => !encounterOwnClaimIds.has(c.id),
+  );
+  const encounterClaims = [
+    ...encounterOwnClaims,
+    ...(accountPreAuths ?? []).filter((c) => !encounterOwnClaimIds.has(c.id)),
+  ];
   const latestClaim = findLatestClaim(encounterClaims);
   const latestClaimId =
     latestClaim?.status === "cancelled" ? undefined : latestClaim?.id;
@@ -269,6 +301,13 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
 
             {beforeCeValidation.isSatisfied && (
               <>
+                {!isLoadingTimeline && linkedCyclePreAuth && (
+                  <CyclicalConsentPanel
+                    encounter={encounter}
+                    patient={patient}
+                    preAuth={linkedCyclePreAuth}
+                  />
+                )}
                 {!isLoadingTimeline && showInitialCTA && (
                   <div className="rounded-lg border border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10 p-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                     <div className="flex items-start gap-3">

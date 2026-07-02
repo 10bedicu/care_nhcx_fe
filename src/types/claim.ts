@@ -190,6 +190,7 @@ export type Claim = {
   provider: string; // uuid
   patient: string; // uuid
   encounter?: string; // uuid
+  account?: string; // uuid
   insurer: Participant;
   billable_period?: Period;
   related: ClaimRelated[];

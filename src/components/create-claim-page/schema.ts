@@ -339,6 +339,7 @@ export const createClaimFormSchema = z
     facility: z.string().uuid(),
     patient: z.string().uuid(),
     encounter: z.string().uuid().optional(),
+    account: z.string().uuid().optional(),
     billable_period: periodSchema.optional(),
     related: z.array(claimRelatedSchema).default([]),
     care_team: z.array(claimCareTeamSchema).default([]),
@@ -355,7 +356,7 @@ export const createClaimFormSchema = z
         },
         {
           message: "At least one focal insurance is required",
-        }
+        },
       ),
     item: z.array(claimItemSchema).min(1).default([]),
     accident: claimAccidentSchema.optional(),
@@ -374,7 +375,7 @@ export const createClaimFormSchema = z
         data._mandatory_plan_docs_error ??
         "All mandatory plan-level documents must be provided",
       path: ["_mandatory_plan_docs_error"],
-    })
+    }),
   )
   .refine(
     (data) => !data._mandatory_plan_questionnaires_error,
@@ -383,7 +384,7 @@ export const createClaimFormSchema = z
         data._mandatory_plan_questionnaires_error ??
         "All mandatory plan-level questionnaires must be completed",
       path: ["_mandatory_plan_questionnaires_error"],
-    })
+    }),
   )
   .refine(
     (data) => !data._total_amount_cap_error,
@@ -392,7 +393,7 @@ export const createClaimFormSchema = z
         data._total_amount_cap_error ??
         "The amount requested exceeds the available wallet balance. Please inform the patient.",
       path: ["_total_amount_cap_error"],
-    })
+    }),
   )
   .superRefine((data, ctx) => {
     if (data.use !== "claim") return;

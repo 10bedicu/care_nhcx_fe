@@ -6,6 +6,7 @@ export type ClaimConsent = {
   modified_date?: string;
   stage: ClaimConsentStage;
   payer_id: string;
+  claim?: string;
   encounter?: string;
   patient?: string;
   expires_in: number;

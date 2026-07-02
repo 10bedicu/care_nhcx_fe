@@ -164,6 +164,8 @@ export const apis = {
   claim: {
     list: async (query?: {
       encounter?: string;
+      account?: string;
+      patient?: string;
       ordering?:
         | "created_date"
         | "-created_date"
@@ -341,6 +343,7 @@ export const apis = {
       payerId: string;
       process?: "Preauth" | "Discharge";
       encounter: string;
+      claim?: string;
     }) => {
       return await request<{ message: string }>(
         `/api/nhcx/gateway/abha-biometric-auth-verify/`,
@@ -380,6 +383,20 @@ export const apis = {
             encounter_id: params.encounter_id,
             stage: params.stage,
           }),
+      );
+    },
+
+    list: async (query?: {
+      claim?: string;
+      encounter?: string;
+      patient?: string;
+      payer_id?: string;
+      stage?: ClaimConsentStage;
+      limit?: number;
+      offset?: number;
+    }) => {
+      return await request<PaginatedResponse<ClaimConsent>>(
+        `/api/nhcx/claim-consent/` + queryString(query),
       );
     },
   },

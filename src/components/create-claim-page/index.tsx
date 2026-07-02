@@ -4,6 +4,7 @@ import {
   Claim,
   ClaimUseChoice,
 } from "@/types/claim";
+import { ClaimConsent } from "@/types/claim_consent";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { Condition, ConditionCategory } from "@/types/condition";
 import {
@@ -33,7 +34,7 @@ import { useNavigate, useQueryParams } from "raviger";
 
 import { AlertCircleIcon, ChevronDownIcon, WalletIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ChargeItem } from "@/types/charge_item";
+import { ChargeItem, ChargeItemStatus } from "@/types/charge_item";
 import {
   Popover,
   PopoverContent,
@@ -238,6 +239,49 @@ function mapClaimToFormValues(
     encounterDiagnoses ?? [],
     { providerUsernameById: claimProviderUsernameMap(claim) },
   );
+}
+
+function addCycleEncounterSupportingInfo(
+  values: ClaimFormValues,
+  cycleConsents: ClaimConsent[],
+): ClaimFormValues {
+  const existing = values.supporting_info ?? [];
+  const referencedEncounters = new Set(
+    existing
+      .filter((s) => s.value_resource?.resource_type === "encounter")
+      .map((s) => s.value_resource?.resource_id),
+  );
+
+  const cycleEncounters: string[] = [];
+  const seen = new Set<string>();
+  for (const consent of cycleConsents) {
+    const encounterId = consent.encounter;
+    if (!encounterId || seen.has(encounterId)) continue;
+    seen.add(encounterId);
+    if (referencedEncounters.has(encounterId)) continue;
+    cycleEncounters.push(encounterId);
+  }
+
+  if (cycleEncounters.length === 0) {
+    return values;
+  }
+
+  let nextSequence = existing.reduce((max, s) => Math.max(max, s.sequence), 0);
+  const additions = cycleEncounters.map((encounterId) => ({
+    sequence: ++nextSequence,
+    category: DEFAULT_SUPPORTING_INFO_CATEGORY,
+    code: DEFAULT_SUPPORTING_INFO_CODE,
+    value_resource: {
+      resource_type: "encounter",
+      resource_id: encounterId,
+    },
+    _is_plan_level: true,
+  }));
+
+  return {
+    ...values,
+    supporting_info: [...existing, ...additions],
+  };
 }
 
 function buildCePrefillValues(
@@ -543,6 +587,16 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     enabled: !!relatedClaimId,
   });
 
+  // Consents captured against the prefill source (the pre-authorization) across
+  // every cycle. Used to prefill the final cyclical claim with one supporting-
+  // info entry per cycle encounter.
+  const { data: cycleConsents, isFetched: cycleConsentsFetched } = useQuery({
+    queryKey: ["claim-consents", "by-claim", prefilledClaimId],
+    queryFn: () =>
+      apis.claimConsent.list({ claim: prefilledClaimId as string }),
+    enabled: !!prefilledClaimId && lockedUse === "claim",
+  });
+
   const { data: coverageEligibilityRequest } = useQuery({
     queryKey: ["coverage-eligibility-request", coverageEligibilityId],
     queryFn: () =>
@@ -609,11 +663,30 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     useQuery({
       queryKey: ["encounter-charge-items", facilityId, encounterId],
       queryFn: async (): Promise<ChargeItem[]> => {
-        const res = await apis.charge_item.list(facilityId, {
+        const accountRes = await apis.account.list(facilityId, {
           encounter: encounterId,
-          ordering: "-created_date",
         });
-        return res.results || [];
+        const account = accountRes.results?.[0];
+
+        const res = account
+          ? await apis.charge_item.list(facilityId, {
+              account: account.id,
+              ordering: "-created_date",
+            })
+          : await apis.charge_item.list(facilityId, {
+              encounter: encounterId,
+              ordering: "-created_date",
+            });
+
+        // Exclude already-settled items so the same charge item is not claimed
+        // twice across the multiple final claims a single pre-auth can spawn.
+        return (res.results || []).filter(
+          (item) =>
+            item.status !== ChargeItemStatus.paid &&
+            item.status !== ChargeItemStatus.entered_in_error &&
+            item.status !== ChargeItemStatus.aborted &&
+            item.status !== ChargeItemStatus.not_billable,
+        );
       },
       enabled: !!facilityId && !!encounterId,
       staleTime: 60 * 1000,
@@ -622,6 +695,18 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   const { data: encounter, isFetched: encounterFetched } = useQuery({
     queryKey: ["encounter", facilityId, encounterId],
     queryFn: () => apis.encounter.get(facilityId, encounterId),
+    enabled: !!facilityId && !!encounterId,
+    staleTime: 60 * 1000,
+  });
+
+  const { data: encounterAccount } = useQuery({
+    queryKey: ["encounter-account", facilityId, encounterId],
+    queryFn: async () => {
+      const res = await apis.account.list(facilityId, {
+        encounter: encounterId,
+      });
+      return res.results?.[0] ?? null;
+    },
     enabled: !!facilityId && !!encounterId,
     staleTime: 60 * 1000,
   });
@@ -844,17 +929,23 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       if (!prefilledClaimId) return;
       if (!prefilledClaimFetched) return;
       if (!prefilledClaim) return;
+      // Wait for the cycle consents so the final cyclical claim can be prefilled
+      // with every cycle's encounter as supporting information.
+      if (!cycleConsentsFetched) return;
 
       didPrefillGuidedRef.current = true;
       form.reset(
-        mapClaimToFormValues(
-          prefilledClaim,
-          current,
-          lockedUse,
-          relatedClaimId,
-          encounterPeriod,
-          encounter,
-          encounterDiagnosisList,
+        addCycleEncounterSupportingInfo(
+          mapClaimToFormValues(
+            prefilledClaim,
+            current,
+            lockedUse,
+            relatedClaimId,
+            encounterPeriod,
+            encounter,
+            encounterDiagnosisList,
+          ),
+          cycleConsents?.results ?? [],
         ),
         { keepDefaultValues: false },
       );
@@ -905,6 +996,8 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     encounterFetched,
     form,
     relatedClaimId,
+    cycleConsents,
+    cycleConsentsFetched,
   ]);
 
   const validationBalance = useMemo(() => {
@@ -1111,6 +1204,12 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         });
       }
 
+      // Link the claim to the encounter's account so all cycles of a cyclical
+      // procedure remain grouped and payment routing prefers this account.
+      if (encounterAccount?.id) {
+        updatedValues.account = encounterAccount.id;
+      }
+
       createClaim(updatedValues);
     } catch (error) {
       console.error("Error in onSubmit:", error);
@@ -1157,7 +1256,10 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       if (effectiveUse === "claim") {
         return (
           waitingDiagnoses ||
-          (!!prefilledClaimId && (!prefilledClaimFetched || !prefilledClaim))
+          (!!prefilledClaimId &&
+            (!prefilledClaimFetched ||
+              !prefilledClaim ||
+              !cycleConsentsFetched))
         );
       }
 
@@ -1196,6 +1298,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     prefilledClaim,
     prefilledClaimFetched,
     prefilledClaimId,
+    cycleConsentsFetched,
   ]);
 
   const isSubmitting = createClaimIsPending || submitClaimIsPending;
@@ -1453,7 +1556,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       </div>
     </GlobalStoreProvider>
   );
-};;
+};;;;
 
 function WalletBalanceSummary({
   totalAmount,

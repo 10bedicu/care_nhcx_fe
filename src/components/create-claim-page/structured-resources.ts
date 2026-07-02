@@ -84,6 +84,39 @@ function useQuestionnaireResponseOptions(
   return { options, isLoading };
 }
 
+function useEncounterOptions(patientId: string, encounterId?: string) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["structured-resource", "encounter", patientId],
+    queryFn: () => apis.claimConsent.list({ patient: patientId }),
+    enabled: !!patientId,
+    staleTime: 60 * 1000,
+  });
+
+  const seen = new Set<string>();
+  const options: StructuredResourceOption[] = [];
+  for (const consent of data?.results ?? []) {
+    const encounter = consent.encounter;
+    if (!encounter || seen.has(encounter)) {
+      continue;
+    }
+    seen.add(encounter);
+    const date = consent.created_date
+      ? new Date(consent.created_date).toLocaleDateString()
+      : "";
+    const isCurrent = encounter === encounterId;
+    const label = [
+      `Encounter ${encounter.slice(0, 8)}`,
+      date ? `(${date})` : "",
+      isCurrent ? "— current" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    options.push({ value: encounter, label });
+  }
+
+  return { options, isLoading };
+}
+
 export const STRUCTURED_RESOURCE_TYPES: StructuredResourceTypeDef[] = [
   {
     type: "diagnostic_report",
@@ -94,6 +127,11 @@ export const STRUCTURED_RESOURCE_TYPES: StructuredResourceTypeDef[] = [
     type: "questionnaire_response",
     label: "Questionnaire Response",
     useOptions: useQuestionnaireResponseOptions,
+  },
+  {
+    type: "encounter",
+    label: "Encounter (Discharge Summary / OP Consult)",
+    useOptions: useEncounterOptions,
   },
 ];
 

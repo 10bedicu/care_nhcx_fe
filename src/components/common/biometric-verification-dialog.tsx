@@ -25,13 +25,12 @@ export interface BiometricVerificationDialogProps {
   payerId: string;
   process?: BiometricProcess;
   authMode?: BiometricAuthMode;
+  claim?: string;
   onVerifySuccess?: (message: string) => void;
   onBypass?: () => void;
 }
 
-export const BiometricVerificationDialog: FC<
-  BiometricVerificationDialogProps
-> = ({
+export const BiometricVerificationDialog: FC<BiometricVerificationDialogProps> = ({
   open,
   onOpenChange,
   encounterId,
@@ -39,6 +38,7 @@ export const BiometricVerificationDialog: FC<
   payerId,
   process = "Preauth",
   authMode = "FINGERPRINT",
+  claim,
   onVerifySuccess,
   onBypass,
 }) => {
@@ -82,6 +82,7 @@ export const BiometricVerificationDialog: FC<
 
       verifyMutation.mutate({
         encounter: encounterId,
+        claim,
         txnId,
         authData: data,
         payerId,
