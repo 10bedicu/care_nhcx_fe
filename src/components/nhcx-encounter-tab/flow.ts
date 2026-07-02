@@ -222,6 +222,16 @@ function getApprovedTotal(claim: Claim): number {
   return sumItemAdjudicationByCode(response, "eligible");
 }
 
+/**
+ * Default amount to prefill when raising a reprocess/dispute: the shortfall
+ * between what the provider requested and what the payer approved
+ * (`requested − approved`), clamped at zero.
+ */
+export function getReprocessDefaultAmount(claim: Claim): number {
+  const shortfall = getRequestedTotal(claim) - getApprovedTotal(claim);
+  return shortfall > 0 ? Math.round(shortfall * 100) / 100 : 0;
+}
+
 export type TimelineRecord =
   | { kind: "ce"; record: CoverageEligibilityRequest; createdAt: number }
   | { kind: "claim"; record: Claim; createdAt: number }

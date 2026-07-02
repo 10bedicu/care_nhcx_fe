@@ -219,6 +219,8 @@ export const apis = {
       body: {
         reason_code?: Coding;
         description?: string;
+        amount?: { value: number; currency: string };
+        attachment?: string;
       },
     ) => {
       return await request<Claim>(`/api/nhcx/claim/${id}/reprocess/`, {

@@ -32,6 +32,7 @@ import { cn, toast } from "@/lib/utils";
 import {
   deriveClaimOutcome,
   deriveValidationOutcome,
+  getReprocessDefaultAmount,
   hasAuthRequirementsPurpose,
   hasValidationPurpose,
   isEncounterDischarged,
@@ -525,7 +526,12 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
       body,
     }: {
       id: string;
-      body: { reason_code?: Coding; description?: string };
+      body: {
+        reason_code?: Coding;
+        description?: string;
+        amount?: { value: number; currency: string };
+        attachment?: string;
+      };
     }) => apis.claim.reprocess(id, body),
     onSuccess: () => {
       toast.success("Dispute raised successfully");
@@ -828,6 +834,12 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
         submitLabel="Send dispute"
         reasonCodes={NDHM_REPROCESS_REASON_CODES}
         loading={disputeMutation.isPending}
+        showAmount
+        amountLabel="Disputed amount (₹)"
+        defaultAmount={getReprocessDefaultAmount(claim)}
+        showAttachment
+        attachmentLabel="Supporting document"
+        encounterId={encounterId}
         onSubmit={(body) => disputeMutation.mutate({ id: claim.id, body })}
       />
     </>
