@@ -9,7 +9,6 @@ import {
   MessageCircleQuestionIcon,
   PaperclipIcon,
   PlusIcon,
-  ReceiptIcon,
   ShoppingBasketIcon,
   XIcon,
 } from "lucide-react";
@@ -70,7 +69,6 @@ import Autocomplete from "../ui/autocomplete";
 import { Badge } from "../ui/badge";
 import BenefitSearchSelect from "../common/benefit-search-select";
 import { Button } from "../ui/button";
-import { ChargeItem } from "@/types/charge_item";
 import { Checkbox } from "../ui/checkbox";
 import { Coding } from "@/types/base";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
@@ -84,7 +82,6 @@ import { SupportingInfoValueControls } from "./supporting-info-value-controls";
 import { Textarea } from "../ui/textarea";
 import ValuesetSelect from "../common/valueset-select";
 import { apis } from "@/apis";
-import { chargeItemLabel } from "@/lib/prefill";
 import { cn } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
 import { LAMA_DAMA_PROCEDURE_BENEFIT_CODE } from "./lama-dama-helpers";
@@ -98,7 +95,6 @@ interface ClaimItemSectionProps {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   coverageEligibilityRequest?: CoverageEligibilityRequest;
   previousClaim?: Claim;
-  encounterChargeItems?: ChargeItem[];
   queryResponse?: ClaimResponse;
 }
 
@@ -694,7 +690,6 @@ export function ClaimItemSection({
   form,
   coverageEligibilityRequest,
   previousClaim,
-  encounterChargeItems = [],
   queryResponse,
 }: ClaimItemSectionProps) {
   const { fields, append, remove } = useFieldArray({
@@ -741,12 +736,16 @@ export function ClaimItemSection({
         "supporting_info",
         (form.getValues("supporting_info") ?? []).filter(
           (info) => !orphanedInfoSeqs.includes(info.sequence),
-        ), USER_EDIT);
+        ),
+        USER_EDIT,
+      );
       form.setValue(
         "questionnaire_responses",
         (form.getValues("questionnaire_responses") ?? []).filter(
           (qr) => !orphanedInfoSeqs.includes(qr.sequence),
-        ), USER_EDIT);
+        ),
+        USER_EDIT,
+      );
     }
 
     const orphanedCTSeqs = [...careTeamSeqs].filter(
@@ -757,7 +756,9 @@ export function ClaimItemSection({
         "care_team",
         (form.getValues("care_team") ?? []).filter(
           (ct) => !orphanedCTSeqs.includes(ct.sequence),
-        ), USER_EDIT);
+        ),
+        USER_EDIT,
+      );
     }
 
     const orphanedDxSeqs = [...diagnosisSeqs].filter(
@@ -768,7 +769,9 @@ export function ClaimItemSection({
         "diagnosis",
         (form.getValues("diagnosis") ?? []).filter(
           (dx) => !orphanedDxSeqs.includes(dx.sequence),
-        ), USER_EDIT);
+        ),
+        USER_EDIT,
+      );
     }
 
     const orphanedProcSeqs = [...procedureSeqs].filter(
@@ -779,7 +782,9 @@ export function ClaimItemSection({
         "procedure",
         (form.getValues("procedure") ?? []).filter(
           (proc) => !orphanedProcSeqs.includes(proc.sequence),
-        ), USER_EDIT);
+        ),
+        USER_EDIT,
+      );
     }
 
     remove(index);
@@ -852,9 +857,7 @@ export function ClaimItemSection({
       parentSequence != null
         ? allItems
             .map((it, i) => ({ it, i }))
-            .filter(
-              ({ it }) => it._implant_parent_sequence === parentSequence,
-            )
+            .filter(({ it }) => it._implant_parent_sequence === parentSequence)
             .map(({ i }) => i)
         : [];
     [...childIndexes]
@@ -954,8 +957,6 @@ export function ClaimItemSection({
             watchedItems?.[index]?._mandatory_care_team_error;
           const mandatoryDiagnosisError =
             watchedItems?.[index]?._mandatory_diagnosis_error;
-          const mandatoryChargeItemsError =
-            watchedItems?.[index]?._mandatory_charge_items_error;
           const mandatoryProcedureError =
             watchedItems?.[index]?._mandatory_procedure_error;
           const mandatorySupportingInfoError =
@@ -978,14 +979,13 @@ export function ClaimItemSection({
           const hasAnyError =
             !isItemDisabled &&
             (mandatoryDocsError ||
-            mandatoryQuestionnairesError ||
-            mandatoryCareTeamError ||
-            mandatoryDiagnosisError ||
-            mandatoryChargeItemsError ||
-            mandatoryProcedureError ||
-            mandatorySupportingInfoError ||
-            amountCapError ||
-            conditionErrors);
+              mandatoryQuestionnairesError ||
+              mandatoryCareTeamError ||
+              mandatoryDiagnosisError ||
+              mandatoryProcedureError ||
+              mandatorySupportingInfoError ||
+              amountCapError ||
+              conditionErrors);
           return (
             <Card
               className={cn(
@@ -1000,498 +1000,544 @@ export function ClaimItemSection({
                   </Badge>
                 </div>
               )}
-              <div className={cn(isItemDisabled && "pointer-events-none select-none")}>
-              <CardHeader>
-                <FormField
-                  key={field.id}
-                  control={form.control}
-                  name={`item.${index}.product_or_service`}
-                  render={({ field }) => {
-                    const isProductLocked = !!field.value?.code;
-                    return (
-                      <div className="flex justify-between items-center gap-2">
-                        <FormItem className="space-y-1.5 w-full">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <FormLabel>
-                              Product or Service
-                              <span className="text-red-500 text-sm ml-0.5">
-                                *
-                              </span>
-                            </FormLabel>
-                            {isQueriedItem && (
-                              <Badge className="bg-amber-100 text-amber-800 border border-amber-200 text-xs font-medium">
-                                Queried
-                              </Badge>
-                            )}
-                          </div>
-                          <FormControl>
-                            <BenefitSearchSelect
-                              insurancePlanId={planId}
-                              value={field.value}
-                              categoryCode={
-                                form.watch(`item.${index}.category`)?.code
-                              }
-                              categoryDisplay={
-                                form.watch(`item.${index}.category`)?.display
-                              }
-                              onSelect={(benefit) => {
-                                form.setValue(
-                                  `item.${index}.product_or_service`,
-                                  {
-                                    system: PROCEDURE_CODE_SYSTEM,
-                                    code: benefit.type_code,
-                                    display: benefit.type_display,
-                                  }, USER_EDIT);
-                                form.setValue(`item.${index}.category`, {
-                                  system: BENEFIT_CATEGORY_SYSTEM,
-                                  code: benefit.coverage_type_code,
-                                  display: benefit.coverage_type_display,
-                                }, USER_EDIT);
-                                const existing =
-                                  form.getValues(
-                                    `item.${index}.program_code`,
-                                  ) ?? [];
-                                if (
-                                  !existing.find((c) => c.code === "AB-PMJAY")
-                                ) {
-                                  form.setValue(`item.${index}.program_code`, [
-                                    ...existing,
-                                    AB_PMJAY_CODE,
-                                  ], USER_EDIT);
+              <div
+                className={cn(
+                  isItemDisabled && "pointer-events-none select-none",
+                )}
+              >
+                <CardHeader>
+                  <FormField
+                    key={field.id}
+                    control={form.control}
+                    name={`item.${index}.product_or_service`}
+                    render={({ field }) => {
+                      const isProductLocked = !!field.value?.code;
+                      return (
+                        <div className="flex justify-between items-center gap-2">
+                          <FormItem className="space-y-1.5 w-full">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <FormLabel>
+                                Product or Service
+                                <span className="text-red-500 text-sm ml-0.5">
+                                  *
+                                </span>
+                              </FormLabel>
+                              {isQueriedItem && (
+                                <Badge className="bg-amber-100 text-amber-800 border border-amber-200 text-xs font-medium">
+                                  Queried
+                                </Badge>
+                              )}
+                            </div>
+                            <FormControl>
+                              <BenefitSearchSelect
+                                insurancePlanId={planId}
+                                value={field.value}
+                                categoryCode={
+                                  form.watch(`item.${index}.category`)?.code
                                 }
-                              }}
-                              disabled={isProductLocked}
-                            />
-                          </FormControl>
-                          {isProductLocked && (
-                            <p className="text-xs text-muted-foreground">
-                              {isImplantItem
-                                ? "Auto-added implant. Manage it from the originating item."
-                                : "Product is locked. Remove this item and add a new one to change it."}
-                            </p>
-                          )}
-                          <FormMessage />
-                        </FormItem>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeItemAndImplants(index)}
-                          className={cn("mt-6", isImplantItem && "hidden")}
-                          disabled={isItemDisabled}
-                        >
-                          <CircleMinusIcon className="h-6 w-6 text-danger-500" />
-                        </Button>
-                      </div>
-                    );
-                  }}
-                />
-              </CardHeader>
-              {!isItemDisabled && (
-                <>
-              {isQueriedItem && itemQueryReasons.length > 0 && (
-                <div className="px-6 pb-2">
-                  <Alert className="border-amber-300 bg-amber-50 text-amber-900 [&>svg]:text-amber-600">
-                    <MessageCircleQuestionIcon />
-                    <AlertDescription className="text-amber-900">
-                      <p className="font-medium text-amber-950 mb-1">
-                        Payer query reason
-                      </p>
-                      {itemQueryReasons.length > 1 ? (
-                        <ul className="list-disc list-inside space-y-0.5 text-sm">
-                          {itemQueryReasons.map((reason, reasonIndex) => (
-                            <li key={reasonIndex}>{reason}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="text-sm">{itemQueryReasons[0]}</p>
-                      )}
-                    </AlertDescription>
-                  </Alert>
-                </div>
-              )}
-              <CardContent className="space-y-4">
-                <FormField
-                  key={field.id}
-                  control={form.control}
-                  name={`item.${index}.category`}
-                  render={({ field }) => {
-                    const hasProduct = Boolean(
-                      form.watch(`item.${index}.product_or_service`)?.code,
-                    );
-                    return (
-                      <FormItem className="space-y-1.5">
-                        <FormLabel>Category</FormLabel>
-                        <FormControl>
-                          <ValuesetSelect
-                            system="system-claim-item-category"
-                            value={field.value}
-                            onSelect={(value) => {
-                              form.setValue(`item.${index}.category`, value, USER_EDIT);
-                            }}
-                            disabled={hasProduct}
-                          />
-                        </FormControl>
-                        {hasProduct && (
-                          <p className="text-xs text-muted-foreground">
-                            Auto-set from selected benefit
-                          </p>
-                        )}
-                        <FormMessage />
-                      </FormItem>
-                    );
-                  }}
-                />
-
-                <FormField
-                  key={field.id}
-                  control={form.control}
-                  name={`item.${index}.program_code`}
-                  render={({ field }) => (
-                    <FormItem className="space-y-1.5">
-                      <FormLabel>Program Code</FormLabel>
-                      <FormControl>
-                        <div className="grid gap-4">
-                          <Autocomplete
-                            options={PROGRAM_CODES.map((code) => ({
-                              label: code.display,
-                              value: code.code,
-                            }))}
-                            value={undefined}
-                            onChange={(value) => {
-                              const code = PROGRAM_CODES.find(
-                                (code) => code.code === value,
-                              );
-                              if (!code) {
-                                return;
-                              }
-                              form.setValue(
-                                `item.${index}.program_code`,
-                                field.value
-                                  .map((c) => c.code)
-                                  .includes(code.code)
-                                  ? field.value
-                                  : [...field.value, code], USER_EDIT);
-                            }}
-                          />
-
-                          <div className="flex flex-wrap gap-2">
-                            {field.value.map((code) => (
-                              <Badge key={code.code} className="flex gap-2">
-                                {code.display}
-                                <XIcon
-                                  className="w-4 h-4 cursor-pointer"
-                                  onClick={() => {
+                                categoryDisplay={
+                                  form.watch(`item.${index}.category`)?.display
+                                }
+                                onSelect={(benefit) => {
+                                  form.setValue(
+                                    `item.${index}.product_or_service`,
+                                    {
+                                      system: PROCEDURE_CODE_SYSTEM,
+                                      code: benefit.type_code,
+                                      display: benefit.type_display,
+                                    },
+                                    USER_EDIT,
+                                  );
+                                  form.setValue(
+                                    `item.${index}.category`,
+                                    {
+                                      system: BENEFIT_CATEGORY_SYSTEM,
+                                      code: benefit.coverage_type_code,
+                                      display: benefit.coverage_type_display,
+                                    },
+                                    USER_EDIT,
+                                  );
+                                  const existing =
+                                    form.getValues(
+                                      `item.${index}.program_code`,
+                                    ) ?? [];
+                                  if (
+                                    !existing.find((c) => c.code === "AB-PMJAY")
+                                  ) {
                                     form.setValue(
                                       `item.${index}.program_code`,
-                                      field.value.filter(
-                                        (c) => c.code !== code.code,
-                                      ), USER_EDIT);
-                                  }}
-                                />
-                              </Badge>
-                            ))}
-                          </div>
+                                      [...existing, AB_PMJAY_CODE],
+                                      USER_EDIT,
+                                    );
+                                  }
+                                }}
+                                disabled={isProductLocked}
+                              />
+                            </FormControl>
+                            {isProductLocked && (
+                              <p className="text-xs text-muted-foreground">
+                                {isImplantItem
+                                  ? "Auto-added implant. Manage it from the originating item."
+                                  : "Product is locked. Remove this item and add a new one to change it."}
+                              </p>
+                            )}
+                            <FormMessage />
+                          </FormItem>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeItemAndImplants(index)}
+                            className={cn("mt-6", isImplantItem && "hidden")}
+                            disabled={isItemDisabled}
+                          >
+                            <CircleMinusIcon className="h-6 w-6 text-danger-500" />
+                          </Button>
                         </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <ModifierField
-                  form={form}
-                  index={index}
-                  planId={planId}
-                  disabled={isImplantItem}
-                  onImplantAdd={(implant) => addImplantLineItem(index, implant)}
-                />
-
-                <AddChargeItemsSection
-                  form={form}
-                  index={index}
-                  encounterChargeItems={encounterChargeItems}
-                />
-
-                <FormField
-                  control={form.control}
-                  name={`item.${index}.diagnosis_sequence`}
-                  render={() => (
-                    <FormItem>
-                      <AddDiagnosisSection form={form} index={index} />
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <AddProcedureSection form={form} index={index} />
-                <FormField
-                  control={form.control}
-                  name={`item.${index}.care_team_sequence`}
-                  render={() => (
-                    <FormItem>
-                      <AddCareTeamSection form={form} index={index} />
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <AddSupportingInfoSection
-                  form={form}
-                  index={index}
-                  planId={planId}
-                  coverageEligibilityRequest={coverageEligibilityRequest}
-                  claimUse={claimUse}
-                />
-                <AddQuestionnaireSection
-                  form={form}
-                  index={index}
-                  planId={planId}
-                  coverageEligibilityRequest={coverageEligibilityRequest}
-                  claimUse={claimUse}
-                />
-
-                <ItemValidationEffects
-                  form={form}
-                  index={index}
-                  planId={planId}
-                  coverageEligibilityRequest={coverageEligibilityRequest}
-                  previousClaim={previousClaim}
-                  encounterChargeItems={encounterChargeItems}
-                />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name={`item.${index}.serviced_period.start`}
-                    render={({ field }) => (
-                      <FormItem className="space-y-1.5">
-                        <FormLabel>
-                          Service Period Start
-                          <span className="text-red-500 text-sm ml-0.5">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <DateTimePicker
-                            value={
-                              field.value ? new Date(field.value) : undefined
-                            }
-                            onChange={(value) => {
-                              form.setValue(
-                                `item.${index}.serviced_period.start`,
-                                value ? value.toISOString() : "", USER_EDIT);
-                            }}
-                            placeholder="Select start date and time"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                      );
+                    }}
                   />
+                </CardHeader>;
+                {
+                  !isItemDisabled && (
+                    <>
+                      {isQueriedItem && itemQueryReasons.length > 0 && (
+                        <div className="px-6 pb-2">
+                          <Alert className="border-amber-300 bg-amber-50 text-amber-900 [&>svg]:text-amber-600">
+                            <MessageCircleQuestionIcon />
+                            <AlertDescription className="text-amber-900">
+                              <p className="font-medium text-amber-950 mb-1">
+                                Payer query reason
+                              </p>
+                              {itemQueryReasons.length > 1 ? (
+                                <ul className="list-disc list-inside space-y-0.5 text-sm">
+                                  {itemQueryReasons.map(
+                                    (reason, reasonIndex) => (
+                                      <li key={reasonIndex}>{reason}</li>
+                                    ),
+                                  )}
+                                </ul>
+                              ) : (
+                                <p className="text-sm">{itemQueryReasons[0]}</p>
+                              )}
+                            </AlertDescription>
+                          </Alert>
+                        </div>
+                      )}
+                      <CardContent className="space-y-4">
+                        <FormField
+                          key={field.id}
+                          control={form.control}
+                          name={`item.${index}.category`}
+                          render={({ field }) => {
+                            const hasProduct = Boolean(
+                              form.watch(`item.${index}.product_or_service`)
+                                ?.code,
+                            );
+                            return (
+                              <FormItem className="space-y-1.5">
+                                <FormLabel>Category</FormLabel>
+                                <FormControl>
+                                  <ValuesetSelect
+                                    system="system-claim-item-category"
+                                    value={field.value}
+                                    onSelect={(value) => {
+                                      form.setValue(
+                                        `item.${index}.category`,
+                                        value,
+                                        USER_EDIT,
+                                      );
+                                    }}
+                                    disabled={hasProduct}
+                                  />
+                                </FormControl>
+                                {hasProduct && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Auto-set from selected benefit
+                                  </p>
+                                )}
+                                <FormMessage />
+                              </FormItem>
+                            );
+                          }}
+                        />
 
-                  <FormField
-                    control={form.control}
-                    name={`item.${index}.serviced_period.end`}
-                    render={({ field }) => (
-                      <FormItem className="space-y-1.5">
-                        <FormLabel>
-                          Service Period End
-                          {claimUse === "claim" && (
-                            <span className="text-red-500 text-sm ml-0.5">
-                              *
-                            </span>
+                        <FormField
+                          key={field.id}
+                          control={form.control}
+                          name={`item.${index}.program_code`}
+                          render={({ field }) => (
+                            <FormItem className="space-y-1.5">
+                              <FormLabel>Program Code</FormLabel>
+                              <FormControl>
+                                <div className="grid gap-4">
+                                  <Autocomplete
+                                    options={PROGRAM_CODES.map((code) => ({
+                                      label: code.display,
+                                      value: code.code,
+                                    }))}
+                                    value={undefined}
+                                    onChange={(value) => {
+                                      const code = PROGRAM_CODES.find(
+                                        (code) => code.code === value,
+                                      );
+                                      if (!code) {
+                                        return;
+                                      }
+                                      form.setValue(
+                                        `item.${index}.program_code`,
+                                        field.value
+                                          .map((c) => c.code)
+                                          .includes(code.code)
+                                          ? field.value
+                                          : [...field.value, code],
+                                        USER_EDIT,
+                                      );
+                                    }}
+                                  />
+
+                                  <div className="flex flex-wrap gap-2">
+                                    {field.value.map((code) => (
+                                      <Badge
+                                        key={code.code}
+                                        className="flex gap-2"
+                                      >
+                                        {code.display}
+                                        <XIcon
+                                          className="w-4 h-4 cursor-pointer"
+                                          onClick={() => {
+                                            form.setValue(
+                                              `item.${index}.program_code`,
+                                              field.value.filter(
+                                                (c) => c.code !== code.code,
+                                              ),
+                                              USER_EDIT,
+                                            );
+                                          }}
+                                        />
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                </div>
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
                           )}
-                        </FormLabel>
-                        <FormControl>
-                          <DateTimePicker
-                            value={
-                              field.value ? new Date(field.value) : undefined
-                            }
-                            onChange={(value) => {
-                              form.setValue(
-                                `item.${index}.serviced_period.end`,
-                                value ? value.toISOString() : undefined, USER_EDIT);
-                            }}
-                            placeholder="Select end date and time"
+                        />
+
+                        <ModifierField
+                          form={form}
+                          index={index}
+                          planId={planId}
+                          disabled={isImplantItem}
+                          onImplantAdd={(implant) =>
+                            addImplantLineItem(index, implant)
+                          }
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name={`item.${index}.diagnosis_sequence`}
+                          render={() => (
+                            <FormItem>
+                              <AddDiagnosisSection form={form} index={index} />
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <AddProcedureSection form={form} index={index} />
+                        <FormField
+                          control={form.control}
+                          name={`item.${index}.care_team_sequence`}
+                          render={() => (
+                            <FormItem>
+                              <AddCareTeamSection form={form} index={index} />
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                        <AddSupportingInfoSection
+                          form={form}
+                          index={index}
+                          planId={planId}
+                          coverageEligibilityRequest={
+                            coverageEligibilityRequest
+                          }
+                          claimUse={claimUse}
+                        />
+                        <AddQuestionnaireSection
+                          form={form}
+                          index={index}
+                          planId={planId}
+                          coverageEligibilityRequest={
+                            coverageEligibilityRequest
+                          }
+                          claimUse={claimUse}
+                        />
+
+                        <ItemValidationEffects
+                          form={form}
+                          index={index}
+                          planId={planId}
+                          coverageEligibilityRequest={
+                            coverageEligibilityRequest
+                          }
+                          previousClaim={previousClaim}
+                        />
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control}
+                            name={`item.${index}.serviced_period.start`}
+                            render={({ field }) => (
+                              <FormItem className="space-y-1.5">
+                                <FormLabel>
+                                  Service Period Start
+                                  <span className="text-red-500 text-sm ml-0.5">
+                                    *
+                                  </span>
+                                </FormLabel>
+                                <FormControl>
+                                  <DateTimePicker
+                                    value={
+                                      field.value
+                                        ? new Date(field.value)
+                                        : undefined
+                                    }
+                                    onChange={(value) => {
+                                      form.setValue(
+                                        `item.${index}.serviced_period.start`,
+                                        value ? value.toISOString() : "",
+                                        USER_EDIT,
+                                      );
+                                    }}
+                                    placeholder="Select start date and time"
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
                           />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name={`item.${index}.quantity.value`}
-                    render={({ field }) => (
-                      <FormItem className="space-y-1.5">
-                        <FormLabel>
-                          Quantity Value
-                          <span className="text-red-500 text-sm ml-0.5">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            value={field.value || ""}
-                            onChange={(e) => {
-                              form.setValue(
-                                `item.${index}.quantity.value`,
-                                e.target.value ? parseFloat(e.target.value) : 0, USER_EDIT);
-                            }}
-                            placeholder="Enter quantity"
+                          <FormField
+                            control={form.control}
+                            name={`item.${index}.serviced_period.end`}
+                            render={({ field }) => (
+                              <FormItem className="space-y-1.5">
+                                <FormLabel>
+                                  Service Period End
+                                  {claimUse === "claim" && (
+                                    <span className="text-red-500 text-sm ml-0.5">
+                                      *
+                                    </span>
+                                  )}
+                                </FormLabel>
+                                <FormControl>
+                                  <DateTimePicker
+                                    value={
+                                      field.value
+                                        ? new Date(field.value)
+                                        : undefined
+                                    }
+                                    onChange={(value) => {
+                                      form.setValue(
+                                        `item.${index}.serviced_period.end`,
+                                        value ? value.toISOString() : undefined,
+                                        USER_EDIT,
+                                      );
+                                    }}
+                                    placeholder="Select end date and time"
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
                           />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                        </div>
 
-                  <FormField
-                    control={form.control}
-                    name={`item.${index}.quantity.unit`}
-                    render={({ field }) => (
-                      <FormItem className="space-y-1.5">
-                        <FormLabel>Quantity Unit</FormLabel>
-                        <FormControl>
-                          <ValuesetSelect
-                            system="system-ucum-units"
-                            value={field.value}
-                            onSelect={(value) => {
-                              form.setValue(
-                                `item.${index}.quantity.unit`,
-                                value, USER_EDIT);
-                            }}
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control}
+                            name={`item.${index}.quantity.value`}
+                            render={({ field }) => (
+                              <FormItem className="space-y-1.5">
+                                <FormLabel>
+                                  Quantity Value
+                                  <span className="text-red-500 text-sm ml-0.5">
+                                    *
+                                  </span>
+                                </FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    value={field.value || ""}
+                                    onChange={(e) => {
+                                      form.setValue(
+                                        `item.${index}.quantity.value`,
+                                        e.target.value
+                                          ? parseFloat(e.target.value)
+                                          : 0,
+                                        USER_EDIT,
+                                      );
+                                    }}
+                                    placeholder="Enter quantity"
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
                           />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name={`item.${index}.unit_price`}
-                    render={({ field }) => (
-                      <FormItem className="space-y-1.5">
-                        <FormLabel>
-                          Unit Price
-                          <span className="text-red-500 text-sm ml-0.5">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/40 text-sm font-medium">
-                            <span className="text-muted-foreground">₹</span>
-                            <span>{(field.value ?? 0).toFixed(2)}</span>
-                          </div>
-                        </FormControl>
-                        <p className="text-xs text-muted-foreground">
-                          Auto-calculated from selected charge items (capped at
-                          benefit limit)
-                        </p>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name={`item.${index}.factor`}
-                    render={({ field }) => (
-                      <FormItem className="space-y-1.5">
-                        <FormLabel>Factor</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            value={field.value || ""}
-                            onChange={(e) => {
-                              form.setValue(
-                                `item.${index}.factor`,
-                                e.target.value
-                                  ? parseFloat(e.target.value)
-                                  : undefined, USER_EDIT);
-                            }}
-                            placeholder="Enter factor"
+                          <FormField
+                            control={form.control}
+                            name={`item.${index}.quantity.unit`}
+                            render={({ field }) => (
+                              <FormItem className="space-y-1.5">
+                                <FormLabel>Quantity Unit</FormLabel>
+                                <FormControl>
+                                  <ValuesetSelect
+                                    system="system-ucum-units"
+                                    value={field.value}
+                                    onSelect={(value) => {
+                                      form.setValue(
+                                        `item.${index}.quantity.unit`,
+                                        value,
+                                        USER_EDIT,
+                                      );
+                                    }}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
                           />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                        </div>
 
-                <ItemAmountReferences
-                  form={form}
-                  index={index}
-                  planId={planId}
-                  coverageEligibilityRequest={coverageEligibilityRequest}
-                  previousClaim={previousClaim}
-                />
-              </CardContent>
-              {hasAnyError && (
-                <CardFooter className="rounded-b-xl px-6 py-3 border-t border-red-200 bg-red-50 flex-col items-start gap-2">
-                  {mandatoryDocsError && (
-                    <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                      {mandatoryDocsError}
-                    </div>
-                  )}
-                  {mandatoryQuestionnairesError && (
-                    <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                      {mandatoryQuestionnairesError}
-                    </div>
-                  )}
-                  {mandatoryCareTeamError && (
-                    <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                      {mandatoryCareTeamError}
-                    </div>
-                  )}
-                  {mandatoryDiagnosisError && (
-                    <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                      {mandatoryDiagnosisError}
-                    </div>
-                  )}
-                  {mandatoryChargeItemsError && (
-                    <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                      {mandatoryChargeItemsError}
-                    </div>
-                  )}
-                  {mandatoryProcedureError && (
-                    <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                      {mandatoryProcedureError}
-                    </div>
-                  )}
-                  {mandatorySupportingInfoError && (
-                    <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                      {mandatorySupportingInfoError}
-                    </div>
-                  )}
-                  {amountCapError && (
-                    <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                      <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                      {amountCapError}
-                    </div>
-                  )}
-                  {conditionErrors &&
-                    conditionErrors.split(" • ").map((err, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-2 text-sm font-medium text-red-600"
-                      >
-                        <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                        {err}
-                      </div>
-                    ))}
-                </CardFooter>
-              )}
-                </>
-              )}
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control}
+                            name={`item.${index}.unit_price`}
+                            render={({ field }) => (
+                              <FormItem className="space-y-1.5">
+                                <FormLabel>
+                                  Unit Price
+                                  <span className="text-red-500 text-sm ml-0.5">
+                                    *
+                                  </span>
+                                </FormLabel>
+                                <FormControl>
+                                  <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/40 text-sm font-medium">
+                                    <span className="text-muted-foreground">
+                                      ₹
+                                    </span>
+                                    <span>{(field.value ?? 0).toFixed(2)}</span>
+                                  </div>
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name={`item.${index}.factor`}
+                            render={({ field }) => (
+                              <FormItem className="space-y-1.5">
+                                <FormLabel>Factor</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={field.value || ""}
+                                    onChange={(e) => {
+                                      form.setValue(
+                                        `item.${index}.factor`,
+                                        e.target.value
+                                          ? parseFloat(e.target.value)
+                                          : undefined,
+                                        USER_EDIT,
+                                      );
+                                    }}
+                                    placeholder="Enter factor"
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        <ItemTotalAmount form={form} index={index} />
+
+                        <ItemAmountReferences
+                          form={form}
+                          index={index}
+                          planId={planId}
+                          coverageEligibilityRequest={
+                            coverageEligibilityRequest
+                          }
+                          previousClaim={previousClaim}
+                        />
+                      </CardContent>
+                      {hasAnyError && (
+                        <CardFooter className="rounded-b-xl px-6 py-3 border-t border-red-200 bg-red-50 flex-col items-start gap-2">
+                          {mandatoryDocsError && (
+                            <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                              <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                              {mandatoryDocsError}
+                            </div>
+                          )}
+                          {mandatoryQuestionnairesError && (
+                            <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                              <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                              {mandatoryQuestionnairesError}
+                            </div>
+                          )}
+                          {mandatoryCareTeamError && (
+                            <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                              <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                              {mandatoryCareTeamError}
+                            </div>
+                          )}
+                          {mandatoryDiagnosisError && (
+                            <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                              <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                              {mandatoryDiagnosisError}
+                            </div>
+                          )}
+                          {mandatoryProcedureError && (
+                            <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                              <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                              {mandatoryProcedureError}
+                            </div>
+                          )}
+                          {mandatorySupportingInfoError && (
+                            <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                              <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                              {mandatorySupportingInfoError}
+                            </div>
+                          )}
+                          {amountCapError && (
+                            <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                              <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                              {amountCapError}
+                            </div>
+                          )}
+                          {conditionErrors &&
+                            conditionErrors.split(" • ").map((err, i) => (
+                              <div
+                                key={i}
+                                className="flex items-center gap-2 text-sm font-medium text-red-600"
+                              >
+                                <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                                {err}
+                              </div>
+                            ))}
+                        </CardFooter>
+                      )}
+                    </>
+                  )
+                }
               </div>
             </Card>
           );
@@ -1724,240 +1770,6 @@ function ModifierField({
   );
 }
 
-function AddChargeItemsSection({
-  form,
-  index,
-  encounterChargeItems = [],
-}: {
-  form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
-  index: number;
-  encounterChargeItems?: ChargeItem[];
-}) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  const rawSelectedIds = form.watch(`item.${index}.charge_items`);
-  const rawAllItems = form.watch("item");
-
-  const selectedIds = useMemo(
-    () => rawSelectedIds ?? [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(rawSelectedIds)],
-  );
-
-  const allItems = useMemo(
-    () => rawAllItems ?? [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(rawAllItems?.map((i) => i.charge_items))],
-  );
-
-  const takenByOthers = useMemo(
-    () =>
-      new Set(
-        allItems.flatMap((item, i) =>
-          i !== index ? (item.charge_items ?? []) : [],
-        ),
-      ),
-    [allItems, index],
-  );
-
-  const selectedChargeItems = useMemo(
-    () =>
-      selectedIds
-        .map((id) => encounterChargeItems.find((ci) => ci.id === id))
-        .filter((ci): ci is ChargeItem => !!ci),
-    [selectedIds, encounterChargeItems],
-  );
-
-  const availableToAdd = useMemo(
-    () =>
-      encounterChargeItems.filter(
-        (ci) => !selectedIds.includes(ci.id) && !takenByOthers.has(ci.id),
-      ),
-    [encounterChargeItems, selectedIds, takenByOthers],
-  );
-
-  const totalSelected = useMemo(
-    () =>
-      selectedChargeItems.reduce(
-        (sum, ci) => sum + parseFloat(ci.total_price || "0"),
-        0,
-      ),
-    [selectedChargeItems],
-  );
-
-  const hasMissingChargeItems = selectedIds.length === 0;
-  const isItemDisabled = form.watch(`item.${index}._is_disabled`);
-
-  const {
-    field: mandatoryChargeItemsField,
-    fieldState: mandatoryChargeItemsFieldState,
-  } = useController({
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    name: `item.${index}._mandatory_charge_items_error` as any,
-    control: form.control,
-  });
-
-  useEffect(() => {
-    if (isItemDisabled) {
-      syncVirtualFormErrorFromForm(
-        form,
-        `item.${index}._mandatory_charge_items_error`,
-        undefined,
-      );
-      return;
-    }
-    const nextError = hasMissingChargeItems
-      ? encounterChargeItems.length === 0
-        ? "No charge items are available for this encounter. At least one charge item is required."
-        : "At least one charge item is required"
-      : undefined;
-    syncVirtualFormErrorFromForm(
-      form,
-      `item.${index}._mandatory_charge_items_error`,
-      nextError,
-    );
-  }, [form, index, encounterChargeItems.length, hasMissingChargeItems, isItemDisabled]);
-
-  return (
-    <div className="space-y-4">
-      <div
-        className={cn(
-          "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
-          hasMissingChargeItems && sectionErrorBorderClass,
-        )}
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        <div className="flex items-center space-x-2">
-          {isExpanded ? (
-            <ChevronDownIcon className="w-4 h-4" />
-          ) : (
-            <ChevronRightIcon className="w-4 h-4" />
-          )}
-          <ReceiptIcon className="w-4 h-4 text-muted-foreground" />
-          <span className="font-medium">
-            Charge Items
-            <span className="text-red-500 text-sm ml-0.5">*</span>
-          </span>
-          {!hasMissingChargeItems && selectedIds.length > 0 && (
-            <Badge variant="secondary" className="ml-2">
-              {selectedIds.length}
-            </Badge>
-          )}
-          {hasMissingChargeItems && (
-            <Badge variant="destructive" className="ml-1 text-xs">
-              1 required
-            </Badge>
-          )}
-        </div>
-        {selectedIds.length > 0 && !isExpanded && (
-          <span className="text-sm text-muted-foreground">
-            ₹{totalSelected.toFixed(2)}
-          </span>
-        )}
-      </div>
-
-      {(mandatoryChargeItemsFieldState.error?.message ||
-        mandatoryChargeItemsField.value) && (
-        <p className="text-sm font-medium text-red-600 px-1">
-          {mandatoryChargeItemsFieldState.error?.message ||
-            mandatoryChargeItemsField.value}
-        </p>
-      )}
-
-      {isExpanded && (
-        <div className="space-y-3 pl-4">
-          {encounterChargeItems.length === 0 ? (
-            <div className="rounded-lg border border-dashed bg-muted/40 p-4 text-sm text-muted-foreground flex items-start gap-2">
-              <InfoIcon className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-600" />
-              <span>
-                No charge items are linked to this encounter yet. Add charge
-                items to the encounter before submitting the claim.
-              </span>
-            </div>
-          ) : (
-            <>
-              <Autocomplete
-                options={availableToAdd.map((ci) => ({
-                  label: `${chargeItemLabel(ci)}${ci.code?.code ? ` (${ci.code.code})` : ""} — ₹${parseFloat(ci.total_price || "0").toFixed(2)}`,
-                  value: ci.id,
-                }))}
-                value={undefined}
-                onChange={(id) => {
-                  if (!selectedIds.includes(id)) {
-                    form.setValue(`item.${index}.charge_items`, [
-                      ...selectedIds,
-                      id,
-                    ], USER_EDIT);
-                  }
-                }}
-                placeholder={
-                  availableToAdd.length === 0
-                    ? "No charge items available"
-                    : "Search and select a charge item…"
-                }
-                noOptionsMessage="No charge items available"
-              />
-
-              {selectedChargeItems.length > 0 && (
-                <div className="space-y-2">
-                  {selectedChargeItems.map((ci) => (
-                    <div
-                      key={ci.id}
-                      className="flex items-center justify-between p-2.5 border rounded-lg bg-muted/30"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {chargeItemLabel(ci)}
-                        </p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {ci.code?.code && (
-                            <span className="text-xs text-muted-foreground font-mono">
-                              {ci.code.code}
-                            </span>
-                          )}
-                          <span className="text-xs font-medium text-foreground">
-                            ₹{parseFloat(ci.total_price || "0").toFixed(2)}
-                          </span>
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="flex-shrink-0 h-7 w-7"
-                        onClick={() => {
-                          form.setValue(
-                            `item.${index}.charge_items`,
-                            selectedIds.filter((id) => id !== ci.id), USER_EDIT);
-                        }}
-                      >
-                        <XIcon className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-
-                  {selectedChargeItems.length > 1 && (
-                    <div className="flex justify-end text-sm text-muted-foreground px-1">
-                      Total: ₹{totalSelected.toFixed(2)}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {selectedIds.length === 0 && (
-                <p className="text-xs text-muted-foreground py-1">
-                  No charge items selected. Select charge items to
-                  auto-calculate the unit price.
-                </p>
-              )}
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /**
  * Looks up the CE:AR (auth-requirements) response and returns the payer's
  * `allowed_amount` for the given procedure code. Reference-only: exceeding it
@@ -1998,33 +1810,23 @@ function getPreAuthApprovedAmount(
   return benefitAdj?.amount?.value ?? null;
 }
 
-/**
- * Pure-side-effect component: watches item fields and sets virtual error fields
- * `_amount_cap_error` and `_condition_errors` in real time so errors are visible
- * before the user clicks submit. The hard cap is the benefit limit only —
- * payer-driven reference amounts (CE:AR allowed / pre-auth approved) are shown
- * separately as warnings via `ItemAmountReferences`.
- */
 function ItemValidationEffects({
   form,
   index,
   planId,
   coverageEligibilityRequest,
   previousClaim,
-  encounterChargeItems = [],
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   index: number;
   planId: string | null;
   coverageEligibilityRequest?: CoverageEligibilityRequest;
   previousClaim?: Claim;
-  encounterChargeItems?: ChargeItem[];
 }) {
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
   const isItemDisabled = form.watch(`item.${index}._is_disabled`);
   const quantityValue = form.watch(`item.${index}.quantity.value`);
   const rawModifiers = form.watch(`item.${index}.modifier`);
-  const rawChargeItemIds = form.watch(`item.${index}.charge_items`);
   const isImplantItem = Boolean(
     form.watch(`item.${index}._implant_parent_sequence`),
   );
@@ -2051,12 +1853,6 @@ function ItemValidationEffects({
     );
   }, [rawAllItems, currentSequence, isImplantItem]);
 
-  const chargeItemIds = useMemo(
-    () => rawChargeItemIds ?? [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [JSON.stringify(rawChargeItemIds)],
-  );
-
   // Loads benefit (same query key as ModifierField → cached, no extra request)
   const { data: benefitDetail } = useQuery({
     queryKey: ["insurancePlanBenefit", "lookup", planId, productCode],
@@ -2081,50 +1877,20 @@ function ItemValidationEffects({
     return [...nonImplantCodes, ...linkedImplantCodes];
   }, [modifiers, linkedImplantCodes, qualifierTypeByCode]);
 
-  // Benefit limit is the only hard cap.
   const benefitLimit = useMemo(() => {
     if (!benefitDetail) return null;
     return computeBenefitLimit(benefitDetail, modifierCodesForLimit);
   }, [benefitDetail, modifierCodesForLimit]);
 
-  // Build a price lookup keyed by charge-item id from every available source.
-  // The encounter charge-item query can resolve after the form is prefilled,
-  // and the prefilled ids originate from the charge items embedded in the CE
-  // request / previous claim — both of which already carry `total_price`. Using
-  // all sources keeps the auto-calculated unit price correct on initial load
-  // instead of momentarily falling back to 0 until the user edits the items.
-  const chargeItemPriceById = useMemo(() => {
-    const priceById = new Map<string, number>();
-    const addChargeItems = (items?: ChargeItem[]) => {
-      (items ?? []).forEach((ci) => {
-        if (ci?.id && !priceById.has(ci.id)) {
-          priceById.set(ci.id, parseFloat(ci.total_price ?? "0") || 0);
-        }
-      });
-    };
-    addChargeItems(encounterChargeItems);
-    (coverageEligibilityRequest?.item ?? []).forEach((it) =>
-      addChargeItems(it.charge_items),
-    );
-    (previousClaim?.item ?? []).forEach((it) =>
-      addChargeItems(it.charge_items),
-    );
-    return priceById;
-  }, [encounterChargeItems, coverageEligibilityRequest, previousClaim]);
-
-  // Sum total prices of all selected charge items.
-  //
-  // The selected ids are read via `getValues` (the authoritative current form
-  // state) rather than the watched value: right after a bulk prefill,
-  // `form.watch` for a freshly-`reset` nested array can lag behind the actual
-  // form values, which previously left this total — and therefore the
-  // auto-calculated unit price — at 0 until the user edited the charge items.
-  // The watched ids are still kept in the dependency list so the total
-  // recomputes whenever the user adds/removes a charge item.
-  const chargeItemsTotal = useMemo(() => {
-    const ids = form.getValues(`item.${index}.charge_items`) ?? chargeItemIds;
-    return ids.reduce((sum, id) => sum + (chargeItemPriceById.get(id) ?? 0), 0);
-  }, [chargeItemIds, chargeItemPriceById, form, index]);
+  // Payer-driven amounts, in priority order for deriving the unit price.
+  const ceAllowed = useMemo(
+    () => getCeAllowedAmount(coverageEligibilityRequest, productCode),
+    [coverageEligibilityRequest, productCode],
+  );
+  const preAuthApproved = useMemo(
+    () => getPreAuthApprovedAmount(previousClaim, currentSequence),
+    [previousClaim, currentSequence],
+  );
 
   useEffect(() => {
     if (isItemDisabled) {
@@ -2140,37 +1906,18 @@ function ItemValidationEffects({
       return;
     }
 
-    if (productCode === LAMA_DAMA_PROCEDURE_BENEFIT_CODE) {
-      form.setValue(`item.${index}.unit_price`, benefitLimit ?? 0, {
-        shouldDirty: false,
-      });
-      form.setValue(`item.${index}._amount_cap_error`, undefined, {
-        shouldDirty: false,
-        shouldValidate: true,
-      });
-      return;
-    }
-
-    const capped =
-      benefitLimit != null
-        ? Math.min(chargeItemsTotal, benefitLimit)
-        : chargeItemsTotal;
-    form.setValue(`item.${index}.unit_price`, capped, { shouldDirty: false });
-
-    if (benefitLimit != null && chargeItemsTotal > benefitLimit) {
-      form.setValue(
-        `item.${index}._amount_cap_error`,
-        `The amount requested is ₹${chargeItemsTotal.toFixed(2)}, but the expected amount is ₹${benefitLimit.toFixed(2)}. The amount has been adjusted to the expected limit — please inform the patient.`,
-        { shouldDirty: false, shouldValidate: true },
-      );
-    } else {
-      form.setValue(`item.${index}._amount_cap_error`, undefined, {
-        shouldDirty: false,
-        shouldValidate: true,
-      });
-    }
+    // Priority: pre-auth approved → coverage eligibility allowed → benefit
+    // limit. LAMA/DAMA has no payer references and resolves to the benefit
+    // limit through the same chain.
+    const derived = preAuthApproved ?? ceAllowed ?? benefitLimit ?? 0;
+    form.setValue(`item.${index}.unit_price`, derived, { shouldDirty: false });
+    form.setValue(`item.${index}._amount_cap_error`, undefined, {
+      shouldDirty: false,
+      shouldValidate: true,
+    });
   }, [
-    chargeItemsTotal,
+    preAuthApproved,
+    ceAllowed,
     benefitLimit,
     form,
     index,
@@ -2217,11 +1964,29 @@ function ItemValidationEffects({
   return null;
 }
 
+function ItemTotalAmount({
+  form,
+  index,
+}: {
+  form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
+  index: number;
+}) {
+  const unitPrice = form.watch(`item.${index}.unit_price`) ?? 0;
+  const quantity = form.watch(`item.${index}.quantity.value`);
+  const factor = form.watch(`item.${index}.factor`);
+  const total = unitPrice * (quantity || 1) * (factor || 1);
+  return (
+    <div className="flex items-center justify-between rounded-md border bg-muted/40 px-3 py-2">
+      <span className="text-sm font-medium">Total amount</span>
+      <span className="text-sm font-semibold">₹{total.toFixed(2)}</span>
+    </div>
+  );
+}
+
 /**
- * Inline panel rendered next to the unit price field. Shows the benefit limit
- * (hard cap) alongside payer-driven reference amounts: CE:AR allowed amount
- * and pre-auth approved amount. Emits a non-blocking warning when the current
- * unit price exceeds either payer reference.
+ * Inline panel rendered below the unit price field. Shows the amount sources
+ * (pre-auth approved, coverage eligibility allowed, benefit limit) and marks
+ * the one applied to the item's unit price.
  */
 function ItemAmountReferences({
   form,
@@ -2238,7 +2003,6 @@ function ItemAmountReferences({
 }) {
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
   const itemSequence = form.watch(`item.${index}.sequence`);
-  const unitPrice = form.watch(`item.${index}.unit_price`) ?? 0;
   const rawModifiers = form.watch(`item.${index}.modifier`);
   const isImplantItem = Boolean(
     form.watch(`item.${index}._implant_parent_sequence`),
@@ -2296,22 +2060,36 @@ function ItemAmountReferences({
     [previousClaim, itemSequence],
   );
 
-  const refs: Array<{ label: string; value: number; warn?: boolean }> = [];
-  if (benefitLimit != null) {
-    refs.push({ label: "Benefit limit (hard cap)", value: benefitLimit });
+  const refs: Array<{ label: string; value: number; applied?: boolean }> = [];
+  // The applied amount follows the derivation priority used to fill the unit
+  // price: pre-auth approved → coverage eligibility allowed → benefit limit.
+  const appliedSource =
+    preAuthApproved != null
+      ? "preauth"
+      : ceAllowed != null
+        ? "ce"
+        : benefitLimit != null
+          ? "benefit"
+          : null;
+  if (preAuthApproved != null) {
+    refs.push({
+      label: "Pre-Authorization approved amount",
+      value: preAuthApproved,
+      applied: appliedSource === "preauth",
+    });
   }
   if (ceAllowed != null) {
     refs.push({
       label: "Coverage eligibility allowed amount",
       value: ceAllowed,
-      warn: unitPrice > ceAllowed,
+      applied: appliedSource === "ce",
     });
   }
-  if (preAuthApproved != null) {
+  if (benefitLimit != null) {
     refs.push({
-      label: "Pre-Authorization approved amount",
-      value: preAuthApproved,
-      warn: unitPrice > preAuthApproved,
+      label: "Benefit limit",
+      value: benefitLimit,
+      applied: appliedSource === "benefit",
     });
   }
 
@@ -2331,32 +2109,25 @@ function ItemAmountReferences({
             <span
               className={cn(
                 "text-muted-foreground",
-                ref.warn && "text-amber-700 font-medium",
+                ref.applied && "text-foreground font-medium",
               )}
             >
               {ref.label}
-            </span>
-            <span
-              className={cn(
-                "font-medium",
-                ref.warn ? "text-amber-700" : "text-foreground",
+              {ref.applied && (
+                <Badge
+                  variant="secondary"
+                  className="ml-2 text-[10px] px-1.5 py-0"
+                >
+                  Applied
+                </Badge>
               )}
-            >
+            </span>
+            <span className="font-medium text-foreground">
               ₹{ref.value.toFixed(2)}
             </span>
           </div>
         ))}
       </div>
-      {refs.some((r) => r.warn) && (
-        <div className="flex items-start gap-1.5 text-xs text-amber-700 pt-1 border-t border-amber-200">
-          <AlertCircleIcon className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
-          <span>
-            Unit price exceeds the payer's prior reference amount. Submission is
-            still allowed within the benefit limit, but the payer may adjust
-            this down.
-          </span>
-        </div>
-      )}
     </div>
   );
 }

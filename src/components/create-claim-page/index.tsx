@@ -1010,41 +1010,21 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     return available >= 0 ? available : 0;
   }, [ceValidation]);
 
-  const watchedItemsForTotal = form.watch("item");
+  const watchedItemsForTotal = useWatch({
+    control: form.control,
+    name: "item",
+  });
 
-  // Price lookup for charge items aggregated from every available source. Used
-  // to derive each item's effective amount when `unit_price` is still 0 (the
-  // per-item effect that fills it runs asynchronously after the form prefill).
-  const chargeItemPriceById = useMemo(() => {
-    const priceById = new Map<string, number>();
-    const addChargeItems = (items?: ChargeItem[]) => {
-      (items ?? []).forEach((ci) => {
-        if (ci?.id && !priceById.has(ci.id)) {
-          priceById.set(ci.id, parseFloat(ci.total_price ?? "0") || 0);
-        }
-      });
-    };
-    addChargeItems(encounterChargeItems);
-    (coverageEligibilityRequest?.item ?? []).forEach((it) =>
-      addChargeItems(it.charge_items),
-    );
-    (prefilledClaim?.item ?? []).forEach((it) =>
-      addChargeItems(it.charge_items),
-    );
-    return priceById;
-  }, [encounterChargeItems, coverageEligibilityRequest, prefilledClaim]);
-
+  // Total claim amount is the sum of each line item's total (unit price ×
+  // quantity × factor). It intentionally does not use the pre-auth / claim
+  // approved amount directly.
   const totalClaimAmount = useMemo(() => {
     return (watchedItemsForTotal ?? []).reduce((sum, item) => {
       if (item._is_disabled) return sum;
-      const fallbackFromChargeItems = (item.charge_items ?? []).reduce(
-        (acc, id) => acc + (chargeItemPriceById.get(id) ?? 0),
-        0,
-      );
-      const unitPrice = item.unit_price || fallbackFromChargeItems;
+      const unitPrice = item.unit_price || 0;
       return sum + unitPrice * (item.quantity?.value || 1) * (item.factor || 1);
     }, 0);
-  }, [watchedItemsForTotal, chargeItemPriceById]);
+  }, [watchedItemsForTotal]);
 
   useEffect(() => {
     if (validationBalance === null) {
@@ -1414,7 +1394,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                     form={form}
                     coverageEligibilityRequest={coverageEligibilityRequest}
                     previousClaim={prefilledClaim}
-                    encounterChargeItems={encounterChargeItems ?? []}
                     queryResponse={
                       showPayerQuery ? relatedClaimResponse : undefined
                     }
