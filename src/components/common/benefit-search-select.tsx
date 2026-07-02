@@ -108,23 +108,32 @@ export default function BenefitSearchSelect({
 
   const results = data?.results ?? [];
 
-  const options = results.map((b) => ({
-    label: formatBenefitLabel(
-      b.type_code,
-      b.type_display,
-      b.coverage_type_code,
-      b.coverage_type_display,
-    ),
-    display: (
-      <BenefitOption
-        typeCode={b.type_code}
-        typeDisplay={b.type_display}
-        categoryCode={b.coverage_type_code}
-        categoryDisplay={b.coverage_type_display}
-      />
-    ),
-    value: b.id,
-  }));
+  const isImplantCode = (code: string) => code.toUpperCase().startsWith("IMP");
+
+  const options = results.map((b) => {
+    const implant = isImplantCode(b.type_code);
+    return {
+      label: formatBenefitLabel(
+        b.type_code,
+        b.type_display,
+        b.coverage_type_code,
+        b.coverage_type_display,
+      ),
+      display: (
+        <BenefitOption
+          typeCode={b.type_code}
+          typeDisplay={b.type_display}
+          categoryCode={b.coverage_type_code}
+          categoryDisplay={b.coverage_type_display}
+        />
+      ),
+      value: b.id,
+      disabled: implant,
+      disabledReason: implant
+        ? "Implants can't be selected directly. Select the respective procedure to add the implant."
+        : undefined,
+    };
+  });
 
   const selectedId = value?.code
     ? (results.find(

@@ -15,6 +15,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -24,6 +30,8 @@ interface AutoCompleteOption {
   label: string;
   display?: React.ReactNode;
   value: string;
+  disabled?: boolean;
+  disabledReason?: React.ReactNode;
 }
 
 interface AutocompleteProps {
@@ -72,30 +80,57 @@ export default function Autocomplete({
             Searching…
           </div>
         ) : null}
-        <CommandEmpty>{isLoading ? "Searching…" : noOptionsMessage}</CommandEmpty>
+        <CommandEmpty>
+          {isLoading ? "Searching…" : noOptionsMessage}
+        </CommandEmpty>
         <CommandGroup>
-          {options.map((option) => (
-            <CommandItem
-              key={option.value}
-              value={option.label}
-              onSelect={(v) => {
-                const currentValue =
-                  options.find(
-                    (option) => option.label.toLowerCase() === v.toLowerCase()
-                  )?.value || "";
-                onChange(currentValue === value ? "" : currentValue);
-                setOpen(false);
-              }}
-            >
-              <CheckIcon
-                className={cn(
-                  "mr-2 h-4 w-4",
-                  value === option.value ? "opacity-100" : "opacity-0"
-                )}
-              />
-              {option.display ?? option.label}
-            </CommandItem>
-          ))}
+          <TooltipProvider delayDuration={150}>
+            {options.map((option) => {
+              const item = (
+                <CommandItem
+                  key={option.value}
+                  value={option.label}
+                  aria-disabled={option.disabled}
+                  className={cn(
+                    option.disabled && "cursor-not-allowed opacity-50",
+                  )}
+                  onSelect={(v) => {
+                    if (option.disabled) {
+                      return;
+                    }
+                    const currentValue =
+                      options.find(
+                        (option) =>
+                          option.label.toLowerCase() === v.toLowerCase(),
+                      )?.value || "";
+                    onChange(currentValue === value ? "" : currentValue);
+                    setOpen(false);
+                  }}
+                >
+                  <CheckIcon
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === option.value ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  {option.display ?? option.label}
+                </CommandItem>
+              );
+
+              if (option.disabled && option.disabledReason) {
+                return (
+                  <Tooltip key={option.value}>
+                    <TooltipTrigger asChild>{item}</TooltipTrigger>
+                    <TooltipContent side="right" className="max-w-xs">
+                      {option.disabledReason}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              }
+
+              return item;
+            })}
+          </TooltipProvider>
         </CommandGroup>
       </CommandList>
     </>
