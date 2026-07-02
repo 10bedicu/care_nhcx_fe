@@ -203,7 +203,7 @@ export default function Autocomplete({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="sm:w-full p-0 pointer-events-auto w-[var(--radix-popover-trigger-width)]"
+        className="p-0 pointer-events-auto w-[var(--radix-popover-trigger-width)]"
         align={align}
       >
         <Command>{commandContent}</Command>

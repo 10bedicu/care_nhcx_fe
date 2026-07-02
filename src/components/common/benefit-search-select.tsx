@@ -43,12 +43,12 @@ function BenefitOption({
 }) {
   const hasCategory = Boolean(categoryCode || categoryDisplay);
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 py-0.5">
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5 py-0.5">
       <div className="flex min-w-0 items-baseline gap-2">
         <span className="shrink-0 font-mono text-xs font-medium text-primary">
           {typeCode}
         </span>
-        <span className="truncate text-sm font-medium text-foreground">
+        <span className="min-w-0 break-words text-sm font-medium text-foreground">
           {typeDisplay}
         </span>
       </div>
@@ -58,7 +58,7 @@ function BenefitOption({
             <span className="shrink-0 font-mono">{categoryCode}</span>
           )}
           {categoryDisplay && (
-            <span className="truncate">{categoryDisplay}</span>
+            <span className="min-w-0 break-words">{categoryDisplay}</span>
           )}
         </div>
       )}
