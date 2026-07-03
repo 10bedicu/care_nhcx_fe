@@ -1246,6 +1246,14 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
   const formUse = form.watch("use");
 
+  const lockApprovedItems = useMemo(() => {
+    if (submitMode !== "submit") return false;
+    if (formUse !== "preauthorization") return false;
+    if (!prefilledClaim) return false;
+    const outcome = deriveClaimOutcome(prefilledClaim);
+    return outcome === "approved" || outcome === "partially-approved";
+  }, [submitMode, formUse, prefilledClaim]);
+
   // A resubmission is only possible when there is a prior submission of the
   // same use to resubmit against (a same-use related claim). First pre-auth /
   // first claim submissions always follow the auto-derived flow (12 / 15).
@@ -1438,7 +1446,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                     queryResponse={
                       showPayerQuery ? relatedClaimResponse : undefined
                     }
-                    lockApprovedItems={submitMode === "submit"}
+                    lockApprovedItems={lockApprovedItems}
                   />
                   <Separator />
                   <ClaimAccidentSection form={form} />
@@ -1581,7 +1589,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       </div>
     </GlobalStoreProvider>
   );
-};;;;
+};;;;;
 
 function WalletBalanceSummary({
   totalAmount,
