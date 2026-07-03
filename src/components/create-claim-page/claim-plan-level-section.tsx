@@ -26,6 +26,7 @@ import {
   countMissingRequiredItems,
   CLAIM_CONSENT_OBTAINED_STORE_KEY,
   CLAIM_DISCHARGE_DISPOSITION_STORE_KEY,
+  CLAIM_TOTAL_EXCEEDS_WALLET_STORE_KEY,
   getForcedQuestionnaireFhirIds,
   getQuestionnaireRequirementStatus,
   isQuestionnaireRequirementEffectivelyRequired,
@@ -809,14 +810,18 @@ export function PlanLevelQuestionnairesSection({
   const dischargeDisposition = getStore<
     EncounterDischargeDisposition | undefined
   >(CLAIM_DISCHARGE_DISPOSITION_STORE_KEY);
+  const totalExceedsWallet = getStore<boolean | undefined>(
+    CLAIM_TOTAL_EXCEEDS_WALLET_STORE_KEY,
+  );
   const forcedQuestionnaireFhirIds = useMemo(
     () =>
       getForcedQuestionnaireFhirIds(
         claimUse,
         consentObtained,
         dischargeDisposition,
+        totalExceedsWallet,
       ),
-    [claimUse, consentObtained, dischargeDisposition],
+    [claimUse, consentObtained, dischargeDisposition, totalExceedsWallet],
   );
   const planId = usePlanId(form);
   const ceLeftover = useCELeftover({

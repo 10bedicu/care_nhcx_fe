@@ -61,6 +61,7 @@ import {
   QuestionnaireRequirementStatus,
   CLAIM_CONSENT_OBTAINED_STORE_KEY,
   CLAIM_DISCHARGE_DISPOSITION_STORE_KEY,
+  CLAIM_TOTAL_EXCEEDS_WALLET_STORE_KEY,
   isQuestionnaireRequirementEffectivelyRequired,
 } from "./questionnaire-helpers";
 import { QuestionnaireResponseItemInput } from "./schema";
@@ -906,14 +907,18 @@ export function AddQuestionnaireSection({
   const dischargeDisposition = getStore<
     EncounterDischargeDisposition | undefined
   >(CLAIM_DISCHARGE_DISPOSITION_STORE_KEY);
+  const totalExceedsWallet = getStore<boolean | undefined>(
+    CLAIM_TOTAL_EXCEEDS_WALLET_STORE_KEY,
+  );
   const forcedQuestionnaireFhirIds = useMemo(
     () =>
       getForcedQuestionnaireFhirIds(
         claimUse,
         consentObtained,
         dischargeDisposition,
+        totalExceedsWallet,
       ),
-    [claimUse, consentObtained, dischargeDisposition],
+    [claimUse, consentObtained, dischargeDisposition, totalExceedsWallet],
   );
 
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;

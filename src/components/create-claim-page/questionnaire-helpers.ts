@@ -14,9 +14,11 @@ export const LAMA_DISCHARGE_QUESTIONNAIRE = "100136";
 export const DAMA_DISCHARGE_QUESTIONNAIRE = "100137";
 export const DEATH_DISCHARGE_QUESTIONNAIRE = "100025";
 export const NORMAL_DISCHARGE_QUESTIONNAIRE = "100005";
+export const PATIENT_PAYMENT_CONSENT_QUESTIONNAIRE = "106329";
 
 export const CLAIM_CONSENT_OBTAINED_STORE_KEY = "claimConsentObtained";
 export const CLAIM_DISCHARGE_DISPOSITION_STORE_KEY = "claimDischargeDisposition";
+export const CLAIM_TOTAL_EXCEEDS_WALLET_STORE_KEY = "claimTotalExceedsWallet";
 
 export function getForcedConsentQuestionnaireFhirId(
   claimUse: ClaimUseChoice | undefined,
@@ -78,6 +80,7 @@ export function getForcedQuestionnaireFhirIds(
   claimUse: ClaimUseChoice | undefined,
   consentObtained: boolean | undefined,
   dischargeDisposition: EncounterDischargeDisposition | undefined,
+  totalExceedsWallet?: boolean,
 ): Set<string> {
   const ids = new Set<string>();
   const consentId = getForcedConsentQuestionnaireFhirId(
@@ -90,6 +93,9 @@ export function getForcedQuestionnaireFhirIds(
     dischargeDisposition,
   );
   if (dischargeId) ids.add(dischargeId);
+  // When the claimed amount exceeds the patient's available wallet balance the
+  // patient must consent to paying the difference out of pocket.
+  if (totalExceedsWallet) ids.add(PATIENT_PAYMENT_CONSENT_QUESTIONNAIRE);
   return ids;
 }
 

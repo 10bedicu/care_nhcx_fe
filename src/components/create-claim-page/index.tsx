@@ -64,7 +64,10 @@ import { createClaimFormSchema } from "./schema";
 import { deriveClaimOutcome } from "@/components/nhcx-encounter-tab/flow";
 import {
   CLAIM_DISCHARGE_DISPOSITION_STORE_KEY,
+  CLAIM_TOTAL_EXCEEDS_WALLET_STORE_KEY,
+  PATIENT_PAYMENT_CONSENT_QUESTIONNAIRE,
   hasConsentQuestionnaireResponse,
+  questionnaireResponseMatchesFhirId,
 } from "./questionnaire-helpers";
 import { LamaDamaFlowController } from "./lama-dama-flow-controller";
 import { toast } from "sonner";
@@ -99,6 +102,26 @@ function ClaimEncounterStoreSync({
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encounter?.hospitalization?.discharge_disposition]);
+
+  return null;
+}
+
+/**
+ * Publishes whether the claim total exceeds the patient's available wallet
+ * balance into the global store, so the questionnaire sections can force the
+ * patient payment consent questionnaire to be mandatory.
+ */
+function ClaimWalletStoreSync({
+  totalExceedsWallet,
+}: {
+  totalExceedsWallet: boolean;
+}) {
+  const { setStore } = useGlobalStore();
+
+  useEffect(() => {
+    setStore(CLAIM_TOTAL_EXCEEDS_WALLET_STORE_KEY, totalExceedsWallet);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalExceedsWallet]);
 
   return null;
 }
@@ -1026,27 +1049,44 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     }, 0);
   }, [watchedItemsForTotal]);
 
+  const totalExceedsWallet =
+    validationBalance !== null && totalClaimAmount > validationBalance;
+
+  // The patient payment consent questionnaire (106329) is forced mandatory when
+  // the total exceeds the wallet balance. Once it has been added, the excess is
+  // considered acknowledged and no longer hard-blocks submission — completeness
+  // of the questionnaire is then enforced by the questionnaire sections.
+  const paymentConsentProvided = useMemo(
+    () =>
+      (watchedQuestionnaireResponses ?? []).some((qr) =>
+        questionnaireResponseMatchesFhirId(
+          qr.questionnaire,
+          PATIENT_PAYMENT_CONSENT_QUESTIONNAIRE,
+        ),
+      ),
+    [watchedQuestionnaireResponses],
+  );
+
   useEffect(() => {
-    if (validationBalance === null) {
+    if (!totalExceedsWallet || paymentConsentProvided) {
       form.setValue("_total_amount_cap_error", undefined, {
         shouldDirty: false,
         shouldValidate: true,
       });
       return;
     }
-    if (totalClaimAmount > validationBalance) {
-      form.setValue(
-        "_total_amount_cap_error",
-        `The amount requested is ₹${totalClaimAmount.toFixed(2)}, but the available wallet balance is ₹${validationBalance.toFixed(2)}. Please inform the patient before proceeding.`,
-        { shouldDirty: false, shouldValidate: true },
-      );
-    } else {
-      form.setValue("_total_amount_cap_error", undefined, {
-        shouldDirty: false,
-        shouldValidate: true,
-      });
-    }
-  }, [totalClaimAmount, validationBalance, form]);
+    form.setValue(
+      "_total_amount_cap_error",
+      `₹${(totalClaimAmount - (validationBalance ?? 0)).toFixed(2)} exceeds the wallet balance and will be collected as copay from the patient. Inform the patient and capture consent to proceed.`,
+      { shouldDirty: false, shouldValidate: true },
+    );
+  }, [
+    totalExceedsWallet,
+    paymentConsentProvided,
+    totalClaimAmount,
+    validationBalance,
+    form,
+  ]);
 
   const { mutate: submitClaim, isPending: submitClaimIsPending } = useMutation({
     mutationFn: ({ id, resubmit }: { id: string; resubmit?: boolean }) =>
@@ -1293,6 +1333,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     >
       <div className="space-y-6">
         <ClaimEncounterStoreSync encounter={encounter} />
+        <ClaimWalletStoreSync totalExceedsWallet={totalExceedsWallet} />
         <LamaDamaFlowController
           form={form}
           encounter={encounter}
