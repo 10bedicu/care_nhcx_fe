@@ -440,7 +440,36 @@ export function getLinkedImplantsForParent<
 type ItemWithProduct = {
   product_or_service?: Coding;
   sequence?: number;
+  modifier?: Coding[];
+  serviced_period?: { start?: string; end?: string };
+  _implant_parent_sequence?: number;
 };
+
+/**
+ * Composite identity of a line item: product/service + stratification
+ * (modifier codes) + service period. Two items with the same key are
+ * considered duplicates. Returns null when no product/service is selected yet.
+ */
+export function getItemUniquenessKey(item: {
+  product_or_service?: Coding;
+  modifier?: Coding[];
+  serviced_period?: { start?: string; end?: string };
+}): string | null {
+  const code = item.product_or_service?.code;
+  if (!code) return null;
+  const stratification = (item.modifier ?? [])
+    .map((m) => m.code)
+    .filter(Boolean)
+    .sort()
+    .join(",");
+  const period = item.serviced_period
+    ? `${item.serviced_period.start ?? ""}~${item.serviced_period.end ?? ""}`
+    : "";
+  return `${code}|${stratification}|${period}`;
+}
+
+export const DUPLICATE_ITEM_ERROR =
+  "Duplicate item: product or service, stratification and service period must be unique. Change the stratification or service period to make it unique.";
 
 export function buildCrossItemErrors(
   items: ItemWithProduct[],
@@ -449,7 +478,7 @@ export function buildCrossItemErrors(
     requireEnhancementAllowed?: boolean;
     /** Item sequences prefilled from a linked CE — exempt from enhancement validation. */
     enhancementExemptSequences?: Set<number>;
-  }
+  },
 ): Map<number, string[]> {
   const errorsByIndex = new Map<number, string[]>();
 
@@ -460,21 +489,23 @@ export function buildCrossItemErrors(
     }
   };
 
-  const codeToIndexes = new Map<string, number[]>();
+  // Uniqueness is enforced on the composite key (product + stratification +
+  // service period) rather than the product code alone, so the same procedure
+  // may appear multiple times as long as its stratification / service period
+  // differs. Auto-generated implant line items are excluded.
+  const keyToIndexes = new Map<string, number[]>();
   items.forEach((item, index) => {
-    const code = item.product_or_service?.code;
-    if (!code) return;
-    const existing = codeToIndexes.get(code) ?? [];
-    codeToIndexes.set(code, [...existing, index]);
+    if (item._implant_parent_sequence != null) return;
+    const key = getItemUniquenessKey(item);
+    if (!key) return;
+    const existing = keyToIndexes.get(key) ?? [];
+    keyToIndexes.set(key, [...existing, index]);
   });
 
-  for (const [code, indexes] of codeToIndexes) {
+  for (const indexes of keyToIndexes.values()) {
     if (indexes.length > 1) {
       for (const index of indexes) {
-        addError(
-          index,
-          `Duplicate product or service code: ${code}. Each item must have a unique procedure.`
-        );
+        addError(index, DUPLICATE_ITEM_ERROR);
       }
     }
   }
@@ -509,7 +540,7 @@ export function buildCrossItemErrors(
       if (detail && !hasEnhancementAllowedCondition(detail)) {
         addError(
           index,
-          "This benefit does not allow enhancement. Only items with enhancement allowed can be added."
+          "This benefit does not allow enhancement. Only items with enhancement allowed can be added.",
         );
       }
     });

@@ -392,6 +392,9 @@ const CreateCoverageEligibilityRequestPage: FC<
                         }
                         requireEnhancementAllowed={requireEnhancementAllowed}
                         prefilledItemSequences={prefilledItemSequences}
+                        lockedItemSequences={
+                          isEnhancementMode ? prefilledItemSequences : undefined
+                        }
                       />
                       <Separator />
                     </>

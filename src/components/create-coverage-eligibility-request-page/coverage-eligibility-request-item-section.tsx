@@ -80,6 +80,11 @@ interface CoverageEligibilityRequestItemSectionProps {
   requireEnhancementAllowed?: boolean;
   /** Sequences of items prefilled from the linked CE — exempt from enhancement validation. */
   prefilledItemSequences?: Set<number>;
+  /**
+   * Sequences of already-approved items that must be locked from editing and
+   * removal (enhancement flow). New items can still be added around them.
+   */
+  lockedItemSequences?: Set<number>;
 }
 
 const BENEFIT_CATEGORY_SYSTEM =
@@ -92,6 +97,7 @@ export function CoverageEligibilityRequestItemSection({
   defaultItemDiagnoses = [],
   requireEnhancementAllowed = false,
   prefilledItemSequences,
+  lockedItemSequences,
 }: CoverageEligibilityRequestItemSectionProps) {
   const { fields, replace } = useFieldArray({
     name: "item",
@@ -217,6 +223,10 @@ export function CoverageEligibilityRequestItemSection({
     const validationItems = fields.map((_, index) => ({
       sequence: form.getValues(`item.${index}.sequence`),
       product_or_service: form.getValues(`item.${index}.product_or_service`),
+      modifier: form.getValues(`item.${index}.modifier`),
+      _implant_parent_sequence: form.getValues(
+        `item.${index}._implant_parent_sequence`,
+      ),
     }));
     return buildCrossItemErrors(validationItems, benefitDetailsByCode, {
       requireEnhancementAllowed,
@@ -224,6 +234,7 @@ export function CoverageEligibilityRequestItemSection({
     });
   }, [
     fields,
+    watchedItems,
     benefitDetailsByCode,
     requireEnhancementAllowed,
     prefilledItemSequences,
@@ -354,6 +365,11 @@ export function CoverageEligibilityRequestItemSection({
           const isImplantItem = Boolean(
             form.watch(`item.${index}._implant_parent_sequence`),
           );
+          const itemSequence = form.watch(`item.${index}.sequence`);
+          const isLocked =
+            itemSequence != null &&
+            !isImplantItem &&
+            !!lockedItemSequences?.has(itemSequence);
           const hasAnyError =
             !!conditionErrors ||
             !!crossItemErrorsKey ||
@@ -362,8 +378,22 @@ export function CoverageEligibilityRequestItemSection({
           return (
             <Card
               key={row.id}
-              className={cn(hasAnyError && "overflow-hidden border-red-500")}
+              className={cn(
+                hasAnyError && "overflow-hidden border-red-500",
+                isLocked && "border-emerald-200",
+              )}
             >
+              {isLocked && (
+                <div className="flex flex-wrap items-center gap-2 px-6 pt-4">
+                  <Badge className="bg-green-100 text-green-700 border border-green-200">
+                    Approved
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    Approved in the pre-authorization, this item can&apos;t be
+                    edited or removed.
+                  </span>
+                </div>
+              )}
               <CardHeader>
                 <FormField
                   key={`product-${row.id}`}
@@ -418,7 +448,9 @@ export function CoverageEligibilityRequestItemSection({
                             <p className="text-xs text-muted-foreground">
                               {isImplantItem
                                 ? "Auto-added implant. Manage it from the originating item."
-                                : "Product is locked. Remove this item and add a new one to change it."}
+                                : isLocked
+                                  ? "Approved in the pre-authorisation. This item can't be edited or removed."
+                                  : "Product is locked. Remove this item and add a new one to change it."}
                             </p>
                           )}
                           <FormMessage />
@@ -430,7 +462,11 @@ export function CoverageEligibilityRequestItemSection({
                           onClick={() => {
                             removeItemAndImplants(index);
                           }}
-                          className={cn("mt-6", isImplantItem && "hidden")}
+                          className={cn(
+                            "mt-6",
+                            (isImplantItem || isLocked) && "hidden",
+                          )}
+                          disabled={isLocked}
                         >
                           <CircleMinusIcon className="h-6 w-6 text-danger-500" />
                         </Button>
@@ -439,7 +475,12 @@ export function CoverageEligibilityRequestItemSection({
                   }}
                 />
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent
+                className={cn(
+                  "space-y-4",
+                  isLocked && "pointer-events-none select-none",
+                )}
+              >
                 <FormField
                   control={form.control}
                   name={`item.${index}.category`}

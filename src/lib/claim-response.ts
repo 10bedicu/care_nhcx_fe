@@ -79,6 +79,21 @@ export function isItemQueried(
   return adjudication?.itemStatus?.toLowerCase() === "queried";
 }
 
+/**
+ * True when the payer approved this line item. Uses the explicit per-item
+ * status when present; otherwise falls back to an item that carries an eligible
+ * amount and is neither queried nor rejected.
+ */
+export function isItemApproved(
+  adjudication: ParsedItemAdjudication | null,
+): boolean {
+  if (!adjudication) return false;
+  const status = adjudication.itemStatus?.toLowerCase();
+  if (status === "approved") return true;
+  if (status === "queried" || status === "rejected") return false;
+  return adjudication.eligible != null && adjudication.eligible > 0;
+}
+
 export function formatItemQueryReasons(
   adjudication: ParsedItemAdjudication | null,
 ): string[] {

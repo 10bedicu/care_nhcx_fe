@@ -1438,6 +1438,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                     queryResponse={
                       showPayerQuery ? relatedClaimResponse : undefined
                     }
+                    lockApprovedItems={submitMode === "submit"}
                   />
                   <Separator />
                   <ClaimAccidentSection form={form} />

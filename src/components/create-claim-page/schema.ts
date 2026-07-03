@@ -5,6 +5,10 @@ import {
   CLAIM_USE_CHOICES,
 } from "@/types/claim";
 
+import {
+  DUPLICATE_ITEM_ERROR,
+  getItemUniquenessKey,
+} from "@/lib/benefit-item-validation";
 import { z } from "zod";
 
 export const codingSchema = z.object({
@@ -407,4 +411,26 @@ export const createClaimFormSchema = z
         });
       }
     });
+  })
+  .superRefine((data, ctx) => {
+    // Enforce that product/service + stratification + service period is unique
+    // across items. Disabled and auto-generated implant line items are exempt.
+    const keyToIndexes = new Map<string, number[]>();
+    data.item.forEach((item, index) => {
+      if (item._is_disabled) return;
+      if (item._implant_parent_sequence != null) return;
+      const key = getItemUniquenessKey(item);
+      if (!key) return;
+      keyToIndexes.set(key, [...(keyToIndexes.get(key) ?? []), index]);
+    });
+    for (const indexes of keyToIndexes.values()) {
+      if (indexes.length < 2) continue;
+      for (const index of indexes) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: DUPLICATE_ITEM_ERROR,
+          path: ["item", index, "product_or_service"],
+        });
+      }
+    }
   });

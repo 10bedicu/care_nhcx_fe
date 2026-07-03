@@ -5,6 +5,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   CircleMinusIcon,
+  CopyIcon,
   InfoIcon,
   MessageCircleQuestionIcon,
   PaperclipIcon,
@@ -48,7 +49,9 @@ import {
 import {
   formatItemQueryReasons,
   getItemResponseAdjudication,
+  isItemApproved,
   isItemQueried,
+  itemStatusBadgeClass,
 } from "@/lib/claim-response";
 import {
   getCardSectionValidationCounts,
@@ -96,6 +99,11 @@ interface ClaimItemSectionProps {
   coverageEligibilityRequest?: CoverageEligibilityRequest;
   previousClaim?: Claim;
   queryResponse?: ClaimResponse;
+  /**
+   * When true (normal submit workflow, not resubmit), items already approved by
+   * the payer are locked from editing/removal and can only be duplicated.
+   */
+  lockApprovedItems?: boolean;
 }
 
 const PROGRAM_CODES = [
@@ -691,6 +699,7 @@ export function ClaimItemSection({
   coverageEligibilityRequest,
   previousClaim,
   queryResponse,
+  lockApprovedItems = false,
 }: ClaimItemSectionProps) {
   const { fields, append, remove } = useFieldArray({
     name: "item",
@@ -871,6 +880,38 @@ export function ClaimItemSection({
     }
   };
 
+  /**
+   * Duplicate an item into a fresh, editable copy. Used to adjust the
+   * stratification or quantity of an approved (locked) item without touching
+   * the original. The copy gets a new sequence so it is treated as a new,
+   * unapproved line item; internal markers/errors are cleared.
+   */
+  const duplicateItem = (index: number) => {
+    const source = form.getValues(`item.${index}`);
+    const allItems = form.getValues("item") ?? [];
+    const nextSequence =
+      Math.max(0, ...allItems.map((f) => f.sequence ?? 0)) + 1;
+    append({
+      sequence: nextSequence,
+      care_team_sequence: [...(source.care_team_sequence ?? [])],
+      diagnosis_sequence: [...(source.diagnosis_sequence ?? [])],
+      procedure_sequence: [...(source.procedure_sequence ?? [])],
+      information_sequence: [...(source.information_sequence ?? [])],
+      category: source.category,
+      product_or_service: source.product_or_service,
+      charge_items: [],
+      modifier: (source.modifier ?? []).map((m) => ({ ...m })),
+      program_code: (source.program_code ?? []).map((c) => ({ ...c })),
+      serviced_period: source.serviced_period
+        ? { ...source.serviced_period }
+        : undefined,
+      quantity: { ...source.quantity },
+      unit_price: source.unit_price ?? 0,
+      factor: source.factor,
+    });
+    void form.trigger("item");
+  };
+
   const selectedInsurances = form.watch("insurance");
   const focalPolicy =
     selectedInsurances?.find((i) => i.focal)?.policy ??
@@ -976,6 +1017,15 @@ export function ClaimItemSection({
           const isImplantItem = Boolean(
             watchedItems?.[index]?._implant_parent_sequence,
           );
+          const itemApprovalAdjudication = getItemResponseAdjudication(
+            previousClaim?.latest_response,
+            itemSequence,
+          );
+          const isApprovedItem =
+            lockApprovedItems &&
+            !isImplantItem &&
+            !isItemDisabled &&
+            isItemApproved(itemApprovalAdjudication);
           const hasAnyError =
             !isItemDisabled &&
             (mandatoryDocsError ||
@@ -991,6 +1041,7 @@ export function ClaimItemSection({
               className={cn(
                 hasAnyError && "overflow-hidden border-red-500",
                 isItemDisabled && "opacity-60",
+                isApprovedItem && "border-emerald-200",
               )}
             >
               {isItemDisabled && (
@@ -1000,9 +1051,32 @@ export function ClaimItemSection({
                   </Badge>
                 </div>
               )}
+              {isApprovedItem && (
+                <div className="flex flex-wrap items-center justify-between gap-2 px-6 pt-4">
+                  <div className="flex items-center gap-2">
+                    <Badge className={itemStatusBadgeClass("approved")}>
+                      Approved
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      Locked by payer approval, duplicate to change
+                      stratification or quantity.
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => duplicateItem(index)}
+                  >
+                    <CopyIcon className="mr-1.5 h-4 w-4" />
+                    Duplicate to edit
+                  </Button>
+                </div>
+              )}
               <div
                 className={cn(
-                  isItemDisabled && "pointer-events-none select-none",
+                  (isItemDisabled || isApprovedItem) &&
+                    "pointer-events-none select-none",
                 )}
               >
                 <CardHeader>
@@ -1078,7 +1152,9 @@ export function ClaimItemSection({
                               <p className="text-xs text-muted-foreground">
                                 {isImplantItem
                                   ? "Auto-added implant. Manage it from the originating item."
-                                  : "Product is locked. Remove this item and add a new one to change it."}
+                                  : isApprovedItem
+                                    ? "Approved by the payer. Duplicate this item to change its stratification or quantity."
+                                    : "Product is locked. Remove this item and add a new one to change it."}
                               </p>
                             )}
                             <FormMessage />
@@ -1088,8 +1164,11 @@ export function ClaimItemSection({
                             variant="ghost"
                             size="icon"
                             onClick={() => removeItemAndImplants(index)}
-                            className={cn("mt-6", isImplantItem && "hidden")}
-                            disabled={isItemDisabled}
+                            className={cn(
+                              "mt-6",
+                              (isImplantItem || isApprovedItem) && "hidden",
+                            )}
+                            disabled={isItemDisabled || isApprovedItem}
                           >
                             <CircleMinusIcon className="h-6 w-6 text-danger-500" />
                           </Button>
@@ -1097,127 +1176,332 @@ export function ClaimItemSection({
                       );
                     }}
                   />
-                </CardHeader>;
-                {
-                  !isItemDisabled && (
-                    <>
-                      {isQueriedItem && itemQueryReasons.length > 0 && (
-                        <div className="px-6 pb-2">
-                          <Alert className="border-amber-300 bg-amber-50 text-amber-900 [&>svg]:text-amber-600">
-                            <MessageCircleQuestionIcon />
-                            <AlertDescription className="text-amber-900">
-                              <p className="font-medium text-amber-950 mb-1">
-                                Payer query reason
-                              </p>
-                              {itemQueryReasons.length > 1 ? (
-                                <ul className="list-disc list-inside space-y-0.5 text-sm">
-                                  {itemQueryReasons.map(
-                                    (reason, reasonIndex) => (
-                                      <li key={reasonIndex}>{reason}</li>
-                                    ),
-                                  )}
-                                </ul>
-                              ) : (
-                                <p className="text-sm">{itemQueryReasons[0]}</p>
+                </CardHeader>
+                ;
+                {!isItemDisabled && (
+                  <>
+                    {isQueriedItem && itemQueryReasons.length > 0 && (
+                      <div className="px-6 pb-2">
+                        <Alert className="border-amber-300 bg-amber-50 text-amber-900 [&>svg]:text-amber-600">
+                          <MessageCircleQuestionIcon />
+                          <AlertDescription className="text-amber-900">
+                            <p className="font-medium text-amber-950 mb-1">
+                              Payer query reason
+                            </p>
+                            {itemQueryReasons.length > 1 ? (
+                              <ul className="list-disc list-inside space-y-0.5 text-sm">
+                                {itemQueryReasons.map((reason, reasonIndex) => (
+                                  <li key={reasonIndex}>{reason}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-sm">{itemQueryReasons[0]}</p>
+                            )}
+                          </AlertDescription>
+                        </Alert>
+                      </div>
+                    )}
+                    <CardContent className="space-y-4">
+                      <FormField
+                        key={field.id}
+                        control={form.control}
+                        name={`item.${index}.category`}
+                        render={({ field }) => {
+                          const hasProduct = Boolean(
+                            form.watch(`item.${index}.product_or_service`)
+                              ?.code,
+                          );
+                          return (
+                            <FormItem className="space-y-1.5">
+                              <FormLabel>Category</FormLabel>
+                              <FormControl>
+                                <ValuesetSelect
+                                  system="system-claim-item-category"
+                                  value={field.value}
+                                  onSelect={(value) => {
+                                    form.setValue(
+                                      `item.${index}.category`,
+                                      value,
+                                      USER_EDIT,
+                                    );
+                                  }}
+                                  disabled={hasProduct}
+                                />
+                              </FormControl>
+                              {hasProduct && (
+                                <p className="text-xs text-muted-foreground">
+                                  Auto-set from selected benefit
+                                </p>
                               )}
-                            </AlertDescription>
-                          </Alert>
-                        </div>
-                      )}
-                      <CardContent className="space-y-4">
+                              <FormMessage />
+                            </FormItem>
+                          );
+                        }}
+                      />
+
+                      <FormField
+                        key={field.id}
+                        control={form.control}
+                        name={`item.${index}.program_code`}
+                        render={({ field }) => (
+                          <FormItem className="space-y-1.5">
+                            <FormLabel>Program Code</FormLabel>
+                            <FormControl>
+                              <div className="grid gap-4">
+                                <Autocomplete
+                                  options={PROGRAM_CODES.map((code) => ({
+                                    label: code.display,
+                                    value: code.code,
+                                  }))}
+                                  value={undefined}
+                                  onChange={(value) => {
+                                    const code = PROGRAM_CODES.find(
+                                      (code) => code.code === value,
+                                    );
+                                    if (!code) {
+                                      return;
+                                    }
+                                    form.setValue(
+                                      `item.${index}.program_code`,
+                                      field.value
+                                        .map((c) => c.code)
+                                        .includes(code.code)
+                                        ? field.value
+                                        : [...field.value, code],
+                                      USER_EDIT,
+                                    );
+                                  }}
+                                />
+
+                                <div className="flex flex-wrap gap-2">
+                                  {field.value.map((code) => (
+                                    <Badge
+                                      key={code.code}
+                                      className="flex gap-2"
+                                    >
+                                      {code.display}
+                                      <XIcon
+                                        className="w-4 h-4 cursor-pointer"
+                                        onClick={() => {
+                                          form.setValue(
+                                            `item.${index}.program_code`,
+                                            field.value.filter(
+                                              (c) => c.code !== code.code,
+                                            ),
+                                            USER_EDIT,
+                                          );
+                                        }}
+                                      />
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <ModifierField
+                        form={form}
+                        index={index}
+                        planId={planId}
+                        disabled={isImplantItem}
+                        onImplantAdd={(implant) =>
+                          addImplantLineItem(index, implant)
+                        }
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name={`item.${index}.diagnosis_sequence`}
+                        render={() => (
+                          <FormItem>
+                            <AddDiagnosisSection form={form} index={index} />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <AddProcedureSection form={form} index={index} />
+                      <FormField
+                        control={form.control}
+                        name={`item.${index}.care_team_sequence`}
+                        render={() => (
+                          <FormItem>
+                            <AddCareTeamSection form={form} index={index} />
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <AddSupportingInfoSection
+                        form={form}
+                        index={index}
+                        planId={planId}
+                        coverageEligibilityRequest={coverageEligibilityRequest}
+                        claimUse={claimUse}
+                      />
+                      <AddQuestionnaireSection
+                        form={form}
+                        index={index}
+                        planId={planId}
+                        coverageEligibilityRequest={coverageEligibilityRequest}
+                        claimUse={claimUse}
+                      />
+
+                      <ItemValidationEffects
+                        form={form}
+                        index={index}
+                        planId={planId}
+                        coverageEligibilityRequest={coverageEligibilityRequest}
+                        previousClaim={previousClaim}
+                      />
+
+                      <div className="grid grid-cols-2 gap-4">
                         <FormField
-                          key={field.id}
                           control={form.control}
-                          name={`item.${index}.category`}
-                          render={({ field }) => {
-                            const hasProduct = Boolean(
-                              form.watch(`item.${index}.product_or_service`)
-                                ?.code,
-                            );
-                            return (
-                              <FormItem className="space-y-1.5">
-                                <FormLabel>Category</FormLabel>
-                                <FormControl>
-                                  <ValuesetSelect
-                                    system="system-claim-item-category"
-                                    value={field.value}
-                                    onSelect={(value) => {
-                                      form.setValue(
-                                        `item.${index}.category`,
-                                        value,
-                                        USER_EDIT,
-                                      );
-                                    }}
-                                    disabled={hasProduct}
-                                  />
-                                </FormControl>
-                                {hasProduct && (
-                                  <p className="text-xs text-muted-foreground">
-                                    Auto-set from selected benefit
-                                  </p>
-                                )}
-                                <FormMessage />
-                              </FormItem>
-                            );
-                          }}
+                          name={`item.${index}.serviced_period.start`}
+                          render={({ field }) => (
+                            <FormItem className="space-y-1.5">
+                              <FormLabel>
+                                Service Period Start
+                                <span className="text-red-500 text-sm ml-0.5">
+                                  *
+                                </span>
+                              </FormLabel>
+                              <FormControl>
+                                <DateTimePicker
+                                  value={
+                                    field.value
+                                      ? new Date(field.value)
+                                      : undefined
+                                  }
+                                  onChange={(value) => {
+                                    form.setValue(
+                                      `item.${index}.serviced_period.start`,
+                                      value ? value.toISOString() : "",
+                                      USER_EDIT,
+                                    );
+                                  }}
+                                  placeholder="Select start date and time"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
                         />
 
                         <FormField
-                          key={field.id}
                           control={form.control}
-                          name={`item.${index}.program_code`}
+                          name={`item.${index}.serviced_period.end`}
                           render={({ field }) => (
                             <FormItem className="space-y-1.5">
-                              <FormLabel>Program Code</FormLabel>
+                              <FormLabel>
+                                Service Period End
+                                {claimUse === "claim" && (
+                                  <span className="text-red-500 text-sm ml-0.5">
+                                    *
+                                  </span>
+                                )}
+                              </FormLabel>
                               <FormControl>
-                                <div className="grid gap-4">
-                                  <Autocomplete
-                                    options={PROGRAM_CODES.map((code) => ({
-                                      label: code.display,
-                                      value: code.code,
-                                    }))}
-                                    value={undefined}
-                                    onChange={(value) => {
-                                      const code = PROGRAM_CODES.find(
-                                        (code) => code.code === value,
-                                      );
-                                      if (!code) {
-                                        return;
-                                      }
-                                      form.setValue(
-                                        `item.${index}.program_code`,
-                                        field.value
-                                          .map((c) => c.code)
-                                          .includes(code.code)
-                                          ? field.value
-                                          : [...field.value, code],
-                                        USER_EDIT,
-                                      );
-                                    }}
-                                  />
+                                <DateTimePicker
+                                  value={
+                                    field.value
+                                      ? new Date(field.value)
+                                      : undefined
+                                  }
+                                  onChange={(value) => {
+                                    form.setValue(
+                                      `item.${index}.serviced_period.end`,
+                                      value ? value.toISOString() : undefined,
+                                      USER_EDIT,
+                                    );
+                                  }}
+                                  placeholder="Select end date and time"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
 
-                                  <div className="flex flex-wrap gap-2">
-                                    {field.value.map((code) => (
-                                      <Badge
-                                        key={code.code}
-                                        className="flex gap-2"
-                                      >
-                                        {code.display}
-                                        <XIcon
-                                          className="w-4 h-4 cursor-pointer"
-                                          onClick={() => {
-                                            form.setValue(
-                                              `item.${index}.program_code`,
-                                              field.value.filter(
-                                                (c) => c.code !== code.code,
-                                              ),
-                                              USER_EDIT,
-                                            );
-                                          }}
-                                        />
-                                      </Badge>
-                                    ))}
-                                  </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={form.control}
+                          name={`item.${index}.quantity.value`}
+                          render={({ field }) => (
+                            <FormItem className="space-y-1.5">
+                              <FormLabel>
+                                Quantity Value
+                                <span className="text-red-500 text-sm ml-0.5">
+                                  *
+                                </span>
+                              </FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  value={field.value || ""}
+                                  onChange={(e) => {
+                                    form.setValue(
+                                      `item.${index}.quantity.value`,
+                                      e.target.value
+                                        ? parseFloat(e.target.value)
+                                        : 0,
+                                      USER_EDIT,
+                                    );
+                                  }}
+                                  placeholder="Enter quantity"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name={`item.${index}.quantity.unit`}
+                          render={({ field }) => (
+                            <FormItem className="space-y-1.5">
+                              <FormLabel>Quantity Unit</FormLabel>
+                              <FormControl>
+                                <ValuesetSelect
+                                  system="system-ucum-units"
+                                  value={field.value}
+                                  onSelect={(value) => {
+                                    form.setValue(
+                                      `item.${index}.quantity.unit`,
+                                      value,
+                                      USER_EDIT,
+                                    );
+                                  }}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={form.control}
+                          name={`item.${index}.unit_price`}
+                          render={({ field }) => (
+                            <FormItem className="space-y-1.5">
+                              <FormLabel>
+                                Unit Price
+                                <span className="text-red-500 text-sm ml-0.5">
+                                  *
+                                </span>
+                              </FormLabel>
+                              <FormControl>
+                                <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/40 text-sm font-medium">
+                                  <span className="text-muted-foreground">
+                                    ₹
+                                  </span>
+                                  <span>{(field.value ?? 0).toFixed(2)}</span>
                                 </div>
                               </FormControl>
                               <FormMessage />
@@ -1225,319 +1509,103 @@ export function ClaimItemSection({
                           )}
                         />
 
-                        <ModifierField
-                          form={form}
-                          index={index}
-                          planId={planId}
-                          disabled={isImplantItem}
-                          onImplantAdd={(implant) =>
-                            addImplantLineItem(index, implant)
-                          }
-                        />
-
                         <FormField
                           control={form.control}
-                          name={`item.${index}.diagnosis_sequence`}
-                          render={() => (
-                            <FormItem>
-                              <AddDiagnosisSection form={form} index={index} />
+                          name={`item.${index}.factor`}
+                          render={({ field }) => (
+                            <FormItem className="space-y-1.5">
+                              <FormLabel>Factor</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  value={field.value || ""}
+                                  onChange={(e) => {
+                                    form.setValue(
+                                      `item.${index}.factor`,
+                                      e.target.value
+                                        ? parseFloat(e.target.value)
+                                        : undefined,
+                                      USER_EDIT,
+                                    );
+                                  }}
+                                  placeholder="Enter factor"
+                                />
+                              </FormControl>
                               <FormMessage />
                             </FormItem>
                           )}
                         />
-                        <AddProcedureSection form={form} index={index} />
-                        <FormField
-                          control={form.control}
-                          name={`item.${index}.care_team_sequence`}
-                          render={() => (
-                            <FormItem>
-                              <AddCareTeamSection form={form} index={index} />
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <AddSupportingInfoSection
-                          form={form}
-                          index={index}
-                          planId={planId}
-                          coverageEligibilityRequest={
-                            coverageEligibilityRequest
-                          }
-                          claimUse={claimUse}
-                        />
-                        <AddQuestionnaireSection
-                          form={form}
-                          index={index}
-                          planId={planId}
-                          coverageEligibilityRequest={
-                            coverageEligibilityRequest
-                          }
-                          claimUse={claimUse}
-                        />
+                      </div>
 
-                        <ItemValidationEffects
-                          form={form}
-                          index={index}
-                          planId={planId}
-                          coverageEligibilityRequest={
-                            coverageEligibilityRequest
-                          }
-                          previousClaim={previousClaim}
-                        />
+                      <ItemTotalAmount form={form} index={index} />
 
-                        <div className="grid grid-cols-2 gap-4">
-                          <FormField
-                            control={form.control}
-                            name={`item.${index}.serviced_period.start`}
-                            render={({ field }) => (
-                              <FormItem className="space-y-1.5">
-                                <FormLabel>
-                                  Service Period Start
-                                  <span className="text-red-500 text-sm ml-0.5">
-                                    *
-                                  </span>
-                                </FormLabel>
-                                <FormControl>
-                                  <DateTimePicker
-                                    value={
-                                      field.value
-                                        ? new Date(field.value)
-                                        : undefined
-                                    }
-                                    onChange={(value) => {
-                                      form.setValue(
-                                        `item.${index}.serviced_period.start`,
-                                        value ? value.toISOString() : "",
-                                        USER_EDIT,
-                                      );
-                                    }}
-                                    placeholder="Select start date and time"
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={form.control}
-                            name={`item.${index}.serviced_period.end`}
-                            render={({ field }) => (
-                              <FormItem className="space-y-1.5">
-                                <FormLabel>
-                                  Service Period End
-                                  {claimUse === "claim" && (
-                                    <span className="text-red-500 text-sm ml-0.5">
-                                      *
-                                    </span>
-                                  )}
-                                </FormLabel>
-                                <FormControl>
-                                  <DateTimePicker
-                                    value={
-                                      field.value
-                                        ? new Date(field.value)
-                                        : undefined
-                                    }
-                                    onChange={(value) => {
-                                      form.setValue(
-                                        `item.${index}.serviced_period.end`,
-                                        value ? value.toISOString() : undefined,
-                                        USER_EDIT,
-                                      );
-                                    }}
-                                    placeholder="Select end date and time"
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <FormField
-                            control={form.control}
-                            name={`item.${index}.quantity.value`}
-                            render={({ field }) => (
-                              <FormItem className="space-y-1.5">
-                                <FormLabel>
-                                  Quantity Value
-                                  <span className="text-red-500 text-sm ml-0.5">
-                                    *
-                                  </span>
-                                </FormLabel>
-                                <FormControl>
-                                  <Input
-                                    type="number"
-                                    value={field.value || ""}
-                                    onChange={(e) => {
-                                      form.setValue(
-                                        `item.${index}.quantity.value`,
-                                        e.target.value
-                                          ? parseFloat(e.target.value)
-                                          : 0,
-                                        USER_EDIT,
-                                      );
-                                    }}
-                                    placeholder="Enter quantity"
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={form.control}
-                            name={`item.${index}.quantity.unit`}
-                            render={({ field }) => (
-                              <FormItem className="space-y-1.5">
-                                <FormLabel>Quantity Unit</FormLabel>
-                                <FormControl>
-                                  <ValuesetSelect
-                                    system="system-ucum-units"
-                                    value={field.value}
-                                    onSelect={(value) => {
-                                      form.setValue(
-                                        `item.${index}.quantity.unit`,
-                                        value,
-                                        USER_EDIT,
-                                      );
-                                    }}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <FormField
-                            control={form.control}
-                            name={`item.${index}.unit_price`}
-                            render={({ field }) => (
-                              <FormItem className="space-y-1.5">
-                                <FormLabel>
-                                  Unit Price
-                                  <span className="text-red-500 text-sm ml-0.5">
-                                    *
-                                  </span>
-                                </FormLabel>
-                                <FormControl>
-                                  <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/40 text-sm font-medium">
-                                    <span className="text-muted-foreground">
-                                      ₹
-                                    </span>
-                                    <span>{(field.value ?? 0).toFixed(2)}</span>
-                                  </div>
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={form.control}
-                            name={`item.${index}.factor`}
-                            render={({ field }) => (
-                              <FormItem className="space-y-1.5">
-                                <FormLabel>Factor</FormLabel>
-                                <FormControl>
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    value={field.value || ""}
-                                    onChange={(e) => {
-                                      form.setValue(
-                                        `item.${index}.factor`,
-                                        e.target.value
-                                          ? parseFloat(e.target.value)
-                                          : undefined,
-                                        USER_EDIT,
-                                      );
-                                    }}
-                                    placeholder="Enter factor"
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-
-                        <ItemTotalAmount form={form} index={index} />
-
-                        <ItemAmountReferences
-                          form={form}
-                          index={index}
-                          planId={planId}
-                          coverageEligibilityRequest={
-                            coverageEligibilityRequest
-                          }
-                          previousClaim={previousClaim}
-                        />
-                      </CardContent>
-                      {hasAnyError && (
-                        <CardFooter className="rounded-b-xl px-6 py-3 border-t border-red-200 bg-red-50 flex-col items-start gap-2">
-                          {mandatoryDocsError && (
-                            <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                      <ItemAmountReferences
+                        form={form}
+                        index={index}
+                        planId={planId}
+                        coverageEligibilityRequest={coverageEligibilityRequest}
+                        previousClaim={previousClaim}
+                      />
+                    </CardContent>
+                    {hasAnyError && (
+                      <CardFooter className="rounded-b-xl px-6 py-3 border-t border-red-200 bg-red-50 flex-col items-start gap-2">
+                        {mandatoryDocsError && (
+                          <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                            <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                            {mandatoryDocsError}
+                          </div>
+                        )}
+                        {mandatoryQuestionnairesError && (
+                          <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                            <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                            {mandatoryQuestionnairesError}
+                          </div>
+                        )}
+                        {mandatoryCareTeamError && (
+                          <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                            <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                            {mandatoryCareTeamError}
+                          </div>
+                        )}
+                        {mandatoryDiagnosisError && (
+                          <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                            <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                            {mandatoryDiagnosisError}
+                          </div>
+                        )}
+                        {mandatoryProcedureError && (
+                          <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                            <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                            {mandatoryProcedureError}
+                          </div>
+                        )}
+                        {mandatorySupportingInfoError && (
+                          <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                            <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                            {mandatorySupportingInfoError}
+                          </div>
+                        )}
+                        {amountCapError && (
+                          <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                            <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                            {amountCapError}
+                          </div>
+                        )}
+                        {conditionErrors &&
+                          conditionErrors.split(" • ").map((err, i) => (
+                            <div
+                              key={i}
+                              className="flex items-center gap-2 text-sm font-medium text-red-600"
+                            >
                               <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                              {mandatoryDocsError}
+                              {err}
                             </div>
-                          )}
-                          {mandatoryQuestionnairesError && (
-                            <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                              <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                              {mandatoryQuestionnairesError}
-                            </div>
-                          )}
-                          {mandatoryCareTeamError && (
-                            <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                              <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                              {mandatoryCareTeamError}
-                            </div>
-                          )}
-                          {mandatoryDiagnosisError && (
-                            <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                              <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                              {mandatoryDiagnosisError}
-                            </div>
-                          )}
-                          {mandatoryProcedureError && (
-                            <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                              <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                              {mandatoryProcedureError}
-                            </div>
-                          )}
-                          {mandatorySupportingInfoError && (
-                            <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                              <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                              {mandatorySupportingInfoError}
-                            </div>
-                          )}
-                          {amountCapError && (
-                            <div className="flex items-center gap-2 text-sm font-medium text-red-600">
-                              <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                              {amountCapError}
-                            </div>
-                          )}
-                          {conditionErrors &&
-                            conditionErrors.split(" • ").map((err, i) => (
-                              <div
-                                key={i}
-                                className="flex items-center gap-2 text-sm font-medium text-red-600"
-                              >
-                                <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                                {err}
-                              </div>
-                            ))}
-                        </CardFooter>
-                      )}
-                    </>
-                  )
-                }
+                          ))}
+                      </CardFooter>
+                    )}
+                  </>
+                )}
               </div>
             </Card>
           );
