@@ -17,7 +17,7 @@ const USER_EDIT = { shouldDirty: true, shouldValidate: true } as const;
 
 type ClaimForm = UseFormReturn<z.infer<typeof createClaimFormSchema>>;
 
-export type SupportingInfoValueMode = "text" | "attachment" | "record";
+export type SupportingInfoValueMode = "attachment" | "record";
 
 type SupportingInfoEntry = z.infer<
   typeof createClaimFormSchema
@@ -27,12 +27,10 @@ export function deriveSupportingInfoMode(
   info: SupportingInfoEntry | undefined,
 ): SupportingInfoValueMode {
   if (info?.value_resource) return "record";
-  if (info?.value_attachment || info?.value_file) return "attachment";
-  return "text";
+  return "attachment";
 }
 
 const MODE_LABELS: Record<SupportingInfoValueMode, string> = {
-  text: "Text",
   attachment: "Attachment",
   record: "Record",
 };
@@ -155,12 +153,10 @@ function StructuredResourcePicker({
 export function SupportingInfoValueControls({
   form,
   mainInfoIndex,
-  renderText,
   renderAttachment,
 }: {
   form: ClaimForm;
   mainInfoIndex: number;
-  renderText: () => ReactNode;
   renderAttachment: () => ReactNode;
 }) {
   const info = form.watch(`supporting_info.${mainInfoIndex}`);
@@ -177,21 +173,22 @@ export function SupportingInfoValueControls({
   return (
     <div className="space-y-2">
       <div className="inline-flex rounded-md border p-0.5 gap-0.5">
-        {(Object.keys(MODE_LABELS) as SupportingInfoValueMode[]).map((value) => (
-          <Button
-            key={value}
-            type="button"
-            variant={mode === value ? "default" : "ghost"}
-            size="sm"
-            className={cn("h-7 px-3 text-xs")}
-            onClick={() => switchMode(value)}
-          >
-            {MODE_LABELS[value]}
-          </Button>
-        ))}
+        {(Object.keys(MODE_LABELS) as SupportingInfoValueMode[]).map(
+          (value) => (
+            <Button
+              key={value}
+              type="button"
+              variant={mode === value ? "default" : "ghost"}
+              size="sm"
+              className={cn("h-7 px-3 text-xs")}
+              onClick={() => switchMode(value)}
+            >
+              {MODE_LABELS[value]}
+            </Button>
+          ),
+        )}
       </div>
 
-      {mode === "text" && renderText()}
       {mode === "attachment" && renderAttachment()}
       {mode === "record" && (
         <StructuredResourcePicker form={form} mainInfoIndex={mainInfoIndex} />
