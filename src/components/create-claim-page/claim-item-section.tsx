@@ -1707,9 +1707,6 @@ function ModifierField({
     const autofillNonImplants = qualifiers.filter(
       (q) => qualifierTypeByCode.get(q.code) !== "implant",
     );
-    const autofillImplants = qualifiers.filter(
-      (q) => qualifierTypeByCode.get(q.code) === "implant",
-    );
 
     if (implantInModifier.length > 0) {
       form.setValue(`item.${index}.modifier`, nonImplantInModifier, {
@@ -1722,10 +1719,6 @@ function ModifierField({
       form.setValue(`item.${index}.modifier`, autofillNonImplants, {
         shouldDirty: false,
       });
-    }
-
-    for (const implant of autofillImplants) {
-      onImplantAdd?.(implant);
     }
 
     if (parentSequence != null) {
