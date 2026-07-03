@@ -187,10 +187,10 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
 
   // Demographic verification is a post-requirement: once the policy validates,
   // a contradiction between the payer's record and the patient's record blocks
-  // the flow until the details are corrected.
-  const demographicMismatch = latestValidation
-    ? hasDemographicMismatch(latestValidation, patient, abhaNumber)
-    : false;
+  const demographicMismatch =
+    latestValidation && !flowPrerequisites.isChild
+      ? hasDemographicMismatch(latestValidation, patient, abhaNumber)
+      : false;
 
   const showInitialCTA = !latestValidation;
 
