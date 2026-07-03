@@ -95,15 +95,12 @@ function useEncounterOptions(patientId: string, encounterId?: string) {
 
   const seen = new Set<string>();
   const options: StructuredResourceOption[] = [];
-  for (const consent of data?.results ?? []) {
-    const encounter = consent.encounter;
-    if (!encounter || seen.has(encounter)) {
-      continue;
+
+  const pushEncounter = (encounter: string, date: string) => {
+    if (seen.has(encounter)) {
+      return;
     }
     seen.add(encounter);
-    const date = consent.created_date
-      ? new Date(consent.created_date).toLocaleDateString()
-      : "";
     const isCurrent = encounter === encounterId;
     const label = [
       `Encounter ${encounter.slice(0, 8)}`,
@@ -113,6 +110,22 @@ function useEncounterOptions(patientId: string, encounterId?: string) {
       .filter(Boolean)
       .join(" ");
     options.push({ value: encounter, label });
+  };
+
+  // Always show the current encounter, even without a claim consent.
+  if (encounterId) {
+    pushEncounter(encounterId, "");
+  }
+
+  for (const consent of data?.results ?? []) {
+    const encounter = consent.encounter;
+    if (!encounter) {
+      continue;
+    }
+    const date = consent.created_date
+      ? new Date(consent.created_date).toLocaleDateString()
+      : "";
+    pushEncounter(encounter, date);
   }
 
   return { options, isLoading };
@@ -181,7 +194,7 @@ export const STRUCTURED_RESOURCE_TYPES: StructuredResourceTypeDef[] = [
   },
   {
     type: "encounter",
-    label: "Encounter (Discharge Summary / OP Consult)",
+    label: "Encounter",
     useOptions: useEncounterOptions,
   },
   {
