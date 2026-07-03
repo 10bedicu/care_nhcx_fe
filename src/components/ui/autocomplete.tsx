@@ -89,21 +89,17 @@ export default function Autocomplete({
               const item = (
                 <CommandItem
                   key={option.value}
-                  value={option.label}
+                  value={option.value}
+                  keywords={[option.label]}
                   aria-disabled={option.disabled}
                   className={cn(
                     option.disabled && "cursor-not-allowed opacity-50",
                   )}
-                  onSelect={(v) => {
+                  onSelect={() => {
                     if (option.disabled) {
                       return;
                     }
-                    const currentValue =
-                      options.find(
-                        (option) =>
-                          option.label.toLowerCase() === v.toLowerCase(),
-                      )?.value || "";
-                    onChange(currentValue === value ? "" : currentValue);
+                    onChange(option.value === value ? "" : option.value);
                     setOpen(false);
                   }}
                 >

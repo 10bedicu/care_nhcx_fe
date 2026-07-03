@@ -1,21 +1,13 @@
 import { apis } from "@/apis";
 import { useGlobalStore } from "@/hooks/use-global-store";
 import { useQuery } from "@tanstack/react-query";
+import { ReactNode } from "react";
 
-/**
- * Registry of "structured resource" types that can be attached to a claim's
- * supporting information. A structured-resource entry references an existing
- * care/EMR record by `{ resource_type, resource_id }`; the backend builds the
- * ABDM FHIR document for it, base64-encodes it, and embeds it as a
- * DocumentReference.
- *
- * Adding a new type is a single entry here (mirrored by the backend registry
- * in `nhcx/utils/structured_resources.py`).
- */
 
 export type StructuredResourceOption = {
   value: string;
   label: string;
+  display?: ReactNode;
 };
 
 export type StructuredResourceTypeDef = {
@@ -28,9 +20,74 @@ export type StructuredResourceTypeDef = {
   ) => { options: StructuredResourceOption[]; isLoading: boolean };
 };
 
+/** First segment of a UUID, used as a short human-readable reference. */
+function shortId(id: string): string {
+  return id.slice(0, 5);
+}
+
+function formatDate(value: unknown): string {
+  if (typeof value !== "string" || !value) {
+    return "";
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleDateString();
+}
+
+/** Returns a trimmed string only when the input is a non-empty string. */
+function cleanTitle(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function buildResourceOption({
+  id,
+  primary,
+  date,
+  badge,
+}: {
+  id: string;
+  primary: string;
+  date: string;
+  badge?: string;
+}): StructuredResourceOption {
+  const label = [primary, date ? `on ${date}` : "", badge ? `(${badge})` : ""]
+    .filter(Boolean)
+    .join(" ");
+
+  const display = (
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5 py-0.5">
+      <div className="flex min-w-0 items-baseline gap-2">
+        <span className="min-w-0 break-words text-sm font-medium text-foreground">
+          {primary}
+        </span>
+        {badge && (
+          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
+            {badge}
+          </span>
+        )}
+      </div>
+      {date && (
+        <span className="min-w-0 break-words text-xs text-muted-foreground">
+          on {date}
+        </span>
+      )}
+    </div>
+  );
+
+  return { value: id, label, display };
+}
+
 function useDiagnosticReportOptions(patientId: string, encounterId?: string) {
   const { data, isLoading } = useQuery({
-    queryKey: ["structured-resource", "diagnostic_report", patientId, encounterId],
+    queryKey: [
+      "structured-resource",
+      "diagnostic_report",
+      patientId,
+      encounterId,
+    ],
     queryFn: () =>
       apis.diagnosticReport.list(patientId, {
         encounter: encounterId,
@@ -41,18 +98,16 @@ function useDiagnosticReportOptions(patientId: string, encounterId?: string) {
   });
 
   const options = (data?.results ?? []).map((report) => {
-    const title =
-      report.code?.display ||
-      report.category?.display ||
-      report.conclusion ||
-      "Diagnostic report";
-    const date = report.created_date
-      ? new Date(report.created_date).toLocaleDateString()
-      : "";
-    return {
-      value: report.id,
-      label: date ? `${title} (${date})` : title,
-    };
+    const primary =
+      cleanTitle(report.code?.display) ||
+      cleanTitle(report.category?.display) ||
+      cleanTitle(report.conclusion) ||
+      `Diagnostic Report #${shortId(report.id)}`;
+    return buildResourceOption({
+      id: report.id,
+      primary,
+      date: formatDate(report.created_date),
+    });
   });
 
   return { options, isLoading };
@@ -77,10 +132,16 @@ function useQuestionnaireResponseOptions(
     staleTime: 60 * 1000,
   });
 
-  const options = (data?.results ?? []).map((response) => ({
-    value: response.id,
-    label: response.questionnaire?.title || "Questionnaire response",
-  }));
+  const options = (data?.results ?? []).map((response) => {
+    const primary =
+      cleanTitle(response.questionnaire?.title) ||
+      `Questionnaire Response #${shortId(response.id)}`;
+    return buildResourceOption({
+      id: response.id,
+      primary,
+      date: formatDate(response.created_date),
+    });
+  });
 
   return { options, isLoading };
 }
@@ -101,15 +162,14 @@ function useEncounterOptions(patientId: string, encounterId?: string) {
       return;
     }
     seen.add(encounter);
-    const isCurrent = encounter === encounterId;
-    const label = [
-      `Encounter ${encounter.slice(0, 8)}`,
-      date ? `(${date})` : "",
-      isCurrent ? "— current" : "",
-    ]
-      .filter(Boolean)
-      .join(" ");
-    options.push({ value: encounter, label });
+    options.push(
+      buildResourceOption({
+        id: encounter,
+        primary: `Encounter #${shortId(encounter)}`,
+        date,
+        badge: encounter === encounterId ? "Current" : undefined,
+      }),
+    );
   };
 
   // Always show the current encounter, even without a claim consent.
@@ -122,10 +182,7 @@ function useEncounterOptions(patientId: string, encounterId?: string) {
     if (!encounter) {
       continue;
     }
-    const date = consent.created_date
-      ? new Date(consent.created_date).toLocaleDateString()
-      : "";
-    pushEncounter(encounter, date);
+    pushEncounter(encounter, formatDate(consent.created_date));
   }
 
   return { options, isLoading };
@@ -167,15 +224,15 @@ function useInvoiceOptions(patientId: string, encounterId?: string) {
   });
 
   const options = (data?.results ?? []).map((invoice) => {
-    const title =
-      (invoice.title as string) || (invoice.number as string) || "Invoice";
-    const date = invoice.created_date
-      ? new Date(invoice.created_date as string).toLocaleDateString()
-      : "";
-    return {
-      value: invoice.id,
-      label: date ? `${title} (${date})` : title,
-    };
+    const primary =
+      cleanTitle(invoice.title) ||
+      cleanTitle(invoice.number) ||
+      `Invoice #${shortId(invoice.id)}`;
+    return buildResourceOption({
+      id: invoice.id,
+      primary,
+      date: formatDate(invoice.created_date),
+    });
   });
 
   return { options, isLoading };
