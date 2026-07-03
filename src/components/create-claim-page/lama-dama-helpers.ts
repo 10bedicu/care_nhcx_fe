@@ -77,15 +77,6 @@ export function claimHasLm100Item(claim: Claim | undefined): boolean {
   );
 }
 
-export function formHasLm100Item(
-  items: ClaimFormValues["item"] | undefined,
-): boolean {
-  return (items ?? []).some(
-    (item) =>
-      item.product_or_service?.code === LAMA_DAMA_PROCEDURE_BENEFIT_CODE,
-  );
-}
-
 function questionnaireResponseHasAnswers(
   items: ClaimQuestionnaireResponseItem[] | undefined,
 ): boolean {
@@ -150,18 +141,13 @@ function collectAllChargeItemIds(
   ];
 }
 
-function collectModifiersFromOtherItems(
+function collectStratificationModifiers(
   items: ClaimFormValues["item"],
 ): Coding[] {
   const seen = new Set<string>();
   const result: Coding[] = [];
 
   for (const item of items) {
-    if (
-      item.product_or_service?.code === LAMA_DAMA_PROCEDURE_BENEFIT_CODE
-    ) {
-      continue;
-    }
     for (const modifier of item.modifier ?? []) {
       if (!modifier.code || seen.has(modifier.code)) continue;
       seen.add(modifier.code);
@@ -203,7 +189,7 @@ export function applyLm100Mode(
   const diagnosisSeqs = diagnosis.map((entry) => entry.sequence);
   const clearedValidation = clearedItemValidationErrors();
   const allChargeItemIds = collectAllChargeItemIds(items);
-  const collectedModifiers = collectModifiersFromOtherItems(items);
+  const stratifications = collectStratificationModifiers(items);
 
   const productOrService = {
     system: PROCEDURE_CODE_SYSTEM,
@@ -218,30 +204,37 @@ export function applyLm100Mode(
       }
     : DEFAULT_ITEM_CATEGORY;
 
-  const updatedItems = items.map((item) => {
-    const isLm100 =
-      item.product_or_service?.code === LAMA_DAMA_PROCEDURE_BENEFIT_CODE;
-    return {
+  const disabledItems = items
+    .filter(
+      (item) =>
+        item.product_or_service?.code !== LAMA_DAMA_PROCEDURE_BENEFIT_CODE,
+    )
+    .map((item) => ({
       ...item,
-      _is_disabled: !isLm100,
-      charge_items: isLm100 ? allChargeItemIds : [],
-      modifier: isLm100 ? collectedModifiers : [],
-      ...(isLm100 ? {} : clearedValidation),
-    };
-  });
+      _is_disabled: true,
+      charge_items: [],
+      modifier: [],
+      ...clearedValidation,
+    }));
 
-  if (!formHasLm100Item(updatedItems)) {
-    const maxSeq = Math.max(0, ...updatedItems.map((item) => item.sequence));
-    updatedItems.push({
-      sequence: maxSeq + 1,
+  const modifierGroups: Coding[][] =
+    stratifications.length > 0
+      ? stratifications.map((modifier) => [modifier])
+      : [[]];
+
+  let nextSeq = Math.max(0, ...items.map((item) => item.sequence));
+  const lm100Items = modifierGroups.map((modifier, groupIndex) => {
+    nextSeq += 1;
+    return {
+      sequence: nextSeq,
       care_team_sequence: [...careTeamSeqs],
       diagnosis_sequence: diagnosisSeqs.length > 0 ? [...diagnosisSeqs] : [],
       procedure_sequence: [],
       information_sequence: [],
       category,
       product_or_service: productOrService,
-      charge_items: allChargeItemIds,
-      modifier: collectedModifiers,
+      charge_items: groupIndex === 0 ? allChargeItemIds : [],
+      modifier,
       program_code: [DEFAULT_PROGRAM_CODE],
       serviced_period: options.encounterPeriod,
       quantity: { value: 1 },
@@ -249,8 +242,10 @@ export function applyLm100Mode(
       factor: undefined,
       _is_disabled: false,
       ...clearedValidation,
-    });
-  }
+    };
+  });
+
+  const updatedItems = [...disabledItems, ...lm100Items];
 
   form.setValue("item", updatedItems, {
     shouldDirty: true,
