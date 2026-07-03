@@ -17,7 +17,7 @@ const USER_EDIT = { shouldDirty: true, shouldValidate: true } as const;
 
 type ClaimForm = UseFormReturn<z.infer<typeof createClaimFormSchema>>;
 
-export type SupportingInfoValueMode = "attachment" | "record";
+export type SupportingInfoValueMode = "comment" | "attachment" | "record";
 
 type SupportingInfoEntry = z.infer<
   typeof createClaimFormSchema
@@ -27,10 +27,12 @@ export function deriveSupportingInfoMode(
   info: SupportingInfoEntry | undefined,
 ): SupportingInfoValueMode {
   if (info?.value_resource) return "record";
-  return "attachment";
+  if (info?.value_attachment || info?.value_file) return "attachment";
+  return "comment";
 }
 
 const MODE_LABELS: Record<SupportingInfoValueMode, string> = {
+  comment: "Comment",
   attachment: "Attachment",
   record: "Record",
 };
@@ -153,10 +155,12 @@ function StructuredResourcePicker({
 export function SupportingInfoValueControls({
   form,
   mainInfoIndex,
+  renderComment,
   renderAttachment,
 }: {
   form: ClaimForm;
   mainInfoIndex: number;
+  renderComment: () => ReactNode;
   renderAttachment: () => ReactNode;
 }) {
   const info = form.watch(`supporting_info.${mainInfoIndex}`);
@@ -189,6 +193,7 @@ export function SupportingInfoValueControls({
         )}
       </div>
 
+      {mode === "comment" && renderComment()}
       {mode === "attachment" && renderAttachment()}
       {mode === "record" && (
         <StructuredResourcePicker form={form} mainInfoIndex={mainInfoIndex} />

@@ -41,6 +41,7 @@ import { ClaimUseChoice } from "@/types/claim";
 import { EncounterDischargeDisposition } from "@/types/encounter";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { InlineLoading } from "@/components/common/loading-spinner";
+import { Input } from "@/components/ui/input";
 import { QuestionnaireResponseCard, QuestionnaireRequirementRow } from "./claim-questionnaire-section";
 import { apis } from "@/apis";
 import { cn } from "@/lib/utils";
@@ -247,6 +248,12 @@ function PlanLevelDocCard({
     >
   ) as File | undefined;
 
+  const valueString = form.watch(
+    `supporting_info.${mainInfoIndex}.value_string` as FieldPath<
+      z.infer<typeof createClaimFormSchema>
+    >,
+  ) as string | undefined;
+
   const valueAttachment = form.watch(
     `supporting_info.${mainInfoIndex}.value_attachment` as FieldPath<
       z.infer<typeof createClaimFormSchema>
@@ -318,41 +325,73 @@ function PlanLevelDocCard({
         </div>
       </CardHeader>
       <CardContent className="px-4 pb-3 space-y-2">
-        {hasFile ? (
-          <div className="flex items-center gap-2 rounded-md bg-green-50 px-2 py-1.5">
-            <PaperclipIcon className="w-3.5 h-3.5 text-green-600" />
-            <span className="text-xs font-medium text-green-700 flex-1">
-              {currentFile?.name ?? "File attached"}
-            </span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-5 px-1.5 text-xs text-muted-foreground hover:text-destructive"
-              onClick={clearFile}
-            >
-              Remove
-            </Button>
-          </div>
-        ) : (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 text-xs relative"
-            asChild
-          >
-            <span>
-              <PaperclipIcon className="w-3 h-3 mr-1" />
-              Attach file
-              <input
-                type="file"
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                onChange={handleFileChange}
-                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.json"
-              />
-            </span>
-          </Button>
+        <Input
+          placeholder="Enter a comment…"
+          value={valueString ?? ""}
+          disabled={hasFile}
+          onChange={(e) => {
+            form.setValue(
+              `supporting_info.${mainInfoIndex}.value_string` as FieldPath<
+                z.infer<typeof createClaimFormSchema>
+              >,
+              (e.target.value || undefined) as never,
+            );
+            if (e.target.value) {
+              form.setValue(
+                `supporting_info.${mainInfoIndex}.value_file` as FieldPath<
+                  z.infer<typeof createClaimFormSchema>
+                >,
+                undefined as never,
+              );
+              form.setValue(
+                `supporting_info.${mainInfoIndex}.value_attachment` as FieldPath<
+                  z.infer<typeof createClaimFormSchema>
+                >,
+                undefined as never,
+              );
+            }
+          }}
+        />
+
+        {!valueString && (
+          <>
+            {hasFile ? (
+              <div className="flex items-center gap-2 rounded-md bg-green-50 px-2 py-1.5">
+                <PaperclipIcon className="w-3.5 h-3.5 text-green-600" />
+                <span className="text-xs font-medium text-green-700 flex-1">
+                  {currentFile?.name ?? "File attached"}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 px-1.5 text-xs text-muted-foreground hover:text-destructive"
+                  onClick={clearFile}
+                >
+                  Remove
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs relative"
+                asChild
+              >
+                <span>
+                  <PaperclipIcon className="w-3 h-3 mr-1" />
+                  Attach file
+                  <input
+                    type="file"
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    onChange={handleFileChange}
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.json"
+                  />
+                </span>
+              </Button>
+            )}
+          </>
         )}
       </CardContent>
     </Card>

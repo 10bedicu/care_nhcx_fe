@@ -82,6 +82,7 @@ import { InsurancePlanSupportingInfoRequirement } from "@/types/insurance_plan";
 import { Label } from "../ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SupportingInfoValueControls } from "./supporting-info-value-controls";
+import { Textarea } from "../ui/textarea";
 import ValuesetSelect from "../common/valueset-select";
 import { apis } from "@/apis";
 import { cn } from "@/lib/utils";
@@ -3757,6 +3758,32 @@ function AddSupportingInfoSection({
                   <SupportingInfoValueControls
                     form={form}
                     mainInfoIndex={mainInfoIndex}
+                    renderComment={() => (
+                      <FormField
+                        control={form.control}
+                        name={`supporting_info.${mainInfoIndex}.value_string`}
+                        render={({ field }) => (
+                          <FormItem className="space-y-1.5">
+                            <FormLabel>Comment</FormLabel>
+                            <FormControl>
+                              <Textarea
+                                value={field.value || ""}
+                                onChange={(e) => {
+                                  form.setValue(
+                                    `supporting_info.${mainInfoIndex}.value_string`,
+                                    e.target.value || undefined,
+                                    USER_EDIT,
+                                  );
+                                }}
+                                placeholder="Enter a comment"
+                                className="min-h-[80px]"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
                     renderAttachment={() => (
                       <SupportingInfoFileUpload
                         form={form}
