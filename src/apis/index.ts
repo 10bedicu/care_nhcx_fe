@@ -28,6 +28,7 @@ import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { DiagnosticReport } from "@/types/diagnostic_report";
 import { Encounter } from "@/types/encounter";
 import { HealthFacility } from "@/types/health_facility";
+import { Invoice } from "@/types/invoice";
 import { PaginatedResponse } from "./types";
 import { Patient } from "@/types/patient";
 import { PaymentNotice } from "@/types/payment";
@@ -678,6 +679,25 @@ export const apis = {
     ) => {
       return await request<PaginatedResponse<ChargeItem>>(
         `/api/v1/facility/${facilityId}/charge_item/` + queryString(query),
+      );
+    },
+  },
+
+  invoice: {
+    list: async (
+      facilityId: string,
+      query?: {
+        patient?: string;
+        account?: string;
+        status?: string;
+        number?: string;
+        ordering?: "created_date" | "-created_date";
+        limit?: number;
+        offset?: number;
+      },
+    ) => {
+      return await request<PaginatedResponse<Invoice>>(
+        `/api/v1/facility/${facilityId}/invoice/` + queryString(query),
       );
     },
   },

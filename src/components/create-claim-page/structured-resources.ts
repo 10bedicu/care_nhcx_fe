@@ -1,4 +1,5 @@
 import { apis } from "@/apis";
+import { useGlobalStore } from "@/hooks/use-global-store";
 import { useQuery } from "@tanstack/react-query";
 
 /**
@@ -117,6 +118,56 @@ function useEncounterOptions(patientId: string, encounterId?: string) {
   return { options, isLoading };
 }
 
+function useInvoiceOptions(patientId: string, encounterId?: string) {
+  const { getStore } = useGlobalStore();
+  const facilityId = getStore<string>("facilityId") ?? "";
+
+  const { data: accountData } = useQuery({
+    queryKey: [
+      "structured-resource",
+      "invoice-account",
+      facilityId,
+      encounterId,
+    ],
+    queryFn: () => apis.account.list(facilityId, { encounter: encounterId }),
+    enabled: !!facilityId && !!encounterId,
+    staleTime: 60 * 1000,
+  });
+  const accountId = accountData?.results?.[0]?.id;
+
+  const { data, isLoading } = useQuery({
+    queryKey: [
+      "structured-resource",
+      "invoice",
+      facilityId,
+      patientId,
+      accountId,
+    ],
+    queryFn: () =>
+      apis.invoice.list(facilityId, {
+        patient: patientId,
+        account: accountId,
+        ordering: "-created_date",
+      }),
+    enabled: !!facilityId && !!patientId,
+    staleTime: 60 * 1000,
+  });
+
+  const options = (data?.results ?? []).map((invoice) => {
+    const title =
+      (invoice.title as string) || (invoice.number as string) || "Invoice";
+    const date = invoice.created_date
+      ? new Date(invoice.created_date as string).toLocaleDateString()
+      : "";
+    return {
+      value: invoice.id,
+      label: date ? `${title} (${date})` : title,
+    };
+  });
+
+  return { options, isLoading };
+}
+
 export const STRUCTURED_RESOURCE_TYPES: StructuredResourceTypeDef[] = [
   {
     type: "diagnostic_report",
@@ -132,6 +183,11 @@ export const STRUCTURED_RESOURCE_TYPES: StructuredResourceTypeDef[] = [
     type: "encounter",
     label: "Encounter (Discharge Summary / OP Consult)",
     useOptions: useEncounterOptions,
+  },
+  {
+    type: "invoice",
+    label: "Invoice",
+    useOptions: useInvoiceOptions,
   },
 ];
 
