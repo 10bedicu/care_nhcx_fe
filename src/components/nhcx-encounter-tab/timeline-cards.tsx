@@ -141,6 +141,8 @@ interface MenuItem {
   to?: string;
   onClick?: () => void;
   destructive?: boolean;
+  disabled?: boolean;
+  tooltip?: string;
 }
 
 function PendingResponseBanner({ message }: { message: string }) {
@@ -213,7 +215,9 @@ function MoreActionsMenu({ items }: { items: MenuItem[] }) {
           {items.map((item, idx) => {
             const className = cn(
               "flex items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-gray-100 cursor-pointer text-left",
-              item.destructive && "text-destructive hover:bg-destructive/10"
+              item.destructive && "text-destructive hover:bg-destructive/10",
+              item.disabled &&
+                "pointer-events-none cursor-not-allowed opacity-50 hover:bg-transparent",
             );
             const inner = (
               <>
@@ -221,6 +225,26 @@ function MoreActionsMenu({ items }: { items: MenuItem[] }) {
                 <span>{item.label}</span>
               </>
             );
+            if (item.disabled) {
+              const disabledItem = (
+                <span className={className} aria-disabled="true">
+                  {inner}
+                </span>
+              );
+              if (!item.tooltip) {
+                return <div key={idx}>{disabledItem}</div>;
+              }
+              return (
+                <TooltipProvider key={idx}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="w-full">{disabledItem}</div>
+                    </TooltipTrigger>
+                    <TooltipContent>{item.tooltip}</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              );
+            }
             if (item.to) {
               return (
                 <a
@@ -584,6 +608,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   // Add more items + Cancel are available on the latest pre-authorization card
   // after a payer response is in. While awaiting acknowledgement, only Cancel
   // is offered. Queried records skip Add more items; cancelled records skip Cancel.
+  const preauthCancelDisabled = isEncounterDischarged(encounterStatus);
   const preauthCancelMenuItem: MenuItem | undefined =
     isCurrent && isPreauth && outcome !== "cancelled"
       ? {
@@ -591,6 +616,10 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
           icon: <BanIcon className="h-4 w-4" />,
           onClick: () => setCancelOpen(true),
           destructive: true,
+          disabled: preauthCancelDisabled,
+          tooltip: preauthCancelDisabled
+            ? "Pre-authorization cannot be cancelled after the patient is discharged."
+            : undefined,
         }
       : undefined;
 
