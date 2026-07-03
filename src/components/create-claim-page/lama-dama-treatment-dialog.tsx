@@ -21,6 +21,7 @@ import { LamaDamaTreatmentTiming } from "./lama-dama-helpers";
 export interface LamaDamaTreatmentDialogProps {
   open: boolean;
   dispositionLabel: string;
+  isDeath?: boolean;
   onConfirm: (timing: LamaDamaTreatmentTiming) => void;
 }
 
@@ -29,6 +30,7 @@ const NONE_VALUE = "__none__";
 export const LamaDamaTreatmentDialog: FC<LamaDamaTreatmentDialogProps> = ({
   open,
   dispositionLabel,
+  isDeath = false,
   onConfirm,
 }) => {
   const [selectedTiming, setSelectedTiming] = useState<string>(NONE_VALUE);
@@ -52,16 +54,18 @@ export const LamaDamaTreatmentDialog: FC<LamaDamaTreatmentDialogProps> = ({
         <DialogHeader>
           <DialogTitle>Treatment timing for {dispositionLabel}</DialogTitle>
           <DialogDescription>
-            Please specify when the patient left against medical advice. This
-            determines whether the claim should include only the LM100 benefit
-            or the full treatment details.
+            {isDeath
+              ? "Please specify when the patient died. This determines whether the claim should include only the LM100 benefit or the full treatment details."
+              : "Please specify when the patient left against medical advice. This determines whether the claim should include only the LM100 benefit or the full treatment details."}
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="lama-dama-timing">
-              When did the patient leave?
+              {isDeath
+                ? "When did the patient die?"
+                : "When did the patient leave?"}
               <span className="text-red-500 text-sm ml-0.5">*</span>
             </Label>
             <Select value={selectedTiming} onValueChange={setSelectedTiming}>

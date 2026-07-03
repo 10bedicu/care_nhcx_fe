@@ -10,6 +10,7 @@ import {
 } from "@/lib/prefill";
 import {
   DAMA_DISCHARGE_QUESTIONNAIRE,
+  DEATH_DISCHARGE_QUESTIONNAIRE,
   LAMA_DISCHARGE_QUESTIONNAIRE,
   hasAnswerValue,
 } from "./questionnaire-helpers";
@@ -38,10 +39,20 @@ const ITEM_VALIDATION_ERROR_KEYS = [
   "_condition_errors",
 ] as const;
 
+export function isDeathDisposition(
+  disposition: EncounterDischargeDisposition | undefined,
+): boolean {
+  return disposition === "exp";
+}
+
 export function isLamaDamaDisposition(
   disposition: EncounterDischargeDisposition | undefined,
 ): boolean {
-  return disposition === "aadvice" || disposition === "oth";
+  return (
+    disposition === "aadvice" ||
+    disposition === "oth" ||
+    isDeathDisposition(disposition)
+  );
 }
 
 export function getLamaDamaDispositionLabel(
@@ -52,6 +63,9 @@ export function getLamaDamaDispositionLabel(
   }
   if (disposition === "oth") {
     return "Discharged Against Medical Advice (DAMA)";
+  }
+  if (disposition === "exp") {
+    return "Death / Expired";
   }
   return "LAMA/DAMA";
 }
@@ -92,6 +106,7 @@ function getDischargeQuestionnaireFhirId(
 ): string | null {
   if (disposition === "aadvice") return LAMA_DISCHARGE_QUESTIONNAIRE;
   if (disposition === "oth") return DAMA_DISCHARGE_QUESTIONNAIRE;
+  if (disposition === "exp") return DEATH_DISCHARGE_QUESTIONNAIRE;
   return null;
 }
 

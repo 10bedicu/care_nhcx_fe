@@ -13,6 +13,7 @@ import {
   applyLm100Mode,
   claimHasLm100Item,
   getLamaDamaDispositionLabel,
+  isDeathDisposition,
   isLamaDamaDisposition,
   shouldSkipLamaDamaDialog,
 } from "./lama-dama-helpers";
@@ -75,6 +76,7 @@ export const LamaDamaFlowController: FC<LamaDamaFlowControllerProps> = ({
 
   const disposition = encounter?.hospitalization?.discharge_disposition;
   const dispositionLabel = getLamaDamaDispositionLabel(disposition);
+  const isDeath = isDeathDisposition(disposition);
 
   const applyMode = () => {
     applyLm100Mode(form, {
@@ -123,6 +125,7 @@ export const LamaDamaFlowController: FC<LamaDamaFlowControllerProps> = ({
     <LamaDamaTreatmentDialog
       open={dialogOpen}
       dispositionLabel={dispositionLabel}
+      isDeath={isDeath}
       onConfirm={handleConfirm}
     />
   );
