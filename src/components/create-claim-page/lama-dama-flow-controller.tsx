@@ -12,6 +12,7 @@ import {
   LamaDamaTreatmentTiming,
   applyLm100Mode,
   claimHasLm100Item,
+  disableNonLm100Items,
   getLamaDamaDispositionLabel,
   isDeathDisposition,
   isLamaDamaDisposition,
@@ -85,6 +86,14 @@ export const LamaDamaFlowController: FC<LamaDamaFlowControllerProps> = ({
     });
     onLm100ModeApplied();
   };
+
+  useEffect(() => {
+    if (!isFormReady) return;
+    if (!claimHasLm100Item(prefilledClaim)) return;
+
+    disableNonLm100Items(form);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFormReady, prefilledClaim]);
 
   useEffect(() => {
     if (!isFormReady || didInitializeRef.current) return;

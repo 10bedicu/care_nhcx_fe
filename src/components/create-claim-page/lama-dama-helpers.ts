@@ -175,6 +175,46 @@ function clearDisabledItemFormErrors(
   });
 }
 
+export function disableNonLm100Items(
+  form: UseFormReturn<ClaimFormValues>,
+): void {
+  const items = form.getValues("item") ?? [];
+  if (items.length === 0) return;
+
+  const hasLm100 = items.some(
+    (item) =>
+      item.product_or_service?.code === LAMA_DAMA_PROCEDURE_BENEFIT_CODE,
+  );
+  if (!hasLm100) return;
+
+  const clearedValidation = clearedItemValidationErrors();
+  let changed = false;
+
+  const updatedItems = items.map((item) => {
+    const isLm100 =
+      item.product_or_service?.code === LAMA_DAMA_PROCEDURE_BENEFIT_CODE;
+    if (isLm100 || item._is_disabled) return item;
+
+    changed = true;
+    return {
+      ...item,
+      _is_disabled: true,
+      charge_items: [],
+      modifier: [],
+      ...clearedValidation,
+    };
+  });
+
+  if (!changed) return;
+
+  form.setValue("item", updatedItems, {
+    shouldDirty: true,
+    shouldValidate: true,
+  });
+  clearDisabledItemFormErrors(form, updatedItems);
+  void form.trigger("item");
+}
+
 export function applyLm100Mode(
   form: UseFormReturn<ClaimFormValues>,
   options: {
