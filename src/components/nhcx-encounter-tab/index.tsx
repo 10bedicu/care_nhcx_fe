@@ -23,6 +23,7 @@ import FlowPrerequisitesGate, {
 import { hasDemographicMismatch } from "./demographics";
 import { useFlowPrerequisites } from "./use-flow-prerequisites";
 import { useLinkPatientValidation } from "./use-link-patient-validation";
+import { WalletBalanceCard } from "./wallet-balance-card";
 
 import { Button } from "@/components/ui/button";
 import { Condition, ConditionCategory } from "@/types/condition";
@@ -64,7 +65,11 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
   });
 
   const encounterCoverages = coverages?.results ?? [];
-  const hasEncounterValidation = encounterCoverages.some(hasValidationPurpose);
+  // System-initiated wallet refreshes (is_automatic) must not appear as timeline
+  // entries — they only feed the always-latest wallet balance card. Everything
+  // downstream (timeline, prerequisites, flow gating) uses the manual set.
+  const manualCoverages = encounterCoverages.filter((c) => !c.is_automatic);
+  const hasEncounterValidation = manualCoverages.some(hasValidationPurpose);
 
   const { isLinking } = useLinkPatientValidation({
     encounterId: encounter?.id,
@@ -164,7 +169,7 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
   // Determine guided headline state. The CTA is shown when no CE:V exists yet,
   // or when the latest validation request hard-stops the flow (so the user can
   // start a fresh check after fixing the underlying issue).
-  const validationRequests = encounterCoverages.filter(hasValidationPurpose);
+  const validationRequests = manualCoverages.filter(hasValidationPurpose);
   const latestValidation = validationRequests
     .slice()
     .sort(
@@ -188,8 +193,18 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
 
   const showInitialCTA = !latestValidation;
 
+  // The wallet balance card always reflects the freshest validation, including
+  // system-initiated (is_automatic) refreshes raised after a claim response.
+  const latestValidationForWallet = encounterCoverages
+    .filter(hasValidationPurpose)
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(b.created_date).getTime() - new Date(a.created_date).getTime(),
+    )[0];
+
   // Track the most recent CE id so we can propagate it through claim actions.
-  const latestCoverageEligibilityId = encounterCoverages
+  const latestCoverageEligibilityId = manualCoverages
     .slice()
     .sort(
       (a, b) =>
@@ -211,7 +226,7 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
   const latestSuccessfulClaimId =
     findLatestClaimWithSuccessfulResponse(encounterClaims)?.id;
 
-  const timeline = buildTimeline(encounterCoverages, encounterClaims, {
+  const timeline = buildTimeline(manualCoverages, encounterClaims, {
     afterCeValidationSatisfied: afterCeValidation.isSatisfied,
   });
 
@@ -288,6 +303,10 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
                 Refresh
               </Button>
             </div>
+
+            {latestValidationForWallet && (
+              <WalletBalanceCard request={latestValidationForWallet} />
+            )}
 
             {showClinicalDetailsWarning && (
               <Alert variant="warning">
@@ -473,6 +492,6 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
       </div>
     </GlobalStoreProvider>
   );
-};
+};;
 
 export default NhcxEncounterTab;

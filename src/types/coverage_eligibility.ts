@@ -145,6 +145,8 @@ export type CoverageEligibilityRequest = {
   dispatched_at: string | null;
   dispatch_error: string;
 
+  is_automatic: boolean;
+
   latest_response: CoverageEligibilityResponse | null;
   created_date: string;
   modified_date?: string;

@@ -93,6 +93,7 @@ export const apis = {
       purpose?: string;
       created_after?: string;
       unique_by_policy?: boolean;
+      is_automatic?: boolean;
       ordering?:
         | "created_date"
         | "-created_date"
