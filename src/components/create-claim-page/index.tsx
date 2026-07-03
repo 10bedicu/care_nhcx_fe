@@ -1447,6 +1447,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                       showPayerQuery ? relatedClaimResponse : undefined
                     }
                     lockApprovedItems={lockApprovedItems}
+                    isResubmit={canManuallyResubmit && submitMode === "resubmit"}
                   />
                   <Separator />
                   <ClaimAccidentSection form={form} />

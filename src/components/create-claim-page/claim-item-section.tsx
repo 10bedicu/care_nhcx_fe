@@ -99,11 +99,8 @@ interface ClaimItemSectionProps {
   coverageEligibilityRequest?: CoverageEligibilityRequest;
   previousClaim?: Claim;
   queryResponse?: ClaimResponse;
-  /**
-   * When true (normal submit workflow, not resubmit), items already approved by
-   * the payer are locked from editing/removal and can only be duplicated.
-   */
   lockApprovedItems?: boolean;
+  isResubmit?: boolean;
 }
 
 const PROGRAM_CODES = [
@@ -700,6 +697,7 @@ export function ClaimItemSection({
   previousClaim,
   queryResponse,
   lockApprovedItems = false,
+  isResubmit = false,
 }: ClaimItemSectionProps) {
   const { fields, append, remove } = useFieldArray({
     name: "item",
@@ -1354,6 +1352,7 @@ export function ClaimItemSection({
                         planId={planId}
                         coverageEligibilityRequest={coverageEligibilityRequest}
                         previousClaim={previousClaim}
+                        isResubmit={isResubmit}
                       />
 
                       <div className="grid grid-cols-2 gap-4">
@@ -1546,6 +1545,7 @@ export function ClaimItemSection({
                         planId={planId}
                         coverageEligibilityRequest={coverageEligibilityRequest}
                         previousClaim={previousClaim}
+                        isResubmit={isResubmit}
                       />
                     </CardContent>
                     {hasAnyError && (
@@ -1851,17 +1851,34 @@ function getCeAllowedAmount(
 }
 
 /**
- * Looks up the pre-auth response adjudication for the given item sequence and
+ * Looks up the pre-auth response adjudication for the given product code and
  * returns the payer-approved amount. Reference-only.
+ *
+ * The response items reference the *previous claim's* item sequence, which may
+ * not line up with the current form item's sequence (items can be removed or
+ * reordered between submissions – e.g. a procedure dropped in a resubmitted
+ * CE:AR). Matching on the sequence directly would therefore associate the wrong
+ * approved amount, so we map each response item back to its product code via the
+ * previous claim's items and match on that instead.
  */
 function getPreAuthApprovedAmount(
   previousClaim: Claim | undefined,
-  itemSequence: number | undefined,
+  productCode: string | undefined,
 ): number | null {
-  if (itemSequence == null) return null;
+  if (!productCode) return null;
   const responseItems = previousClaim?.latest_response?.item;
   if (!responseItems) return null;
-  const matched = responseItems.find((ri) => ri.itemSequence === itemSequence);
+
+  const sequenceToCode = new Map<number, string | undefined>();
+  for (const it of previousClaim?.item ?? []) {
+    sequenceToCode.set(it.sequence, it.product_or_service?.code);
+  }
+
+  const matched = responseItems.find(
+    (ri) =>
+      ri.itemSequence != null &&
+      sequenceToCode.get(ri.itemSequence) === productCode,
+  );
   if (!matched?.adjudication) return null;
   const benefitAdj = matched.adjudication.find((adj) =>
     adj.category?.coding?.some((c) =>
@@ -1877,12 +1894,14 @@ function ItemValidationEffects({
   planId,
   coverageEligibilityRequest,
   previousClaim,
+  isResubmit = false,
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   index: number;
   planId: string | null;
   coverageEligibilityRequest?: CoverageEligibilityRequest;
   previousClaim?: Claim;
+  isResubmit?: boolean;
 }) {
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
   const isItemDisabled = form.watch(`item.${index}._is_disabled`);
@@ -1949,8 +1968,8 @@ function ItemValidationEffects({
     [coverageEligibilityRequest, productCode],
   );
   const preAuthApproved = useMemo(
-    () => getPreAuthApprovedAmount(previousClaim, currentSequence),
-    [previousClaim, currentSequence],
+    () => getPreAuthApprovedAmount(previousClaim, productCode),
+    [previousClaim, productCode],
   );
 
   useEffect(() => {
@@ -1968,9 +1987,9 @@ function ItemValidationEffects({
     }
 
     // Priority: pre-auth approved → coverage eligibility allowed → benefit
-    // limit. LAMA/DAMA has no payer references and resolves to the benefit
-    // limit through the same chain.
-    const derived = preAuthApproved ?? ceAllowed ?? benefitLimit ?? 0;
+    const derived = isResubmit
+      ? (ceAllowed ?? preAuthApproved ?? benefitLimit ?? 0)
+      : (preAuthApproved ?? ceAllowed ?? benefitLimit ?? 0);
     form.setValue(`item.${index}.unit_price`, derived, { shouldDirty: false });
     form.setValue(`item.${index}._amount_cap_error`, undefined, {
       shouldDirty: false,
@@ -1980,6 +1999,7 @@ function ItemValidationEffects({
     preAuthApproved,
     ceAllowed,
     benefitLimit,
+    isResubmit,
     form,
     index,
     isItemDisabled,
@@ -2055,12 +2075,14 @@ function ItemAmountReferences({
   planId,
   coverageEligibilityRequest,
   previousClaim,
+  isResubmit = false,
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   index: number;
   planId: string | null;
   coverageEligibilityRequest?: CoverageEligibilityRequest;
   previousClaim?: Claim;
+  isResubmit?: boolean;
 }) {
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
   const itemSequence = form.watch(`item.${index}.sequence`);
@@ -2117,15 +2139,23 @@ function ItemAmountReferences({
     [coverageEligibilityRequest, productCode],
   );
   const preAuthApproved = useMemo(
-    () => getPreAuthApprovedAmount(previousClaim, itemSequence),
-    [previousClaim, itemSequence],
+    () => getPreAuthApprovedAmount(previousClaim, productCode),
+    [previousClaim, productCode],
   );
 
   const refs: Array<{ label: string; value: number; applied?: boolean }> = [];
   // The applied amount follows the derivation priority used to fill the unit
-  // price: pre-auth approved → coverage eligibility allowed → benefit limit.
-  const appliedSource =
-    preAuthApproved != null
+  // price: pre-auth approved → coverage eligibility allowed → benefit limit. On
+  // resubmit the coverage eligibility allowed amount takes precedence.
+  const appliedSource = isResubmit
+    ? ceAllowed != null
+      ? "ce"
+      : preAuthApproved != null
+        ? "preauth"
+        : benefitLimit != null
+          ? "benefit"
+          : null
+    : preAuthApproved != null
       ? "preauth"
       : ceAllowed != null
         ? "ce"
