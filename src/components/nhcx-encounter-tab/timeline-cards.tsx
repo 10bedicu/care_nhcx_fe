@@ -32,10 +32,13 @@ import { cn, toast } from "@/lib/utils";
 import {
   deriveClaimOutcome,
   deriveValidationOutcome,
+  getApprovalShortfallPercent,
+  getClaimCopay,
   getReprocessDefaultAmount,
   hasAuthRequirementsPurpose,
   hasValidationPurpose,
   isEncounterDischarged,
+  shouldOfferDispute,
 } from "./flow";
 import {
   buildDemographicChecks,
@@ -475,14 +478,11 @@ export const CoverageEligibilityTimelineCard: FC<CoverageEligibilityTimelineCard
 
 interface ClaimTimelineCardProps extends BaseProps {
   claim: Claim;
-  /** The most recent CE to wire as a query param when redirecting back to /coverages/new. */
   latestCoverageEligibilityId?: string;
-  /** The most recent claim on the encounter — passed as the `claim` query param. */
   latestClaimId?: string;
-  /** The most recent claim with a successful payer response — passed as `related`. */
   latestSuccessfulClaimId?: string;
-  /** Current encounter status — claims can only be raised once the patient is discharged. */
   encounterStatus: EncounterStatus;
+  walletRemaining?: number | null;
 }
 
 export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
@@ -493,6 +493,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   latestClaimId,
   latestSuccessfulClaimId,
   encounterStatus,
+  walletRemaining = null,
 }) => {
   const queryClient = useQueryClient();
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -563,6 +564,9 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   const isClaim = claim.use === "claim";
   const useLabel = isPreauth ? "Pre-Authorization" : "Claim";
   const dispatchStatus = claim.dispatch_status;
+
+  const copay = getClaimCopay(claim, walletRemaining);
+  const approvalShortfallPercent = getApprovalShortfallPercent(claim);
 
   const ceQueryParam = latestCoverageEligibilityId
     ? `&coverage_eligibility=${latestCoverageEligibilityId}`
@@ -761,15 +765,17 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
             </span>,
           ];
         } else if (outcome === "partially-approved" || outcome === "rejected") {
-          primaryActions = [
-            <ActionButton
-              key="dispute"
-              label="Dispute"
-              icon={<AlertCircleIcon className="h-4 w-4" />}
-              onClick={() => setDisputeOpen(true)}
-              variant="outline"
-            />,
-          ];
+          if (shouldOfferDispute(claim)) {
+            primaryActions = [
+              <ActionButton
+                key="dispute"
+                label="Dispute"
+                icon={<AlertCircleIcon className="h-4 w-4" />}
+                onClick={() => setDisputeOpen(true)}
+                variant="outline"
+              />,
+            ];
+          }
         } else if (outcome === "queried") {
           primaryActions = [
             <ActionButton
@@ -808,6 +814,8 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
         claim={claim}
         footerActions={footerActions}
         headerBanner={headerBanner}
+        copay={copay}
+        approvalShortfallPercent={approvalShortfallPercent}
       />
       <ReasonDialog
         open={cancelOpen}

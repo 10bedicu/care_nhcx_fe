@@ -189,7 +189,7 @@ function getResponseTotal(
  * `total[submitted]`, then the per-item submitted adjudication sum, and
  * finally the local claim line math (unit_price × quantity).
  */
-function getRequestedTotal(claim: Claim): number {
+export function getRequestedTotal(claim: Claim): number {
   const response = claim.latest_response;
   const fromTotal = getResponseTotal(response, "submitted");
   if (fromTotal !== null) return fromTotal;
@@ -334,6 +334,62 @@ export function isLatestRecord(
   }
   if (target.kind === "claim" && latestActionable.kind === "claim") {
     return target.record.id === latestActionable.record.id;
+  }
+  return false;
+}
+
+export const DISPUTE_SHORTFALL_THRESHOLD_PERCENT = 20;
+
+export function getWalletRemaining(
+  request: CoverageEligibilityRequest | undefined,
+): number | null {
+  const response = request?.latest_response;
+  if (!response) return null;
+
+  const insurances = response.insurances ?? [];
+  const primary = insurances.find((e) => e.is_primary) ?? insurances[0];
+  if (!primary?.balance) return null;
+
+  const familyAllowed = primary.balance.allowed.value ?? 0;
+  const familyUsed = insurances.reduce(
+    (sum, e) => sum + (e.balance?.used.value ?? 0),
+    0,
+  );
+  return familyAllowed - familyUsed;
+}
+
+export function getClaimCopay(
+  claim: Claim,
+  walletRemaining: number | null,
+): number | null {
+  if (walletRemaining === null) return null;
+  const submitted = getRequestedTotal(claim);
+  const copay = submitted - walletRemaining;
+  return copay > 0 ? Math.round(copay * 100) / 100 : 0;
+}
+
+export function getApprovalShortfallPercent(claim: Claim): number | null {
+  if (!hasSuccessfulPayerResponse(claim)) return null;
+
+  const submitted = getRequestedTotal(claim);
+  if (submitted <= 0) return null;
+
+  const approved = getApprovedTotal(claim);
+  const shortfall = submitted - approved;
+  if (shortfall <= 0) return 0;
+
+  return (shortfall / submitted) * 100;
+}
+
+export function shouldOfferDispute(claim: Claim): boolean {
+  const outcome = deriveClaimOutcome(claim);
+  if (outcome === "rejected") return true;
+  if (outcome === "partially-approved") {
+    const shortfallPercent = getApprovalShortfallPercent(claim);
+    return (
+      shortfallPercent !== null &&
+      shortfallPercent > DISPUTE_SHORTFALL_THRESHOLD_PERCENT
+    );
   }
   return false;
 }

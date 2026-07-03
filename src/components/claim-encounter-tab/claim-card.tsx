@@ -8,6 +8,7 @@ import {
   ChevronUpIcon,
   ClipboardCopyIcon,
   SendIcon,
+  WalletIcon,
   XCircleIcon,
 } from "lucide-react";
 import {
@@ -40,10 +41,10 @@ import { Separator } from "@/components/ui/separator";
 
 interface ClaimCardProps {
   claim: Claim;
-  /** Extra action buttons rendered in the card footer (before notification + toggle). */
   footerActions?: ReactNode;
-  /** Optional banner rendered above the card footer (alerts, status callouts, etc). */
   headerBanner?: ReactNode;
+  copay?: number | null;
+  approvalShortfallPercent?: number | null;
 }
 
 type ResponseStatus = {
@@ -222,7 +223,13 @@ function getTotals(response: ClaimResponse | undefined) {
   };
 }
 
-const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) => {
+const ClaimCard: FC<ClaimCardProps> = ({
+  claim,
+  footerActions,
+  headerBanner,
+  copay,
+  approvalShortfallPercent,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -230,11 +237,16 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
   const response = claim.latest_response;
   const totals = useMemo(() => getTotals(response), [response]);
 
+  const hasCopay = typeof copay === "number";
+  const copayApplies = hasCopay && copay! > 0;
+  const hasShortfall =
+    typeof approvalShortfallPercent === "number" &&
+    approvalShortfallPercent > 0;
+
   const payerClaimNumber = useMemo(() => {
     return (
-      response?.identifier?.find(
-        (id) => id.type?.coding?.[0]?.code === "CLN"
-      )?.value ?? null
+      response?.identifier?.find((id) => id.type?.coding?.[0]?.code === "CLN")
+        ?.value ?? null
     );
   }, [response]);
 
@@ -248,15 +260,12 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
   const headerAmount = useMemo(() => {
     if (totals.benefit !== null) return totals.benefit;
     if (response?.total?.length) {
-      return response.total.reduce(
-        (sum, t) => sum + (t.amount?.value ?? 0),
-        0
-      );
+      return response.total.reduce((sum, t) => sum + (t.amount?.value ?? 0), 0);
     }
     return (
       claim.item?.reduce(
         (sum, item) => sum + item.unit_price * item.quantity.value,
-        0
+        0,
       ) ?? 0
     );
   }, [totals.benefit, response, claim.item]);
@@ -295,6 +304,12 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                   </Badge>
                 )
               )}
+              {copayApplies && (
+                <Badge className="gap-1 text-xs bg-amber-100 text-amber-700 hover:bg-amber-100">
+                  <WalletIcon className="w-3 h-3" />
+                  Copay {formatCurrency(copay!)}
+                </Badge>
+              )}
               <Badge
                 className={cn("capitalize text-xs", {
                   "bg-green-200 text-green-600": claim.priority === "stat",
@@ -316,7 +331,7 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                 <span
                   className={cn(
                     "capitalize font-medium text-sm",
-                    responseStatus.colorClass
+                    responseStatus.colorClass,
                   )}
                 >
                   {responseStatus.label}
@@ -389,7 +404,9 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                         <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                           Claim Type
                         </p>
-                        <p className="mt-0.5 text-gray-800">{claimTypeDisplay}</p>
+                        <p className="mt-0.5 text-gray-800">
+                          {claimTypeDisplay}
+                        </p>
                       </div>
                     )}
                   </div>
@@ -427,7 +444,11 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                     {[
                       { label: "Submitted", value: totals.submitted },
                       { label: "Eligible", value: totals.eligible },
-                      { label: "Benefit Payable", value: totals.benefit, highlight: true },
+                      {
+                        label: "Benefit Payable",
+                        value: totals.benefit,
+                        highlight: true,
+                      },
                       { label: "Tax", value: totals.tax },
                       { label: "Hospital Incentive", value: totals.incentive },
                     ]
@@ -437,13 +458,13 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                           key={row.label}
                           className={cn(
                             "flex justify-between items-center px-4 py-2.5 text-sm",
-                            row.highlight && "bg-green-50"
+                            row.highlight && "bg-green-50",
                           )}
                         >
                           <span
                             className={cn(
                               "text-gray-600",
-                              row.highlight && "font-semibold text-gray-900"
+                              row.highlight && "font-semibold text-gray-900",
                             )}
                           >
                             {row.label}
@@ -451,7 +472,7 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                           <span
                             className={cn(
                               "font-medium text-gray-900",
-                              row.highlight && "font-bold text-green-700"
+                              row.highlight && "font-bold text-green-700",
                             )}
                           >
                             {responseStatus.label === "Queried" &&
@@ -462,6 +483,44 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                           </span>
                         </div>
                       ))}
+                    {typeof approvalShortfallPercent === "number" && (
+                      <div className="flex justify-between items-center px-4 py-2.5 text-sm">
+                        <span className="text-gray-600">
+                          Shortfall Difference (Submitted vs Approved)
+                        </span>
+                        <span
+                          className={cn(
+                            "font-medium",
+                            hasShortfall ? "text-amber-700" : "text-green-700",
+                          )}
+                        >
+                          {approvalShortfallPercent.toFixed(1)}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {hasCopay && (
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">
+                    Patient Copay
+                  </p>
+                  <div className="rounded-lg border border-gray-200 bg-white">
+                    <div className="flex justify-between items-center px-4 py-2.5 text-sm">
+                      <span className="text-gray-600">
+                        Copay (out-of-pocket)
+                      </span>
+                      <span
+                        className={cn(
+                          "font-medium",
+                          copayApplies ? "text-amber-700" : "text-green-700",
+                        )}
+                      >
+                        {formatCurrency(copay!)}
+                      </span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -501,14 +560,16 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                     <tbody>
                       {claim.item?.map((item) => {
                         const respItem = response?.item?.find(
-                          (r) => r.itemSequence === item.sequence
+                          (r) => r.itemSequence === item.sequence,
                         );
                         const parsed = respItem
                           ? parseItemAdjudication(respItem)
                           : null;
                         const claimedAmount =
                           item.unit_price * item.quantity.value;
-                        const queryNotes = parseQueryNotes(parsed?.notes ?? null);
+                        const queryNotes = parseQueryNotes(
+                          parsed?.notes ?? null,
+                        );
 
                         const totalCols = response ? 6 : 3;
                         const hasNotes = queryNotes.length > 0;
@@ -532,7 +593,8 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                               {response && (
                                 <>
                                   <td className="pt-3 pb-2 px-3 text-right text-sm text-gray-600 whitespace-nowrap">
-                                    {parsed?.eligible !== null && parsed !== null
+                                    {parsed?.eligible !== null &&
+                                    parsed !== null
                                       ? formatCurrency(parsed.eligible!)
                                       : "—"}
                                   </td>
@@ -555,7 +617,7 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                                   <Badge
                                     className={cn(
                                       "text-xs capitalize",
-                                      itemStatusBadgeClass(parsed.itemStatus)
+                                      itemStatusBadgeClass(parsed.itemStatus),
                                     )}
                                   >
                                     {parsed.itemStatus ?? "—"}
@@ -575,7 +637,7 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                                 colSpan={totalCols}
                                 className={cn(
                                   "pl-0 pr-0",
-                                  hasNotes ? "pb-3 pt-1" : "pb-0"
+                                  hasNotes ? "pb-3 pt-1" : "pb-0",
                                 )}
                               >
                                 {hasNotes && (
@@ -614,8 +676,8 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
                             claim.item?.reduce(
                               (sum, item) =>
                                 sum + item.unit_price * item.quantity.value,
-                              0
-                            )
+                              0,
+                            ),
                           )}
                         </td>
                       </tr>
@@ -678,10 +740,7 @@ const ClaimCard: FC<ClaimCardProps> = ({ claim, footerActions, headerBanner }) =
         </CollapsibleContent>
 
         <CardFooter
-          className={cn(
-            "flex flex-col gap-3 p-4 pt-4",
-            isOpen && "border-t"
-          )}
+          className={cn("flex flex-col gap-3 p-4 pt-4", isOpen && "border-t")}
         >
           {headerBanner && <div className="w-full">{headerBanner}</div>}
           <div className="flex w-full justify-between items-center gap-3">

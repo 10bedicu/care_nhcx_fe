@@ -13,6 +13,7 @@ import {
   deriveValidationOutcome,
   findLatestClaim,
   findLatestClaimWithSuccessfulResponse,
+  getWalletRemaining,
   hasValidationPurpose,
   isLatestRecord,
 } from "./flow";
@@ -202,6 +203,9 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
       (a, b) =>
         new Date(b.created_date).getTime() - new Date(a.created_date).getTime(),
     )[0];
+
+  // Remaining wallet balance drives the patient copay shown on claim cards.
+  const walletRemaining = getWalletRemaining(latestValidationForWallet);
 
   // Track the most recent CE id so we can propagate it through claim actions.
   const latestCoverageEligibilityId = manualCoverages
@@ -481,6 +485,7 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
                         }
                         latestClaimId={latestClaimId}
                         latestSuccessfulClaimId={latestSuccessfulClaimId}
+                        walletRemaining={walletRemaining}
                       />
                     );
                   })}
@@ -492,6 +497,6 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
       </div>
     </GlobalStoreProvider>
   );
-};;
+};
 
 export default NhcxEncounterTab;
