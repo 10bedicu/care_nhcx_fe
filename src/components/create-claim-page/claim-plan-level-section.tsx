@@ -44,7 +44,13 @@ import { InlineLoading } from "@/components/common/loading-spinner";
 import { Input } from "@/components/ui/input";
 import { QuestionnaireResponseCard, QuestionnaireRequirementRow } from "./claim-questionnaire-section";
 import { apis } from "@/apis";
-import { cn } from "@/lib/utils";
+import {
+  ALLOWED_UPLOAD_ACCEPT,
+  ALLOWED_UPLOAD_LABEL,
+  cn,
+  isAllowedUploadFile,
+  toast,
+} from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
 import {
   getCardSectionValidationCounts,
@@ -263,6 +269,11 @@ function PlanLevelDocCard({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!isAllowedUploadFile(file)) {
+      toast.error(`Unsupported file type. Allowed: ${ALLOWED_UPLOAD_LABEL}.`);
+      e.target.value = "";
+      return;
+    }
     form.setValue(
       `supporting_info.${mainInfoIndex}.value_file` as FieldPath<
         z.infer<typeof createClaimFormSchema>
@@ -386,7 +397,7 @@ function PlanLevelDocCard({
                     type="file"
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     onChange={handleFileChange}
-                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.json"
+                    accept={ALLOWED_UPLOAD_ACCEPT}
                   />
                 </span>
               </Button>

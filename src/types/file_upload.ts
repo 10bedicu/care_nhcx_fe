@@ -43,6 +43,12 @@ export interface CreateFileResponse {
   internal_name: string;
 }
 
+export interface InlineAttachment {
+  data: string;
+  content_type: string;
+  title?: string;
+}
+
 export interface FileUploadModel {
   id?: string;
   name?: string;

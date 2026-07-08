@@ -28,6 +28,12 @@ export const quantitySchema = z.object({
   code: codingSchema.optional(),
 });
 
+export const inlineAttachmentSchema = z.object({
+  data: z.string(),
+  content_type: z.string(),
+  title: z.string().optional(),
+});
+
 export const claimRelatedSchema = z.object({
   claim: z.string().uuid(),
   relationship: codingSchema.optional(),
@@ -97,7 +103,7 @@ export const claimSupportingInfoSchema = z
     code: codingSchema,
     timing: periodSchema.optional(),
     value_string: z.string().optional(),
-    value_attachment: z.string().uuid().optional(),
+    value_attachment: inlineAttachmentSchema.optional(),
     value_file: z.instanceof(File).optional(),
     /** Reference to an existing care/EMR record (e.g. diagnostic report,
      * questionnaire response). Converted into an ABDM FHIR document and
@@ -293,7 +299,7 @@ export const questionnaireAnswerSchema = z.object({
   value_quantity: z
     .object({ value: z.number(), unit: z.string().optional() })
     .optional(),
-  value_attachment: z.string().uuid().optional(),
+  value_attachment: inlineAttachmentSchema.optional(),
 });
 
 export type QuestionnaireResponseItemInput = {

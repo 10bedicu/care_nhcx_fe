@@ -8,7 +8,7 @@ import { Coding, Period, Quantity } from "./base";
 
 import { ChargeItem } from "./charge_item";
 import { Condition } from "./condition";
-import { FileUpload } from "./file_upload";
+import { InlineAttachment } from "./file_upload";
 import { Participant } from "./participant";
 import { Policy } from "./policy";
 import { Procedure } from "./procedure";
@@ -64,7 +64,7 @@ export type ClaimSupportingInfo = {
   code: Coding;
   timing?: Period;
   value_string?: string;
-  value_attachment?: FileUpload;
+  value_attachment?: InlineAttachment;
   value_resource?: ClaimSupportingInfoResource;
 };
 
@@ -124,7 +124,7 @@ export type ClaimQuestionnaireResponseAnswer = {
   value_uri?: string;
   value_coding?: Coding;
   value_quantity?: { value: number; unit?: string };
-  value_attachment?: string;
+  value_attachment?: InlineAttachment;
 };
 
 export type ClaimQuestionnaireResponseItem = {

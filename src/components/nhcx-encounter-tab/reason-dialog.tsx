@@ -6,7 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FC, ReactNode, useEffect, useRef, useState } from "react";
+import { FC, ReactNode, useEffect, useState } from "react";
 import {
   NdhmReasonCodeOption,
   toNdhmReasonCode,
@@ -25,13 +25,20 @@ import { Coding } from "@/types/base";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import useFileUpload from "@/hooks/use-file-upload";
+import {
+  ALLOWED_UPLOAD_ACCEPT,
+  ALLOWED_UPLOAD_LABEL,
+  isAllowedUploadFile,
+  readInlineAttachment,
+  toast,
+} from "@/lib/utils";
+import { InlineAttachment } from "@/types/file_upload";
 
 export interface ReasonDialogSubmitPayload {
   reason_code?: Coding;
   description?: string;
   amount?: { value: number; currency: string };
-  attachment?: string;
+  attachment?: InlineAttachment;
 }
 
 export interface ReasonDialogProps {
@@ -81,45 +88,45 @@ export const ReasonDialog: FC<ReasonDialogProps> = ({
   defaultAmount,
   showAttachment = false,
   attachmentLabel = "Supporting document",
-  encounterId,
 }) => {
   const [selectedCode, setSelectedCode] = useState<string>(NONE_REASON_VALUE);
   const [taskDescription, setTaskDescription] = useState("");
   const [amount, setAmount] = useState<string>("");
 
-  // Uploaded file external_id, captured from the upload hook's onUpload.
-  const attachmentIdRef = useRef<string | undefined>(undefined);
-  const [uploadedName, setUploadedName] = useState<string | undefined>();
+  const [attachment, setAttachment] = useState<InlineAttachment | undefined>();
+  const [attachedName, setAttachedName] = useState<string | undefined>();
+  const [reading, setReading] = useState(false);
 
-  const {
-    Input: FileInput,
-    Dialogues: FileDialogues,
-    handleFileUpload,
-    files,
-    fileNames,
-    setFileName,
-    removeFile,
-    clearFiles,
-    uploading,
-  } = useFileUpload({
-    type: "encounter",
-    category: "unspecified",
-    multiple: false,
-    allowAllExtensions: true,
-    onUpload: (file) => {
-      attachmentIdRef.current = file.id;
-      setUploadedName(file.name);
-    },
-  });
+  const handleAttachmentChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!isAllowedUploadFile(file)) {
+      toast.error(`Unsupported file type. Allowed: ${ALLOWED_UPLOAD_LABEL}.`);
+      e.target.value = "";
+      return;
+    }
+    setReading(true);
+    try {
+      const inline = await readInlineAttachment(file);
+      setAttachment(inline);
+      setAttachedName(file.name);
+    } catch {
+      toast.error("Failed to read file. Please try again.");
+    } finally {
+      setReading(false);
+      e.target.value = "";
+    }
+  };
 
   useEffect(() => {
     if (!open) {
       setSelectedCode(NONE_REASON_VALUE);
       setTaskDescription("");
       setAmount("");
-      attachmentIdRef.current = undefined;
-      setUploadedName(undefined);
-      clearFiles();
+      setAttachment(undefined);
+      setAttachedName(undefined);
     } else if (showAmount && defaultAmount !== undefined) {
       setAmount(defaultAmount > 0 ? String(defaultAmount) : "");
     }
@@ -128,11 +135,6 @@ export const ReasonDialog: FC<ReasonDialogProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // Upload a freshly-picked file (if any) before submitting so we have its id.
-    if (showAttachment && files.length > 0 && !attachmentIdRef.current) {
-      await handleFileUpload(encounterId ?? "");
-    }
 
     const payload: ReasonDialogSubmitPayload = {};
     if (selectedCode !== NONE_REASON_VALUE) {
@@ -151,13 +153,13 @@ export const ReasonDialog: FC<ReasonDialogProps> = ({
         payload.amount = { value, currency: "INR" };
       }
     }
-    if (showAttachment && attachmentIdRef.current) {
-      payload.attachment = attachmentIdRef.current;
+    if (showAttachment && attachment) {
+      payload.attachment = attachment;
     }
     onSubmit(payload);
   };
 
-  const busy = loading || uploading;
+  const busy = loading || reading;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -221,62 +223,47 @@ export const ReasonDialog: FC<ReasonDialogProps> = ({
           {showAttachment && (
             <div className="space-y-1.5">
               <Label>{attachmentLabel}</Label>
-              {uploadedName ? (
+              {attachedName ? (
                 <div className="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2 text-sm">
                   <span className="flex items-center gap-2 truncate">
                     <PaperclipIcon className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{uploadedName}</span>
+                    <span className="truncate">{attachedName}</span>
                   </span>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     onClick={() => {
-                      attachmentIdRef.current = undefined;
-                      setUploadedName(undefined);
-                      clearFiles();
+                      setAttachment(undefined);
+                      setAttachedName(undefined);
                     }}
                     disabled={busy}
                   >
                     <XIcon className="h-4 w-4" />
                   </Button>
                 </div>
-              ) : files.length > 0 ? (
-                <div className="flex items-center justify-between gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm">
-                  <Input
-                    value={fileNames[0] ?? files[0]?.name ?? ""}
-                    onChange={(e) => setFileName(e.target.value, 0)}
-                    placeholder="File name"
-                    className="h-8 border-0 px-0 shadow-none focus-visible:ring-0"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeFile(0)}
-                    disabled={busy}
-                  >
-                    <XIcon className="h-4 w-4" />
-                  </Button>
-                </div>
               ) : (
-                <label htmlFor="file_upload_patient">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    asChild
-                    disabled={busy}
-                  >
-                    <span className="cursor-pointer">
-                      <PaperclipIcon className="h-4 w-4" />
-                      Attach file
-                    </span>
-                  </Button>
-                </label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  asChild
+                  disabled={busy}
+                  className="relative"
+                >
+                  <span className="cursor-pointer">
+                    <PaperclipIcon className="h-4 w-4" />
+                    {reading ? "Reading…" : "Attach file"}
+                    <input
+                      type="file"
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                      onChange={handleAttachmentChange}
+                      disabled={busy}
+                      accept={ALLOWED_UPLOAD_ACCEPT}
+                    />
+                  </span>
+                </Button>
               )}
-              <FileInput />
-              {FileDialogues}
             </div>
           )}
 

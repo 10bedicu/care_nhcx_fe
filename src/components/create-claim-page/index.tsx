@@ -55,7 +55,7 @@ import { FormPrefillSkeleton } from "@/components/common/form-prefill-skeleton";
 import { PmjayBiometricVerificationGate } from "@/components/common/pmjay-biometric-verification-gate";
 import { Separator } from "../ui/separator";
 import { apis } from "@/apis";
-import { cn } from "@/lib/utils";
+import { cn, readInlineAttachment } from "@/lib/utils";
 import {
   clearResubmitIntent,
   hasResubmitIntent,
@@ -71,7 +71,6 @@ import {
 } from "./questionnaire-helpers";
 import { LamaDamaFlowController } from "./lama-dama-flow-controller";
 import { toast } from "sonner";
-import { uploadFile } from "@/lib/upload-file";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -161,7 +160,7 @@ function mapClaimSupportingInfo(
     code: s.code,
     timing: s.timing,
     value_string: s.value_string,
-    value_attachment: s.value_attachment as unknown as string,
+    value_attachment: s.value_attachment,
     value_resource: s.value_resource,
     _is_plan_level: !itemInfoSeqs.has(s.sequence),
   }));
@@ -335,7 +334,7 @@ function buildCePrefillValues(
       code: DEFAULT_SUPPORTING_INFO_CODE,
       timing: undefined,
       value_string: s.value_string,
-      value_attachment: s.value_attachment as unknown as string | undefined,
+      value_attachment: s.value_attachment,
       _is_plan_level: false,
     }));
   const validSiSeqs = new Set(supportingInfo.map((s) => s.sequence));
@@ -861,7 +860,10 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       code: DEFAULT_SUPPORTING_INFO_CODE,
       timing: undefined,
       value_string: undefined,
-      value_attachment: file.id,
+      value_resource: {
+        resource_type: "file",
+        resource_id: file.id as string,
+      },
       _is_plan_level: false,
     }));
     const informationSequences = supportingInfo.map((info) => info.sequence);
@@ -1130,28 +1132,16 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
           if (info.value_file && !info.value_attachment) {
             try {
-              const fileUploadRequest = {
-                file_type: "encounter" as const,
-                file_category: "unspecified" as const,
-                name: info.value_file.name,
-                associating_id: encounterId,
-                original_name: info.value_file.name,
-                mime_type: info.value_file.type,
-              };
-
-              const uploadResponse = await uploadFile(
-                info.value_file,
-                fileUploadRequest,
-              );
-
               updatedValues.supporting_info[i].value_attachment =
-                uploadResponse.id;
+                await readInlineAttachment(info.value_file);
 
               delete updatedValues.supporting_info[i].value_file;
             } catch (error) {
-              console.error("Error uploading file:", error);
+              console.error("Error reading attachment:", error);
               throw new Error(
-                `Failed to upload file: ${info.value_file?.name}`,
+                error instanceof Error
+                  ? error.message
+                  : `Failed to read file: ${info.value_file?.name}`,
               );
             }
           }

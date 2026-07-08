@@ -23,8 +23,7 @@ import { apis } from "@/apis";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
 import { normalizeImplantItemsFromPrefill } from "@/lib/benefit-item-validation";
 import { setResubmitIntent } from "@/lib/resubmit-intent";
-import { toast } from "@/lib/utils";
-import { uploadFile } from "@/lib/upload-file";
+import { readInlineAttachment, toast } from "@/lib/utils";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -181,7 +180,7 @@ const CreateCoverageEligibilityRequestPage: FC<
       .map((s) => ({
         sequence: s.sequence,
         value_string: s.value_string,
-        value_attachment: s.value_attachment as unknown as string | undefined,
+        value_attachment: s.value_attachment,
       }));
 
     const mappedItems = normalizeImplantItemsFromPrefill(
@@ -287,28 +286,16 @@ const CreateCoverageEligibilityRequestPage: FC<
 
           if (info.value_file && !info.value_attachment) {
             try {
-              const fileUploadRequest = {
-                file_type: "encounter" as const,
-                file_category: "unspecified" as const,
-                name: info.value_file.name,
-                associating_id: encounterId,
-                original_name: info.value_file.name,
-                mime_type: info.value_file.type,
-              };
-
-              const uploadResponse = await uploadFile(
-                info.value_file,
-                fileUploadRequest,
-              );
-
               updatedValues.supporting_info[i].value_attachment =
-                uploadResponse.id;
+                await readInlineAttachment(info.value_file);
 
               delete updatedValues.supporting_info[i].value_file;
             } catch (error) {
-              console.error("Error uploading file:", error);
+              console.error("Error reading attachment:", error);
               throw new Error(
-                `Failed to upload file: ${info.value_file?.name}`,
+                error instanceof Error
+                  ? error.message
+                  : `Failed to read file: ${info.value_file?.name}`,
               );
             }
           }

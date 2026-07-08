@@ -65,7 +65,14 @@ import {
   isQuestionnaireRequirementEffectivelyRequired,
 } from "./questionnaire-helpers";
 import { QuestionnaireResponseItemInput } from "./schema";
-import { cn } from "@/lib/utils";
+import {
+  ALLOWED_UPLOAD_ACCEPT,
+  ALLOWED_UPLOAD_LABEL,
+  cn,
+  isAllowedUploadFile,
+  readInlineAttachment,
+  toast,
+} from "@/lib/utils";
 import {
   FormCardErrorFooter,
   SectionErrorMessage,
@@ -81,7 +88,6 @@ import {
 } from "@/lib/form-card-validation";
 import { format } from "date-fns";
 import { createClaimFormSchema } from "./schema";
-import { uploadFile } from "@/lib/upload-file";
 import { useGlobalStore } from "@/hooks/use-global-store";
 import { z } from "zod";
 
@@ -273,12 +279,10 @@ function AttachmentInput({
   answerPath,
   form,
   disabled,
-  encounterId,
 }: {
   answerPath: string;
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   disabled: boolean;
-  encounterId: string;
 }) {
   const [isUploading, setIsUploading] = useState(false);
   const { field } = useController({
@@ -291,19 +295,17 @@ function AttachmentInput({
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!isAllowedUploadFile(file)) {
+      toast.error(`Unsupported file type. Allowed: ${ALLOWED_UPLOAD_LABEL}.`);
+      e.target.value = "";
+      return;
+    }
     setIsUploading(true);
     try {
-      const result = await uploadFile(file, {
-        file_type: "encounter",
-        file_category: "unspecified",
-        name: file.name,
-        associating_id: encounterId,
-        original_name: file.name,
-        mime_type: file.type,
-      });
-      field.onChange(result.id);
+      const attachment = await readInlineAttachment(file);
+      field.onChange(attachment);
     } catch {
-      // silently ignore; user can retry
+      toast.error("Failed to read file. Please try again.");
     } finally {
       setIsUploading(false);
       e.target.value = "";
@@ -313,7 +315,7 @@ function AttachmentInput({
   if (field.value) {
     return (
       <div className="flex items-center gap-2 text-sm">
-        <span className="text-green-600 font-medium">✓ File uploaded</span>
+        <span className="text-green-600 font-medium">✓ File attached</span>
         <Button
           type="button"
           variant="ghost"
@@ -339,13 +341,13 @@ function AttachmentInput({
         asChild
       >
         <span>
-          {isUploading ? "Uploading…" : "Upload file"}
+          {isUploading ? "Reading…" : "Upload file"}
           <input
             type="file"
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             onChange={handleFileChange}
             disabled={disabled || isUploading}
-            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.txt,.json"
+            accept={ALLOWED_UPLOAD_ACCEPT}
           />
         </span>
       </Button>
@@ -357,12 +359,10 @@ function QuestionnaireAnswerInput({
   fhirItem,
   answerPath,
   form,
-  encounterId,
 }: {
   fhirItem: QuestionnaireItem;
   answerPath: string;
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
-  encounterId: string;
 }) {
   const typeToValueField: Partial<Record<QuestionnaireItemType, string>> = {
     boolean: "value_boolean",
@@ -421,7 +421,7 @@ function QuestionnaireAnswerInput({
         value={(field.value as number) ?? ""}
         onChange={(e) =>
           field.onChange(
-            e.target.value === "" ? undefined : parseFloat(e.target.value)
+            e.target.value === "" ? undefined : parseFloat(e.target.value),
           )
         }
         disabled={disabled}
@@ -438,7 +438,7 @@ function QuestionnaireAnswerInput({
         value={(field.value as number) ?? ""}
         onChange={(e) =>
           field.onChange(
-            e.target.value === "" ? undefined : parseInt(e.target.value, 10)
+            e.target.value === "" ? undefined : parseInt(e.target.value, 10),
           )
         }
         disabled={disabled}
@@ -520,7 +520,6 @@ function QuestionnaireAnswerInput({
         answerPath={answerPath}
         form={form}
         disabled={disabled}
-        encounterId={encounterId}
       />
     );
   }
@@ -539,12 +538,10 @@ function RepeatingAnswerField({
   fhirItem,
   itemBasePath,
   form,
-  encounterId,
 }: {
   fhirItem: QuestionnaireItem;
   itemBasePath: string;
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
-  encounterId: string;
 }) {
   const { fields, append, remove } = useFieldArray({
     name: `${itemBasePath}.answer` as FieldArrayPath<
@@ -562,7 +559,6 @@ function RepeatingAnswerField({
               fhirItem={fhirItem}
               answerPath={`${itemBasePath}.answer.${idx}`}
               form={form}
-              encounterId={encounterId}
             />
           </div>
           {fields.length > 1 && (
@@ -683,14 +679,12 @@ function QuestionnaireItemRenderer({
             fhirItem={fhirItem}
             itemBasePath={itemBasePath}
             form={form}
-            encounterId={encounterId}
           />
         ) : (
           <QuestionnaireAnswerInput
             fhirItem={fhirItem}
             answerPath={`${itemBasePath}.answer.0`}
             form={form}
-            encounterId={encounterId}
           />
         )}
       </FormControl>

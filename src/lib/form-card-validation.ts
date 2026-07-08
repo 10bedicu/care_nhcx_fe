@@ -1,26 +1,23 @@
-/**
- * Card-level validation helpers that mirror Zod schema rules in
- * create-coverage-eligibility-request-page/schema.ts and create-claim-page/schema.ts.
- */
-
 import type { FieldValues, UseFormReturn } from "react-hook-form";
+
+import type { InlineAttachment } from "@/types/file_upload";
 
 type SupportingInfoValueFields = {
   value_string?: string;
-  value_attachment?: string;
+  value_attachment?: InlineAttachment;
   value_file?: File;
   value_resource?: { resource_type?: string; resource_id?: string };
 };
 
 export function getSupportingInfoValueError(
-  data: SupportingInfoValueFields
+  data: SupportingInfoValueFields,
 ): string | undefined {
   const hasString = !!data.value_string;
   const hasAttachment = !!data.value_attachment;
   const hasFile = !!data.value_file;
   const hasResource = !!data.value_resource?.resource_id;
   const providedCount = [hasString, hasAttachment, hasFile, hasResource].filter(
-    Boolean
+    Boolean,
   ).length;
 
   if (providedCount === 0) {
@@ -35,7 +32,7 @@ export function getSupportingInfoValueError(
 function getReferenceOrCodeXorError(
   reference: string | undefined,
   code: string | undefined,
-  label: "diagnosis" | "procedure"
+  label: "diagnosis" | "procedure",
 ): string | undefined {
   const hasReference = !!reference;
   const hasCode = !!code;
@@ -59,12 +56,12 @@ export type CeDiagnosisInput = {
 };
 
 export function getCeDiagnosisCardError(
-  diagnosis: CeDiagnosisInput
+  diagnosis: CeDiagnosisInput,
 ): string | undefined {
   return getReferenceOrCodeXorError(
     diagnosis.diagnosis_reference,
     diagnosis.diagnosis_code?.code,
-    "diagnosis"
+    "diagnosis",
   );
 }
 
@@ -75,12 +72,12 @@ export type ClaimDiagnosisInput = {
 };
 
 export function getClaimDiagnosisCardError(
-  diagnosis: ClaimDiagnosisInput
+  diagnosis: ClaimDiagnosisInput,
 ): string | undefined {
   const xorError = getReferenceOrCodeXorError(
     diagnosis.diagnosis_reference,
     diagnosis.diagnosis_code?.code,
-    "diagnosis"
+    "diagnosis",
   );
   if (xorError) return xorError;
   if (!diagnosis.type || diagnosis.type.length === 0) {
@@ -95,12 +92,12 @@ export type ClaimProcedureInput = {
 };
 
 export function getClaimProcedureCardError(
-  procedure: ClaimProcedureInput
+  procedure: ClaimProcedureInput,
 ): string | undefined {
   return getReferenceOrCodeXorError(
     procedure.procedure_reference,
     procedure.procedure_code?.code,
-    "procedure"
+    "procedure",
   );
 }
 
@@ -109,7 +106,7 @@ export type ClaimCareTeamInput = {
 };
 
 export function getClaimCareTeamCardError(
-  member: ClaimCareTeamInput
+  member: ClaimCareTeamInput,
 ): string | undefined {
   if (!member.provider) {
     return "Provider is required";
@@ -120,7 +117,7 @@ export function getClaimCareTeamCardError(
 export type CeSupportingInfoInput = SupportingInfoValueFields;
 
 export function getCeSupportingInfoCardError(
-  info: CeSupportingInfoInput
+  info: CeSupportingInfoInput,
 ): string | undefined {
   return getSupportingInfoValueError(info);
 }
@@ -131,7 +128,7 @@ export type ClaimSupportingInfoInput = SupportingInfoValueFields & {
 };
 
 export function getClaimSupportingInfoCardError(
-  info: ClaimSupportingInfoInput
+  info: ClaimSupportingInfoInput,
 ): string | undefined {
   if (!info.category?.code) {
     return "Category is required";
@@ -145,7 +142,7 @@ export function getClaimSupportingInfoCardError(
 export function syncVirtualFormError(
   onChange: (value: string | undefined) => void,
   currentValue: string | undefined,
-  nextValue: string | undefined
+  nextValue: string | undefined,
 ) {
   if (currentValue !== nextValue) {
     onChange(nextValue);
@@ -155,7 +152,7 @@ export function syncVirtualFormError(
 export function syncVirtualFormErrorFromForm<TFieldValues extends FieldValues>(
   form: Pick<UseFormReturn<TFieldValues>, "getValues" | "setValue">,
   fieldPath: string,
-  nextValue: string | undefined
+  nextValue: string | undefined,
 ) {
   const currentValue = form.getValues(fieldPath as never) as string | undefined;
   if (currentValue !== nextValue) {
@@ -168,7 +165,7 @@ export function syncVirtualFormErrorFromForm<TFieldValues extends FieldValues>(
 
 export function countCardErrors<T>(
   items: T[],
-  getError: (item: T) => string | undefined
+  getError: (item: T) => string | undefined,
 ): number {
   return items.filter((item) => !!getError(item)).length;
 }
@@ -187,7 +184,7 @@ export type ChecklistItemStatus =
   | "satisfied";
 
 export function hasSectionValidationIssue(
-  counts: SectionValidationCounts
+  counts: SectionValidationCounts,
 ): boolean {
   return counts.requiredMissing > 0 || counts.incomplete > 0;
 }
@@ -196,7 +193,7 @@ export function hasSectionValidationIssue(
 export function getCardSectionValidationCounts<T>(
   items: T[],
   getError: (item: T) => string | undefined,
-  options?: { minRequired?: number }
+  options?: { minRequired?: number },
 ): SectionValidationCounts {
   const minRequired = options?.minRequired ?? 0;
   const requiredMissing =
@@ -207,14 +204,12 @@ export function getCardSectionValidationCounts<T>(
 
 /** Checklist rows: missing = not added; incomplete = added but invalid. */
 export function getChecklistValidationCounts(
-  statuses: { status: ChecklistItemStatus; isRequired?: boolean }[]
+  statuses: { status: ChecklistItemStatus; isRequired?: boolean }[],
 ): SectionValidationCounts {
   const requiredMissing = statuses.filter(
-    (s) => s.status === "missing" && s.isRequired !== false
+    (s) => s.status === "missing" && s.isRequired !== false,
   ).length;
-  const incomplete = statuses.filter(
-    (s) => s.status === "incomplete"
-  ).length;
+  const incomplete = statuses.filter((s) => s.status === "incomplete").length;
   return { requiredMissing, incomplete };
 }
 
@@ -226,14 +221,14 @@ export function mergeValidationCounts(
       requiredMissing: acc.requiredMissing + count.requiredMissing,
       incomplete: acc.incomplete + count.incomplete,
     }),
-    { requiredMissing: 0, incomplete: 0 }
+    { requiredMissing: 0, incomplete: 0 },
   );
 }
 
 export function getSectionVirtualErrorMessage(
   counts: SectionValidationCounts,
   itemLabel: string,
-  options?: { requiredSingular?: string }
+  options?: { requiredSingular?: string },
 ): string | undefined {
   const parts: string[] = [];
   if (counts.requiredMissing > 0) {
@@ -241,13 +236,13 @@ export function getSectionVirtualErrorMessage(
       parts.push(options.requiredSingular);
     } else {
       parts.push(
-        `${counts.requiredMissing} ${itemLabel}${counts.requiredMissing === 1 ? "" : "(s)"} required`
+        `${counts.requiredMissing} ${itemLabel}${counts.requiredMissing === 1 ? "" : "(s)"} required`,
       );
     }
   }
   if (counts.incomplete > 0) {
     parts.push(
-      `${counts.incomplete} ${itemLabel}${counts.incomplete === 1 ? "" : "(es)"} must be completed`
+      `${counts.incomplete} ${itemLabel}${counts.incomplete === 1 ? "" : "(es)"} must be completed`,
     );
   }
   return parts.length > 0 ? parts.join(" • ") : undefined;
@@ -256,7 +251,7 @@ export function getSectionVirtualErrorMessage(
 export function getIncompleteCardsSectionError<T>(
   items: T[],
   getError: (item: T) => string | undefined,
-  itemLabel: string
+  itemLabel: string,
 ): string | undefined {
   const incompleteCount = countCardErrors(items, getError);
   if (incompleteCount === 0) return undefined;
@@ -266,7 +261,7 @@ export function getIncompleteCardsSectionError<T>(
 export function getMandatorySectionError<T>(
   items: T[],
   getError: (item: T) => string | undefined,
-  itemLabel: string
+  itemLabel: string,
 ): string | undefined {
   if (items.length === 0) {
     return `At least one ${itemLabel} is required`;

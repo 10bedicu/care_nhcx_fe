@@ -238,6 +238,57 @@ function useInvoiceOptions(patientId: string, encounterId?: string) {
   return { options, isLoading };
 }
 
+function useFileOptions(patientId: string, encounterId?: string) {
+  const { data: patientFiles, isLoading: patientLoading } = useQuery({
+    queryKey: ["structured-resource", "file", "patient", patientId],
+    queryFn: () =>
+      apis.file.list({
+        file_type: "patient",
+        associating_id: patientId,
+        ordering: "-created_date",
+      }),
+    enabled: !!patientId,
+    staleTime: 60 * 1000,
+  });
+
+  const { data: encounterFiles, isLoading: encounterLoading } = useQuery({
+    queryKey: ["structured-resource", "file", "encounter", encounterId],
+    queryFn: () =>
+      apis.file.list({
+        file_type: "encounter",
+        associating_id: encounterId as string,
+        ordering: "-created_date",
+      }),
+    enabled: !!encounterId,
+    staleTime: 60 * 1000,
+  });
+
+  const isLoading = patientLoading || (!!encounterId && encounterLoading);
+
+  const seen = new Set<string>();
+  const options: StructuredResourceOption[] = [];
+  const add = (files: typeof patientFiles, badge: string) => {
+    for (const file of files?.results ?? []) {
+      if (!file.id || file.is_archived || seen.has(file.id)) {
+        continue;
+      }
+      seen.add(file.id);
+      options.push(
+        buildResourceOption({
+          id: file.id,
+          primary: cleanTitle(file.name) || `File #${shortId(file.id)}`,
+          date: formatDate(file.created_date),
+          badge,
+        }),
+      );
+    }
+  };
+  add(encounterFiles, "Encounter");
+  add(patientFiles, "Patient");
+
+  return { options, isLoading };
+}
+
 export const STRUCTURED_RESOURCE_TYPES: StructuredResourceTypeDef[] = [
   {
     type: "diagnostic_report",
@@ -258,6 +309,11 @@ export const STRUCTURED_RESOURCE_TYPES: StructuredResourceTypeDef[] = [
     type: "invoice",
     label: "Invoice",
     useOptions: useInvoiceOptions,
+  },
+  {
+    type: "file",
+    label: "Files",
+    useOptions: useFileOptions,
   },
 ];
 

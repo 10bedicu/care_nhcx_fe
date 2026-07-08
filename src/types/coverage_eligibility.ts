@@ -2,7 +2,7 @@ import { Coding, Quantity } from "./base";
 
 import { ChargeItem } from "./charge_item";
 import { Condition } from "./condition";
-import { FileUpload } from "./file_upload";
+import { InlineAttachment } from "./file_upload";
 import { Participant } from "./participant";
 import { Policy } from "./policy";
 import { User } from "./user";
@@ -36,7 +36,7 @@ export type CoverageEligibilityRequestPurposeChoice =
 export type CoverageEligibilityRequestSupportingInfo = {
   sequence: number;
   value_string?: string;
-  value_attachment?: FileUpload;
+  value_attachment?: InlineAttachment;
 };
 
 export type CoverageEligibilityRequestInsurance = {

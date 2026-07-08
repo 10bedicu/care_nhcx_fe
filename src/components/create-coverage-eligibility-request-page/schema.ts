@@ -23,11 +23,17 @@ export const quantitySchema = z.object({
   code: codingSchema.optional(),
 });
 
+export const inlineAttachmentSchema = z.object({
+  data: z.string(),
+  content_type: z.string(),
+  title: z.string().optional(),
+});
+
 export const coverageEligibilityRequestSupportingInfoSchema = z
   .object({
     sequence: z.number().int().positive(),
     value_string: z.string().optional(),
-    value_attachment: z.string().uuid().optional(),
+    value_attachment: inlineAttachmentSchema.optional(),
     value_file: z.instanceof(File).optional(),
   })
   .refine(

@@ -80,12 +80,17 @@ import { InlineLoading } from "@/components/common/loading-spinner";
 import { Input } from "../ui/input";
 import { InsurancePlanSupportingInfoRequirement } from "@/types/insurance_plan";
 import { Label } from "../ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
 import { SupportingInfoValueControls } from "./supporting-info-value-controls";
 import { Textarea } from "../ui/textarea";
 import ValuesetSelect from "../common/valueset-select";
 import { apis } from "@/apis";
-import { cn } from "@/lib/utils";
+import {
+  ALLOWED_UPLOAD_ACCEPT,
+  ALLOWED_UPLOAD_LABEL,
+  cn,
+  isAllowedUploadFile,
+  toast,
+} from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
 import { LAMA_DAMA_PROCEDURE_BENEFIT_CODE } from "./lama-dama-helpers";
 import { useQuery } from "@tanstack/react-query";
@@ -878,12 +883,6 @@ export function ClaimItemSection({
     }
   };
 
-  /**
-   * Duplicate an item into a fresh, editable copy. Used to adjust the
-   * stratification or quantity of an approved (locked) item without touching
-   * the original. The copy gets a new sequence so it is treated as a new,
-   * unapproved line item; internal markers/errors are cleared.
-   */
   const duplicateItem = (index: number) => {
     const source = form.getValues(`item.${index}`);
     const allItems = form.getValues("item") ?? [];
@@ -3850,26 +3849,47 @@ function SupportingInfoFileUpload({
   mainInfoIndex: number;
 }) {
   const currentFile = form.watch(`supporting_info.${mainInfoIndex}.value_file`);
-  const attachmentId = form.watch(
+  const attachment = form.watch(
     `supporting_info.${mainInfoIndex}.value_attachment`,
   );
-
-  const { data: existingFile, isLoading: isFileLoading } = useQuery({
-    queryKey: ["file", attachmentId],
-    queryFn: () => apis.file.get(attachmentId as string),
-    enabled: !!attachmentId && !currentFile,
-  });
+  const attachmentPreviewUrl =
+    attachment?.data && attachment?.content_type
+      ? `data:${attachment.content_type};base64,${attachment.data}`
+      : undefined;
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      form.setValue(`supporting_info.${mainInfoIndex}.value_file`, file, USER_EDIT);
-      form.setValue(`supporting_info.${mainInfoIndex}.value_string`, undefined, USER_EDIT);
+    if (!file) return;
+    if (!isAllowedUploadFile(file)) {
+      toast.error(`Unsupported file type. Allowed: ${ALLOWED_UPLOAD_LABEL}.`);
+      event.target.value = "";
+      return;
     }
+    form.setValue(
+      `supporting_info.${mainInfoIndex}.value_file`,
+      file,
+      USER_EDIT,
+    );
+    form.setValue(
+      `supporting_info.${mainInfoIndex}.value_string`,
+      undefined,
+      USER_EDIT,
+    );
+    form.setValue(
+      `supporting_info.${mainInfoIndex}.value_attachment`,
+      undefined,
+      USER_EDIT,
+    );
+    event.target.value = "";
   };
 
   const handleRemoveFile = () => {
     form.setValue(`supporting_info.${mainInfoIndex}.value_file`, undefined, USER_EDIT);
+    form.setValue(
+      `supporting_info.${mainInfoIndex}.value_attachment`,
+      undefined,
+      USER_EDIT,
+    );
   };
 
   return (
@@ -3916,20 +3936,13 @@ function SupportingInfoFileUpload({
                 </div>
               )}
 
-              {!currentFile && isFileLoading && attachmentId && (
-                <Skeleton className="h-[72px] w-full rounded-lg" />
-              )}
-
-              {!currentFile && existingFile?.read_signed_url && (
+              {!currentFile && attachmentPreviewUrl && (
                 <div className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50/50">
                   <div className="flex-shrink-0">
-                    {existingFile.extension &&
-                    ["jpg", "jpeg", "png", "gif", "webp"].includes(
-                      existingFile.extension.toLowerCase(),
-                    ) ? (
+                    {attachment?.content_type?.includes("image") ? (
                       <img
-                        src={existingFile.read_signed_url}
-                        alt={existingFile.name || "attachment"}
+                        src={attachmentPreviewUrl}
+                        alt={attachment?.title || "attachment"}
                         className="h-12 w-12 rounded-md object-cover border"
                       />
                     ) : (
@@ -3940,22 +3953,28 @@ function SupportingInfoFileUpload({
                   </div>
                   <div className="flex-1 min-w-0">
                     <a
-                      href={existingFile.read_signed_url}
+                      href={attachmentPreviewUrl}
                       target="_blank"
                       rel="noreferrer"
                       className="text-sm font-medium text-primary truncate hover:underline"
                     >
-                      {existingFile.name ||
-                        `file.${existingFile.extension || "bin"}`}
+                      {attachment?.title || "Attachment"}
                     </a>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Remote attachment
-                    </p>
+                    <p className="text-xs text-gray-500 mt-0.5">Attachment</p>
                   </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleRemoveFile}
+                    className="flex-shrink-0 hover:bg-red-50 hover:text-red-600"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </Button>
                 </div>
               )}
 
-              {!currentFile && !existingFile?.read_signed_url && (
+              {!currentFile && !attachmentPreviewUrl && (
                 <div className="relative">
                   <Button
                     type="button"
@@ -3969,7 +3988,7 @@ function SupportingInfoFileUpload({
                         type="file"
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                         onChange={handleFileChange}
-                        accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json"
+                        accept={ALLOWED_UPLOAD_ACCEPT}
                       />
                     </Label>
                   </Button>
