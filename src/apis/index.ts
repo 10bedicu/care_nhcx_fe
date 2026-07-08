@@ -143,6 +143,15 @@ export const apis = {
       );
     },
 
+    walletCheck: async (id: string) => {
+      return await request<CoverageEligibilityRequest>(
+        `/api/nhcx/coverage-eligibility-request/${id}/wallet_check/`,
+        {
+          method: "POST",
+        },
+      );
+    },
+
     linkEncounter: async (id: string, encounterId: string) => {
       return await request<CoverageEligibilityRequest>(
         `/api/nhcx/coverage-eligibility-request/${id}/link_encounter/`,

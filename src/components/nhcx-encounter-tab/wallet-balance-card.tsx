@@ -9,45 +9,22 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface WalletBalanceCardProps {
   request?: CoverageEligibilityRequest;
-  facilityId: string;
-  patientId: string;
   encounterId: string;
 }
 
 export const WalletBalanceCard: FC<WalletBalanceCardProps> = ({
   request,
-  facilityId,
-  patientId,
   encounterId,
 }) => {
   const queryClient = useQueryClient();
 
   const { mutate: refreshWalletBalance, isPending: isSubmitting } = useMutation(
     {
-      mutationFn: async () => {
-        const insurance = (request?.insurance ?? []).map((ins, idx) => ({
-          sequence: ins.sequence && ins.sequence > 0 ? ins.sequence : idx + 1,
-          focal: ins.focal,
-          policy: ins.policy,
-        }));
-        if (insurance.length > 0 && !insurance.some((i) => i.focal)) {
-          insurance[0].focal = true;
-        }
-
-        const created = await apis.coverageEligibilityRequest.create({
-          status: "active",
-          priority: "normal",
-          purpose: ["validation"],
-          facility: facilityId,
-          patient: patientId,
-          encounter: encounterId,
-          supporting_info: [],
-          insurance,
-          item: [],
-        });
-        await apis.coverageEligibilityRequest.check(created.id);
-        return created;
-      },
+      // Clone the latest validation request's policy into a fresh automatic
+      // wallet check and submit it. The backend marks it is_automatic so it
+      // refreshes the balance here without adding a new timeline entry.
+      mutationFn: () =>
+        apis.coverageEligibilityRequest.walletCheck(request!.id),
       onSuccess: () => {
         toast.success("Coverage balance check submitted to payer");
         queryClient.invalidateQueries({

@@ -326,8 +326,6 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
             {latestValidationForWallet && (
               <WalletBalanceCard
                 request={latestValidationForWallet}
-                facilityId={encounter.facility.id}
-                patientId={patient.id}
                 encounterId={encounter.id}
               />
             )}
