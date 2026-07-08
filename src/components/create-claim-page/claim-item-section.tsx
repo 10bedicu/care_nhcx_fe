@@ -364,7 +364,7 @@ const PROGRAM_CODES = [
   },
 ];
 
-const SUPPORTING_INFO_CODES = [
+export const SUPPORTING_INFO_CODES = [
   {
     code: "AT",
     system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
@@ -434,20 +434,585 @@ const SUPPORTING_INFO_CODES = [
     display: "Marriage Certificate issued by the government",
   },
   {
-    code: "DCF",
-    system:
-      "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-identifier-type-code",
-    display: "Domicile Certificate",
+    code: "DCB",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Discharge card/ slip issued by Government hospitals for birth of a child",
   },
   {
-    code: "PPN",
-    system: "http://terminology.hl7.org/CodeSystem/v2-0203",
-    display: "Passport number",
+    code: "CFIG",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Certificate of Identity having photo issued by MP or MLA or MLC or Municipal Councillor or Gazetted Officer on UIDAI standard certificate format",
   },
   {
-    code: "DL",
-    system: "http://terminology.hl7.org/CodeSystem/v2-0203",
-    display: "Driver's license number",
+    code: "CFIP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Certificate of Identity having photo and relationship with HoF issued by Village Panchayat Head or Mukhiya or its equivalent authority (for rural areas)",
+  },
+  {
+    code: "CFIE",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Certificate of Identity containing Name, DOB and Photo issued by Recognized Educational Institution signed by Head of Institute on UIDAI standard certificate format",
+  },
+  {
+    code: "CFIU",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Certificate of identity containing Name, DOB and Photograph issued by Employees Provident Fund Organisation (EPFO) on UIDAI standard certificate format",
+  },
+  {
+    code: "SSLC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "SSLC Book/ Certificate",
+  },
+  {
+    code: "MRU",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Marksheet issued by any Government Board or University",
+  },
+  {
+    code: "PIC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Government Photo ID Card/ Photo Identity Card issued by PSU containing DOB",
+  },
+  {
+    code: "ESR",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Extract of School Records issued by Head of School containing Name, Date of Birth and Photograph",
+  },
+  {
+    code: "PS",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Photograph of self",
+  },
+  {
+    code: "PF",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Photograph of family",
+  },
+  {
+    code: "PD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Photograph of dead person",
+  },
+  {
+    code: "PCA",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Photograph (any other required for claims adjudication)",
+  },
+  {
+    code: "SDF",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Self signed declaration form",
+  },
+  {
+    code: "HDF",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Hospital stamped and signed hospital declaration form",
+  },
+  {
+    code: "MDF",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Any other consent form or miscellaneous declaration form",
+  },
+  {
+    code: "WS",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Self signature (wet signature) scanned copy",
+  },
+  {
+    code: "HS",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Hospital signature and stamp (scanned copy)",
+  },
+  {
+    code: "MDC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Medical Certificate",
+  },
+  {
+    code: "FB",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Final Bill",
+  },
+  {
+    code: "IB",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Interim Bill",
+  },
+  {
+    code: "ESB",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Estimate Bill",
+  },
+  {
+    code: "LIR",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Lab Investigation Report",
+  },
+  {
+    code: "RDR",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Radiology Report",
+  },
+  {
+    code: "IR",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Imaging Report with study",
+  },
+  {
+    code: "GAR",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Genetic Assessment Report",
+  },
+  {
+    code: "DRRL",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Doctor Referral letter (to specialist)",
+  },
+  {
+    code: "URL",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Upward Referral Letter (referral from HWC, SC, PHC,CHC to District Hospital)",
+  },
+  {
+    code: "DRL",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Downward Referral Letter (referral from higher facility to the original referee facility)",
+  },
+  {
+    code: "IHRL",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Inter Hospital Referral Letter",
+  },
+  {
+    code: "DRRLH",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Doctor Referral letter (to hospital)",
+  },
+  {
+    code: "DSTEL",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Doctor signed treatment extension letter",
+  },
+  {
+    code: "DSDEL",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Doctor signed discharge extension letter",
+  },
+  {
+    code: "PDRRL",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Post discharge readmission request letter",
+  },
+  {
+    code: "DRP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Doctor Prescription",
+  },
+  {
+    code: "CSN",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Consultation Summary Note",
+  },
+  {
+    code: "DPN",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Daily progress note",
+  },
+  {
+    code: "NN",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Nursing note",
+  },
+  {
+    code: "OSN",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "OT Surgery Note",
+  },
+  {
+    code: "FS",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Flowsheet",
+  },
+  {
+    code: "IMR",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "ICU monitoring reports with note",
+  },
+  {
+    code: "MDN",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Medication Diapensation Note",
+  },
+  {
+    code: "CP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "CarePlan",
+  },
+  {
+    code: "ETN",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Emergency Treatment Note",
+  },
+  {
+    code: "BMR",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Bedside monitoring report",
+  },
+  {
+    code: "PCTR",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Point of care testing report",
+  },
+  {
+    code: "FIR",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "FIR report",
+  },
+  {
+    code: "DTH",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "DischargeToHome (Discharge disposition status)",
+  },
+  {
+    code: "DTM",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "DischargetoMortuary(death disposition)",
+  },
+  {
+    code: "DTU",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "DischargeToUnknownLocation",
+  },
+  {
+    code: "DTS",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "DischargeToDifferentState",
+  },
+  {
+    code: "DTC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "DischargeToDifferentCountry",
+  },
+  {
+    code: "ADDD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Admission date -Discharge date",
+  },
+  {
+    code: "DSDE",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Discharge start-discharge end time",
+  },
+  {
+    code: "PNR",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "PatientNormalRoom (start datetime- enddatetime)",
+  },
+  {
+    code: "PER",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "PatientEmergencyRoom(start datetime-enddatetime)",
+  },
+  {
+    code: "PSP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "PatientSurgeryPerformed(startdatetime-enddatetime)",
+  },
+  {
+    code: "PIS",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "PatientICUStay (startdatetime-enddatetime)",
+  },
+  {
+    code: "PPD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "ProcedurePerformedDetail",
+  },
+  {
+    code: "PPDT",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "ProcedurePerformedDateTime",
+  },
+  {
+    code: "SRD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "ServiceRenderedDetail",
+  },
+  {
+    code: "SRDT",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "ServiceRenderedDateTime",
+  },
+  {
+    code: "IPD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "InvestigationPerformedDetail",
+  },
+  {
+    code: "IPDT",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "InvestigationPerformedDetailDateTime",
+  },
+  {
+    code: "IPE",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "InsurancePolicyExclusion",
+  },
+  {
+    code: "CPNC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "CostlyProcedureNotCoveredInPolicy",
+  },
+  {
+    code: "EMNC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "ExpensiveMedicinesNotCoveredinPackage",
+  },
+  {
+    code: "CDNC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "ConsummablesAndDisposiblesNotcoveredinPolicy",
+  },
+  {
+    code: "ED",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "EmploymentDetail",
+  },
+  {
+    code: "CIA",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Cause of Injury or Accident",
+  },
+  {
+    code: "PCAI",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Patient Condition at time of admission after injury",
+  },
+  {
+    code: "VAD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Vehicle Acident detail",
+  },
+  {
+    code: "FBD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Fire Burns detail",
+  },
+  {
+    code: "SBD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Snake Bite detail",
+  },
+  {
+    code: "ESD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Electric Shock detail",
+  },
+  {
+    code: "CPSD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Consumption of Poisonous substance detail(FIR Registered or not)",
+  },
+  {
+    code: "AHBD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Attack on human body detail (FIR Registered or not)",
+  },
+  {
+    code: "ITPP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "ImmediateTreatmentProvidedToPatientAfterAccident",
+  },
+  {
+    code: "PCDT",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "AnyPreviousClaimsDueToAccident (previous claim detail)",
+  },
+  {
+    code: "DOA",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Date of Accident or Injury",
+  },
+  {
+    code: "DHDA",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Date-Time of Hospitalization Due to Accident",
+  },
+  {
+    code: "EDT",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "EncounterDateTime",
+  },
+  {
+    code: "ET",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "EncounterType",
+  },
+  {
+    code: "RC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "ReasonCode (encounter reason)",
+  },
+  {
+    code: "EO",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "EncounterOutcome",
+  },
+  {
+    code: "CRD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Claim received date time",
+  },
+  {
+    code: "DD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "document detail (submitted with claims)",
+  },
+  {
+    code: "CNCR",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "courier number of claim reciept",
+  },
+  {
+    code: "MLC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "MLC Case (Boolean Y/N)",
+  },
+  {
+    code: "MPC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "MultiPayorClaim (Boolean Y/N)",
+  },
+  {
+    code: "PSPD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Primary and Secondary Payor Detail (in case of Multi Payor claim)",
+  },
+  {
+    code: "POSC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "PrimaryorSecondaryClaim",
+  },
+  {
+    code: "DCSPP",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Details of claim settled by primary payor (in case of secondary claims - attachment)",
+  },
+  {
+    code: "PIPC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "PMJAYInsurancePortabilityCase (Y/N) (treatment received in a different state)",
+  },
+  {
+    code: "PSD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "PrimarySHADetails (SHA/TPA detail of state where PMJAY benefeciary belongs to)",
+  },
+  {
+    code: "SSD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "SecondarySHADetails (SHA/TPA detail of state where benefeciary received treatment)",
+  },
+  {
+    code: "EI",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "EmploymentImpacted (Y/N) for long disabilities)",
+  },
+  {
+    code: "EID",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Employment impacted period (start date - end date)",
+  },
+  {
+    code: "HI",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "HospitalizedIndicator (if patient was hospitalized or not - Y/N)",
+  },
+  {
+    code: "MF",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Materials Forwarded",
+  },
+  {
+    code: "CQD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Claim query detail",
+  },
+  {
+    code: "TD",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Treatment detail",
+  },
+  {
+    code: "ARC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Additional info related to claim ( conveying additional situation and condition information.)",
+  },
+  {
+    code: "BCF",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display:
+      "Birth Certificate issued by Registrar of Birth, Municipal Corporation and other notified local government bodies like Taluk, Tehsil etc.",
+  },
+  {
+    code: "PBC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "PMJAY Beneficiary Card",
+  },
+  {
+    code: "IC",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Insurance Card",
+  },
+  {
+    code: "EMPID",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Employment ID card",
+  },
+  {
+    code: "PAL",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Preauthorization approval letter",
+  },
+  {
+    code: "CAL",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Claim approval letter",
+  },
+  {
+    code: "DCR",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Discharge Summary Report",
+  },
+  {
+    code: "DSR",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Death Summary Report",
+  },
+  {
+    code: "LAMA",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Discharge Summary with LAMA",
+  },
+  {
+    code: "DAMA",
+    system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+    display: "Discharge Summary with DAMA",
   },
 ];
 
