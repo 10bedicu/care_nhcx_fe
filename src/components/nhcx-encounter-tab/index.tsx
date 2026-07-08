@@ -488,6 +488,7 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
                           }
                           patient={patient}
                           abhaNumber={abhaNumber}
+                          isChild={flowPrerequisites.isChild}
                         />
                       );
                     }

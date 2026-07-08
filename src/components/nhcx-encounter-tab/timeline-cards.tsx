@@ -325,9 +325,12 @@ interface CoverageEligibilityTimelineCardProps extends BaseProps {
   afterCeValidationSatisfied?: boolean;
   patient?: Patient;
   abhaNumber?: AbhaNumber;
+  isChild?: boolean;
 }
 
-export const CoverageEligibilityTimelineCard: FC<CoverageEligibilityTimelineCardProps> = ({
+export const CoverageEligibilityTimelineCard: FC<
+  CoverageEligibilityTimelineCardProps
+> = ({
   request,
   encounterId,
   isCurrent,
@@ -336,6 +339,7 @@ export const CoverageEligibilityTimelineCard: FC<CoverageEligibilityTimelineCard
   afterCeValidationSatisfied = true,
   patient,
   abhaNumber,
+  isChild = false,
 }) => {
   const queryClient = useQueryClient();
   const submitMutation = useMutation({
@@ -360,10 +364,12 @@ export const CoverageEligibilityTimelineCard: FC<CoverageEligibilityTimelineCard
 
   // Demographic verification is a post-requirement once the policy validates
   // (active + has balance). A contradiction between the payer's record and the
-  // patient's record hard-stops the flow.
-  const demographicEntry = isValidation
-    ? getValidationDemographicEntry(request)
-    : undefined;
+  // patient's record hard-stops the flow. Children (≤6 years) are exempt since
+  // they are validated against their parent's PMJAY ID.
+  const demographicEntry =
+    isValidation && !isChild
+      ? getValidationDemographicEntry(request)
+      : undefined;
   const demographicChecks = demographicEntry
     ? buildDemographicChecks(demographicEntry, patient, abhaNumber)
     : [];
@@ -498,7 +504,7 @@ export const CoverageEligibilityTimelineCard: FC<CoverageEligibilityTimelineCard
       headerBanner={headerBanner}
     />
   );
-};;
+};
 
 interface ClaimTimelineCardProps extends BaseProps {
   claim: Claim;
