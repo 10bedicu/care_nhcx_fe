@@ -15,6 +15,7 @@ import {
   findLatestClaimWithSuccessfulResponse,
   getWalletRemaining,
   hasValidationPurpose,
+  isAwaitingResponse,
   isLatestRecord,
 } from "./flow";
 
@@ -63,6 +64,20 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
         encounter: encounter?.id,
       }),
     enabled: !!encounter?.id,
+    refetchInterval: (query) => {
+      const results = query.state.data?.results ?? [];
+      const latestValidation = results
+        .filter(hasValidationPurpose)
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(b.created_date).getTime() -
+            new Date(a.created_date).getTime(),
+        )[0];
+      return latestValidation && isAwaitingResponse(latestValidation)
+        ? 5000
+        : false;
+    },
   });
 
   const encounterCoverages = coverages?.results ?? [];
@@ -309,7 +324,12 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
             </div>
 
             {latestValidationForWallet && (
-              <WalletBalanceCard request={latestValidationForWallet} />
+              <WalletBalanceCard
+                request={latestValidationForWallet}
+                facilityId={encounter.facility.id}
+                patientId={patient.id}
+                encounterId={encounter.id}
+              />
             )}
 
             {showClinicalDetailsWarning && (

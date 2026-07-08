@@ -68,6 +68,15 @@ export function hasValidationPurpose(
   return request.purpose.includes("validation");
 }
 
+export function isAwaitingResponse(
+  request: CoverageEligibilityRequest
+): boolean {
+  if (request.dispatch_status === "pending") return false;
+  const response = request.latest_response;
+  if (!response) return true;
+  return response.outcome === "queued" || response.outcome === "partial";
+}
+
 export function hasAuthRequirementsPurpose(
   request: CoverageEligibilityRequest
 ): boolean {

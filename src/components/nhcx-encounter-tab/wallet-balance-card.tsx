@@ -2,14 +2,64 @@ import { RefreshCwIcon, WalletIcon } from "lucide-react";
 
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { FC } from "react";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, toast } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
+import { apis } from "@/apis";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface WalletBalanceCardProps {
   request?: CoverageEligibilityRequest;
+  facilityId: string;
+  patientId: string;
+  encounterId: string;
 }
 
-export const WalletBalanceCard: FC<WalletBalanceCardProps> = ({ request }) => {
+export const WalletBalanceCard: FC<WalletBalanceCardProps> = ({
+  request,
+  facilityId,
+  patientId,
+  encounterId,
+}) => {
+  const queryClient = useQueryClient();
+
+  const { mutate: refreshWalletBalance, isPending: isSubmitting } = useMutation(
+    {
+      mutationFn: async () => {
+        const insurance = (request?.insurance ?? []).map((ins, idx) => ({
+          sequence: ins.sequence && ins.sequence > 0 ? ins.sequence : idx + 1,
+          focal: ins.focal,
+          policy: ins.policy,
+        }));
+        if (insurance.length > 0 && !insurance.some((i) => i.focal)) {
+          insurance[0].focal = true;
+        }
+
+        const created = await apis.coverageEligibilityRequest.create({
+          status: "active",
+          priority: "normal",
+          purpose: ["validation"],
+          facility: facilityId,
+          patient: patientId,
+          encounter: encounterId,
+          supporting_info: [],
+          insurance,
+          item: [],
+        });
+        await apis.coverageEligibilityRequest.check(created.id);
+        return created;
+      },
+      onSuccess: () => {
+        toast.success("Coverage balance check submitted to payer");
+        queryClient.invalidateQueries({
+          queryKey: ["coverage-eligibility-requests", encounterId],
+        });
+      },
+      onError: (error: Error) => {
+        toast.error(error.message || "Failed to submit coverage balance check");
+      },
+    },
+  );
+
   if (!request) return null;
 
   const response = request.latest_response;
@@ -22,6 +72,9 @@ export const WalletBalanceCard: FC<WalletBalanceCardProps> = ({ request }) => {
     response.outcome === "partial";
   const isError = response?.outcome === "error";
   const hasBalance = !!primary?.balance;
+
+  const canRefresh = (request.insurance?.length ?? 0) > 0;
+  const isRefreshing = isSubmitting || isAwaiting;
 
   // Family wallet is shared: the allowed limit is per-family (take the primary
   // member's allowed) while used is summed across all members.
@@ -46,15 +99,28 @@ export const WalletBalanceCard: FC<WalletBalanceCardProps> = ({ request }) => {
           <WalletIcon className="w-5 h-5 text-blue-600" />
           <span className="font-semibold text-blue-900">Wallet Balance</span>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-blue-700">
-          {isAwaiting ? (
-            <>
-              <RefreshCwIcon className="w-3.5 h-3.5 animate-spin" />
-              <span>Refreshing…</span>
-            </>
+        <div className="flex items-center gap-3 text-xs text-blue-700">
+          {isSubmitting ? (
+            <span>Submitting…</span>
+          ) : isAwaiting ? (
+            <span>Refreshing…</span>
           ) : lastCheckedRelative ? (
             <span>Last checked {lastCheckedRelative}</span>
           ) : null}
+          <button
+            type="button"
+            onClick={() => refreshWalletBalance()}
+            disabled={!canRefresh || isRefreshing}
+            title="Run a new coverage balance check"
+            aria-label="Run a new coverage balance check"
+            className={cn(
+              "flex items-center justify-center rounded-md p-1 text-blue-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50",
+            )}
+          >
+            <RefreshCwIcon
+              className={cn("w-4 h-4", isRefreshing && "animate-spin")}
+            />
+          </button>
         </div>
       </div>
 
