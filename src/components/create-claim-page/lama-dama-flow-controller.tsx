@@ -1,5 +1,5 @@
 import { FC, useEffect, useRef, useState } from "react";
-import { UseFormReturn } from "react-hook-form";
+import { UseFormReturn, useWatch } from "react-hook-form";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { Claim, ClaimUseChoice } from "@/types/claim";
@@ -87,13 +87,12 @@ export const LamaDamaFlowController: FC<LamaDamaFlowControllerProps> = ({
     onLm100ModeApplied();
   };
 
+  const watchedItems = useWatch({ control: form.control, name: "item" });
   useEffect(() => {
     if (!isFormReady) return;
-    if (!claimHasLm100Item(prefilledClaim)) return;
-
     disableNonLm100Items(form);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFormReady, prefilledClaim]);
+  }, [isFormReady, watchedItems]);
 
   useEffect(() => {
     if (!isFormReady || didInitializeRef.current) return;
@@ -113,14 +112,7 @@ export const LamaDamaFlowController: FC<LamaDamaFlowControllerProps> = ({
 
     setDialogOpen(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    disposition,
-    encounter,
-    form,
-    isFormReady,
-    lockedUse,
-    prefilledClaim,
-  ]);
+  }, [disposition, encounter, form, isFormReady, lockedUse, prefilledClaim]);
 
   const handleConfirm = (timing: LamaDamaTreatmentTiming) => {
     setDialogOpen(false);
