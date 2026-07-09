@@ -117,37 +117,37 @@ export function buildBenefitConditionErrors(
     }
 
     if (cond.stratification_allowed) {
-      if (stratificationModifiers.length === 0) {
-        errors.push("A stratification modifier is required for this benefit");
-      } else if (
-        !cond.multiple_stratification_allowed &&
-        stratificationModifiers.length > 1
-      ) {
-        errors.push("Only one stratification is allowed");
-      } else if (
-        cond.maximum_stratification_allowed > 0 &&
-        stratificationModifiers.length > cond.maximum_stratification_allowed
-      ) {
-        errors.push(
-          `Maximum ${cond.maximum_stratification_allowed} stratification(s) allowed, ${stratificationModifiers.length} selected`
-        );
+      if (stratificationModifiers.length > 0) {
+        if (
+          !cond.multiple_stratification_allowed &&
+          stratificationModifiers.length > 1
+        ) {
+          errors.push("Only one stratification is allowed");
+        } else if (
+          cond.maximum_stratification_allowed > 0 &&
+          stratificationModifiers.length > cond.maximum_stratification_allowed
+        ) {
+          errors.push(
+            `Maximum ${cond.maximum_stratification_allowed} stratification(s) allowed, ${stratificationModifiers.length} selected`,
+          );
+        }
       }
     } else if (stratificationModifiers.length > 0) {
       errors.push("Stratification is not allowed for this benefit");
     }
 
     if (cond.implant_applicable) {
-      if (implantCount === 0) {
-        errors.push("At least one implant is required for this benefit");
-      } else if (!cond.multiple_implants_allowed && implantCount > 1) {
-        errors.push("Only one implant is allowed");
-      } else if (
-        cond.maximum_implants_allowed > 0 &&
-        implantCount > cond.maximum_implants_allowed
-      ) {
-        errors.push(
-          `Maximum ${cond.maximum_implants_allowed} implant(s) allowed, ${implantCount} selected`
-        );
+      if (implantCount > 0) {
+        if (!cond.multiple_implants_allowed && implantCount > 1) {
+          errors.push("Only one implant is allowed");
+        } else if (
+          cond.maximum_implants_allowed > 0 &&
+          implantCount > cond.maximum_implants_allowed
+        ) {
+          errors.push(
+            `Maximum ${cond.maximum_implants_allowed} implant(s) allowed, ${implantCount} selected`,
+          );
+        }
       }
     } else if (hasImplants) {
       errors.push("Implants are not applicable for this benefit");
