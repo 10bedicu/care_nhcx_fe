@@ -187,20 +187,14 @@ export const claimItemSchema = z
     _implant_parent_sequence: z.number().int().positive().optional(),
     _implant_code: z.string().optional(),
   })
-  .refine(
-    (data) => data._is_disabled || data.quantity.value > 0,
-    {
-      message: "Number must be greater than 0",
-      path: ["quantity", "value"],
-    }
-  )
-  .refine(
-    (data) => data._is_disabled || !!data.serviced_period?.start,
-    {
-      message: "Service start date is required",
-      path: ["serviced_period", "start"],
-    }
-  )
+  .refine((data) => data._is_disabled || data.quantity.value > 0, {
+    message: "Number must be greater than 0",
+    path: ["quantity", "value"],
+  })
+  .refine((data) => data._is_disabled || !!data.serviced_period?.start, {
+    message: "Service start date is required",
+    path: ["serviced_period", "start"],
+  })
   .refine(
     (data) => data._is_disabled || !data._mandatory_docs_error,
     (data) => ({
@@ -208,7 +202,7 @@ export const claimItemSchema = z
         data._mandatory_docs_error ??
         "All mandatory documents must be provided",
       path: ["_mandatory_docs_error"],
-    })
+    }),
   )
   .refine(
     (data) => data._is_disabled || !data._mandatory_questionnaires_error,
@@ -217,7 +211,7 @@ export const claimItemSchema = z
         data._mandatory_questionnaires_error ??
         "All mandatory questionnaires must be completed",
       path: ["_mandatory_questionnaires_error"],
-    })
+    }),
   )
   .refine(
     (data) => data._is_disabled || !data._mandatory_care_team_error,
@@ -226,16 +220,15 @@ export const claimItemSchema = z
         data._mandatory_care_team_error ??
         "At least one care team member is required",
       path: ["_mandatory_care_team_error"],
-    })
+    }),
   )
   .refine(
     (data) => data._is_disabled || !data._mandatory_diagnosis_error,
     (data) => ({
       message:
-        data._mandatory_diagnosis_error ??
-        "At least one diagnosis is required",
+        data._mandatory_diagnosis_error ?? "At least one diagnosis is required",
       path: ["_mandatory_diagnosis_error"],
-    })
+    }),
   )
   .refine(
     (data) => data._is_disabled || !data._mandatory_charge_items_error,
@@ -244,7 +237,7 @@ export const claimItemSchema = z
         data._mandatory_charge_items_error ??
         "At least one charge item is required",
       path: ["_mandatory_charge_items_error"],
-    })
+    }),
   )
   .refine(
     (data) => data._is_disabled || !data._mandatory_procedure_error,
@@ -253,7 +246,7 @@ export const claimItemSchema = z
         data._mandatory_procedure_error ??
         "All procedure entries must be completed",
       path: ["_mandatory_procedure_error"],
-    })
+    }),
   )
   .refine(
     (data) => data._is_disabled || !data._mandatory_supporting_info_error,
@@ -262,14 +255,23 @@ export const claimItemSchema = z
         data._mandatory_supporting_info_error ??
         "All supporting information entries must be completed",
       path: ["_mandatory_supporting_info_error"],
-    })
+    }),
   )
   .refine(
     (data) => data._is_disabled || !data._condition_errors,
     (data) => ({
       message: data._condition_errors ?? "Condition validation failed",
       path: ["_condition_errors"],
-    })
+    }),
+  )
+  .refine(
+    (data) => data._is_disabled || !data._amount_cap_error,
+    (data) => ({
+      message:
+        data._amount_cap_error ??
+        "The requested amount exceeds the allowed limit",
+      path: ["_amount_cap_error"],
+    }),
   );
 
 export const claimAccidentSchema = z.object({

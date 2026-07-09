@@ -4,6 +4,42 @@ import {
   InsurancePlanBenefitDetail,
 } from "@/types/insurance_plan";
 
+export function isUnspecifiedProcedureCode(
+  code: string | undefined | null,
+): boolean {
+  return !!code && code.toUpperCase().endsWith("U100");
+}
+
+export function isUnspecifiedProcedureOnly(
+  items: Array<{
+    product_or_service?: Coding;
+    _implant_parent_sequence?: number;
+    _is_disabled?: boolean;
+  }>,
+): boolean {
+  const active = items.filter(
+    (it) =>
+      it._implant_parent_sequence == null &&
+      !it._is_disabled &&
+      it.product_or_service?.code,
+  );
+  return (
+    active.length > 0 &&
+    active.every((it) =>
+      isUnspecifiedProcedureCode(it.product_or_service?.code),
+    )
+  );
+}
+
+export const UNSPECIFIED_PROCEDURE_MIX_ERROR =
+  "An unspecified procedure cannot be combined with other benefits. Submit the unspecified procedure on its own.";
+
+export const UNSPECIFIED_PROCEDURE_COPAY_ERROR =
+  "Copay is not allowed for an unspecified procedure. The requested amount must be within the available wallet balance.";
+
+export const UNSPECIFIED_PROCEDURE_PROCEDURE_REQUIRED_ERROR =
+  "At least one procedure is required for an unspecified procedure.";
+
 export function computeBenefitLimit(
   benefitDetail: InsurancePlanBenefitDetail,
   selectedModifierCodes: string[]
@@ -537,6 +573,21 @@ export function buildCrossItemErrors(
       for (const index of indexes) {
         addError(index, DUPLICATE_ITEM_ERROR);
       }
+    }
+  }
+
+  const activeItemIndexes: number[] = [];
+  items.forEach((item, index) => {
+    if (item._implant_parent_sequence != null) return;
+    if (!item.product_or_service?.code) return;
+    activeItemIndexes.push(index);
+  });
+  const hasUnspecified = activeItemIndexes.some((index) =>
+    isUnspecifiedProcedureCode(items[index].product_or_service?.code),
+  );
+  if (hasUnspecified && activeItemIndexes.length > 1) {
+    for (const index of activeItemIndexes) {
+      addError(index, UNSPECIFIED_PROCEDURE_MIX_ERROR);
     }
   }
 

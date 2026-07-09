@@ -2,6 +2,7 @@ import {
   CreateFileRequest,
   CreateFileResponse,
   FileUploadModel,
+  InlineAttachment,
 } from "@/types/file_upload";
 import {
   InsurancePlan,
@@ -231,7 +232,7 @@ export const apis = {
         reason_code?: Coding;
         description?: string;
         amount?: { value: number; currency: string };
-        attachment?: string;
+        attachment?: InlineAttachment;
       },
     ) => {
       return await request<Claim>(`/api/nhcx/claim/${id}/reprocess/`, {

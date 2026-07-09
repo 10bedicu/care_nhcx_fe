@@ -603,16 +603,6 @@ export function CoverageEligibilityRequestItemSection({
               </CardContent>
               {hasAnyError && (
                 <CardFooter className="rounded-b-xl px-6 py-3 border-t border-red-200 bg-red-50 flex-col items-start gap-2">
-                  {crossItemErrorsKey &&
-                    crossItemErrorsKey.split(" • ").map((err, i) => (
-                      <div
-                        key={`cross-${i}`}
-                        className="flex items-center gap-2 text-sm font-medium text-red-600"
-                      >
-                        <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
-                        {err}
-                      </div>
-                    ))}
                   {mandatoryDiagnosisError && (
                     <div className="flex items-center gap-2 text-sm font-medium text-red-600">
                       <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />

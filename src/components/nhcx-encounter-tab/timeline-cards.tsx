@@ -17,6 +17,7 @@ import {
   NDHM_CANCEL_REASON_CODES,
   NDHM_REPROCESS_REASON_CODES,
 } from "@/lib/ndhm-reason-codes";
+import { isUnspecifiedProcedureOnly } from "@/lib/benefit-item-validation";
 import {
   Popover,
   PopoverContent,
@@ -55,13 +56,13 @@ import CoverageEligibilityCard from "../coverage-encounter-tab/coverage-eligibil
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { DemographicCheck } from "./demographics";
 import { EncounterStatus } from "@/types/encounter";
+import { InlineAttachment } from "@/types/file_upload";
 import { Patient } from "@/types/patient";
 import { ReasonDialog } from "./reason-dialog";
 import { apis } from "@/apis";
 
 interface BaseProps {
   encounterId: string;
-  /** True when this card represents the latest record in the timeline. */
   isCurrent: boolean;
 }
 
@@ -97,8 +98,6 @@ function ActionButton({
     </>
   );
 
-  // A disabled link still navigates on click, so render a plain disabled button
-  // (no anchor) when the action is gated.
   let button: ReactNode;
   if (to && !disabled) {
     button = (
@@ -285,9 +284,7 @@ function buildClaimNewUrl({
 }: {
   use: "claim" | "preauthorization";
   coverageEligibilityId?: string;
-  /** Prefill source — latest claim on the encounter. Omit for a fresh pre-auth. */
   claimId?: string;
-  /** FHIR related-claim linkage — latest claim with a successful payer response. */
   relatedClaimId?: string;
 }): string {
   const params = new URLSearchParams({ use });
@@ -362,10 +359,6 @@ export const CoverageEligibilityTimelineCard: FC<
     : null;
   const response = request.latest_response;
 
-  // Demographic verification is a post-requirement once the policy validates
-  // (active + has balance). A contradiction between the payer's record and the
-  // patient's record hard-stops the flow. Children (≤6 years) are exempt since
-  // they are validated against their parent's PMJAY ID.
   const demographicEntry =
     isValidation && !isChild
       ? getValidationDemographicEntry(request)
@@ -380,7 +373,6 @@ export const CoverageEligibilityTimelineCard: FC<
   let footerActions: ReactNode = null;
   let headerBanner: ReactNode = null;
 
-  // ─── Hard-stop banner (always visible, even on historical cards) ───
   if (
     validationOutcome?.kind === "policy-inactive" ||
     validationOutcome?.kind === "no-balance"
@@ -561,7 +553,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
         reason_code?: Coding;
         description?: string;
         amount?: { value: number; currency: string };
-        attachment?: string;
+        attachment?: InlineAttachment;
       };
     }) => apis.claim.reprocess(id, body),
     onSuccess: () => {
@@ -611,9 +603,6 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   let extraMenuItems: MenuItem[] = [];
   let headerBanner: ReactNode = null;
 
-  // Add more items + Cancel are available on the latest pre-authorization card
-  // after a payer response is in. While awaiting acknowledgement, only Cancel
-  // is offered. Queried records skip Add more items; cancelled records skip Cancel.
   const preauthCancelDisabled = isEncounterDischarged(encounterStatus);
   const preauthCancelMenuItem: MenuItem | undefined =
     isCurrent && isPreauth && outcome !== "cancelled"
@@ -632,17 +621,17 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   const preauthResponseExtras: MenuItem[] = [];
   if (isCurrent && isPreauth) {
     if (outcome !== "queried") {
-      // Enhancement validation only applies when there is an approved pre-auth to
-      // enhance — signalled by `mode=enhancement`. Initial / pre-approval
-      // auth-requirements building (no successful response yet) omits it.
       const enhancementModeParam = latestSuccessfulClaimId
         ? "&mode=enhancement"
         : "";
-      preauthResponseExtras.push({
-        label: "Update Items as Enhancement",
-        icon: <PlusCircleIcon className="h-4 w-4" />,
-        to: `coverages/new?purpose=auth-requirements${enhancementModeParam}${ceQueryParam}`,
-      });
+      const isUnspecifiedOnly = isUnspecifiedProcedureOnly(claim.item ?? []);
+      if (!isUnspecifiedOnly) {
+        preauthResponseExtras.push({
+          label: "Update Items as Enhancement",
+          icon: <PlusCircleIcon className="h-4 w-4" />,
+          to: `coverages/new?purpose=auth-requirements${enhancementModeParam}${ceQueryParam}`,
+        });
+      }
       preauthResponseExtras.push({
         label: "Update Items as Resubmit",
         icon: <PlusCircleIcon className="h-4 w-4" />,
@@ -671,8 +660,6 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   );
 
   if (isCurrent && (isPreauth || isClaim)) {
-    // Cancelled state takes priority — render terminal/recovery actions
-    // regardless of dispatch_status.
     if (outcome === "cancelled") {
       if (isPreauth) {
         primaryActions = [
@@ -695,10 +682,8 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
         ];
       }
     } else if (dispatchStatus === "pending") {
-      // Created but not yet submitted to the payer.
       primaryActions = [submitAction];
     } else if (dispatchStatus === "awaiting") {
-      // Submitted; waiting for the payer.
       headerBanner = (
         <PendingResponseBanner
           message={
@@ -736,7 +721,6 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
         extraMenuItems = [...preauthResponseExtras];
       }
     } else {
-      // dispatchStatus is "partial" or "complete" — derive from the response.
       if (isPreauth) {
         if (outcome === "approved" || outcome === "partially-approved") {
           const patientDischarged = isEncounterDischarged(encounterStatus);

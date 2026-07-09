@@ -45,8 +45,12 @@ import {
   getLinkedImplantsForParent,
   getQualifierTypeByCode,
   isModifierRequired,
+  isUnspecifiedProcedureCode,
+  isUnspecifiedProcedureOnly,
   LM100_OVERLAP_ERROR,
   normalizeImplantItemsFromPrefill,
+  UNSPECIFIED_PROCEDURE_COPAY_ERROR,
+  UNSPECIFIED_PROCEDURE_PROCEDURE_REQUIRED_ERROR,
 } from "@/lib/benefit-item-validation";
 import {
   formatItemQueryReasons,
@@ -108,6 +112,7 @@ interface ClaimItemSectionProps {
   queryResponse?: ClaimResponse;
   lockApprovedItems?: boolean;
   isResubmit?: boolean;
+  walletBalance?: number | null;
 }
 
 const PROGRAM_CODES = [
@@ -1270,6 +1275,7 @@ export function ClaimItemSection({
   queryResponse,
   lockApprovedItems = false,
   isResubmit = false,
+  walletBalance = null,
 }: ClaimItemSectionProps) {
   const { fields, append, remove } = useFieldArray({
     name: "item",
@@ -1603,6 +1609,10 @@ export function ClaimItemSection({
           const amountCapError = watchedItems?.[index]?._amount_cap_error;
           const conditionErrors = watchedItems?.[index]?._condition_errors;
           const isItemDisabled = !!watchedItems?.[index]?._is_disabled;
+          const isUnspecifiedAlone =
+            isUnspecifiedProcedureCode(
+              watchedItems?.[index]?.product_or_service?.code,
+            ) && isUnspecifiedProcedureOnly(watchedItems ?? []);
           const overlapError =
             !isItemDisabled && overlappingLm100Indexes.has(index)
               ? LM100_OVERLAP_ERROR
@@ -1896,7 +1906,11 @@ export function ClaimItemSection({
                           </FormItem>
                         )}
                       />
-                      <AddProcedureSection form={form} index={index} />
+                      <AddProcedureSection
+                        form={form}
+                        index={index}
+                        requireProcedure={isUnspecifiedAlone}
+                      />
                       <FormField
                         control={form.control}
                         name={`item.${index}.care_team_sequence`}
@@ -1929,6 +1943,8 @@ export function ClaimItemSection({
                         coverageEligibilityRequest={coverageEligibilityRequest}
                         previousClaim={previousClaim}
                         isResubmit={isResubmit}
+                        isUnspecifiedAlone={isUnspecifiedAlone}
+                        walletBalance={walletBalance}
                       />
 
                       <div className="grid grid-cols-2 gap-4">
@@ -2072,12 +2088,31 @@ export function ClaimItemSection({
                                 </span>
                               </FormLabel>
                               <FormControl>
-                                <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/40 text-sm font-medium">
-                                  <span className="text-muted-foreground">
-                                    ₹
-                                  </span>
-                                  <span>{(field.value ?? 0).toFixed(2)}</span>
-                                </div>
+                                {isUnspecifiedAlone ? (
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    min={0}
+                                    value={field.value ?? ""}
+                                    onChange={(e) => {
+                                      form.setValue(
+                                        `item.${index}.unit_price`,
+                                        e.target.value
+                                          ? parseFloat(e.target.value)
+                                          : 0,
+                                        USER_EDIT,
+                                      );
+                                    }}
+                                    placeholder="Enter unit price"
+                                  />
+                                ) : (
+                                  <div className="flex items-center gap-2 px-3 py-2 border rounded-md bg-muted/40 text-sm font-medium">
+                                    <span className="text-muted-foreground">
+                                      ₹
+                                    </span>
+                                    <span>{(field.value ?? 0).toFixed(2)}</span>
+                                  </div>
+                                )}
                               </FormControl>
                               <FormMessage />
                             </FormItem>
@@ -2614,6 +2649,8 @@ function ItemValidationEffects({
   coverageEligibilityRequest,
   previousClaim,
   isResubmit = false,
+  isUnspecifiedAlone = false,
+  walletBalance = null,
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   index: number;
@@ -2621,10 +2658,14 @@ function ItemValidationEffects({
   coverageEligibilityRequest?: CoverageEligibilityRequest;
   previousClaim?: Claim;
   isResubmit?: boolean;
+  isUnspecifiedAlone?: boolean;
+  walletBalance?: number | null;
 }) {
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
   const isItemDisabled = form.watch(`item.${index}._is_disabled`);
   const quantityValue = form.watch(`item.${index}.quantity.value`);
+  const unitPrice = form.watch(`item.${index}.unit_price`);
+  const factor = form.watch(`item.${index}.factor`);
   const rawModifiers = form.watch(`item.${index}.modifier`);
   const isImplantItem = Boolean(
     form.watch(`item.${index}._implant_parent_sequence`),
@@ -2705,7 +2746,8 @@ function ItemValidationEffects({
       return;
     }
 
-    // Priority: pre-auth approved → coverage eligibility allowed → benefit
+    if (isUnspecifiedAlone) return;
+
     const derived = isResubmit
       ? (ceAllowed ?? preAuthApproved ?? benefitLimit ?? 0)
       : (preAuthApproved ?? ceAllowed ?? benefitLimit ?? 0);
@@ -2722,7 +2764,38 @@ function ItemValidationEffects({
     form,
     index,
     isItemDisabled,
+    isUnspecifiedAlone,
     productCode,
+  ]);
+
+  useEffect(() => {
+    if (isItemDisabled || !isUnspecifiedAlone) {
+      return;
+    }
+    const total =
+      (Number(unitPrice) || 0) *
+      (Number(quantityValue) || 1) *
+      (Number(factor) || 1);
+    const nextError =
+      walletBalance != null && total > walletBalance
+        ? UNSPECIFIED_PROCEDURE_COPAY_ERROR
+        : undefined;
+    const currentError = form.getValues(`item.${index}._amount_cap_error`);
+    if (currentError !== nextError) {
+      form.setValue(`item.${index}._amount_cap_error`, nextError, {
+        shouldDirty: false,
+        shouldValidate: true,
+      });
+    }
+  }, [
+    isItemDisabled,
+    isUnspecifiedAlone,
+    unitPrice,
+    quantityValue,
+    factor,
+    walletBalance,
+    form,
+    index,
   ]);
 
   useEffect(() => {
@@ -3243,9 +3316,11 @@ function AddDiagnosisSection({
 function AddProcedureSection({
   form,
   index,
+  requireProcedure = false,
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   index: number;
+  requireProcedure?: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const procedureFields = form.watch("procedure") || [];
@@ -3279,10 +3354,10 @@ function AddProcedureSection({
       );
       return;
     }
-    const nextError = getSectionVirtualErrorMessage(
-      procedureValidation,
-      "procedure",
-    );
+    const nextError =
+      requireProcedure && itemSpecificProcedures.length === 0
+        ? UNSPECIFIED_PROCEDURE_PROCEDURE_REQUIRED_ERROR
+        : getSectionVirtualErrorMessage(procedureValidation, "procedure");
     syncVirtualFormErrorFromForm(
       form,
       `item.${index}._mandatory_procedure_error`,
@@ -3295,6 +3370,7 @@ function AddProcedureSection({
     procedureValidation.incomplete,
     itemSpecificProcedures.length,
     isItemDisabled,
+    requireProcedure,
   ]);
 
   const sectionErrorMessage =
@@ -3317,10 +3393,11 @@ function AddProcedureSection({
 
     const currentSequences =
       form.getValues(`item.${index}.procedure_sequence`) || [];
-    form.setValue(`item.${index}.procedure_sequence`, [
-      ...currentSequences,
-      newSequence,
-    ], USER_EDIT);
+    form.setValue(
+      `item.${index}.procedure_sequence`,
+      [...currentSequences, newSequence],
+      USER_EDIT,
+    );
   };
 
   return (
@@ -3382,7 +3459,9 @@ function AddProcedureSection({
                               onSelect={(value) => {
                                 form.setValue(
                                   `procedure.${mainProcedureIndex}.procedure_code`,
-                                  value, USER_EDIT);
+                                  value,
+                                  USER_EDIT,
+                                );
                               }}
                             />
                           </FormControl>
@@ -3404,7 +3483,9 @@ function AddProcedureSection({
                               onChange={(value) => {
                                 form.setValue(
                                   `procedure.${mainProcedureIndex}.date`,
-                                  value ? value.toISOString() : undefined, USER_EDIT);
+                                  value ? value.toISOString() : undefined,
+                                  USER_EDIT,
+                                );
                               }}
                               placeholder="Select date and time"
                             />
@@ -3423,7 +3504,11 @@ function AddProcedureSection({
                         const updatedProcedures = currentProcedures.filter(
                           (_, i) => i !== mainProcedureIndex,
                         );
-                        form.setValue("procedure", updatedProcedures, USER_EDIT);
+                        form.setValue(
+                          "procedure",
+                          updatedProcedures,
+                          USER_EDIT,
+                        );
 
                         const items = form.getValues("item") || [];
                         items.forEach((item, itemIndex) => {
@@ -3434,7 +3519,9 @@ function AddProcedureSection({
                           );
                           form.setValue(
                             `item.${itemIndex}.procedure_sequence`,
-                            updatedSequences, USER_EDIT);
+                            updatedSequences,
+                            USER_EDIT,
+                          );
                         });
                       }}
                       className="mt-6"
@@ -3462,7 +3549,9 @@ function AddProcedureSection({
                                     .map((c) => c.code)
                                     .includes(value.code)
                                     ? field.value
-                                    : [...field.value, value], USER_EDIT);
+                                    : [...field.value, value],
+                                  USER_EDIT,
+                                );
                               }}
                             />
 
@@ -3477,7 +3566,9 @@ function AddProcedureSection({
                                         `procedure.${mainProcedureIndex}.type`,
                                         field.value.filter(
                                           (c) => c.code !== code.code,
-                                        ), USER_EDIT);
+                                        ),
+                                        USER_EDIT,
+                                      );
                                     }}
                                   />
                                 </Badge>
