@@ -4,11 +4,6 @@ import {
   InsurancePlanBenefitDetail,
 } from "@/types/insurance_plan";
 
-/**
- * Hard policy ceiling for a benefit item. Costs whose qualifiers are a subset
- * of the selected modifiers take precedence; falls back to `limits` and then
- * `max_limit_amount`. Returns null when no positive limit is configured.
- */
 export function computeBenefitLimit(
   benefitDetail: InsurancePlanBenefitDetail,
   selectedModifierCodes: string[]
@@ -54,11 +49,6 @@ function buildQualifierTypeMap(
   return map;
 }
 
-/**
- * Maps every qualifier code offered by a benefit to its qualifier type
- * (e.g. "implant", "stratification"). Returns an empty map when the benefit
- * has no costs/qualifiers.
- */
 export function getQualifierTypeByCode(
   benefitDetail: InsurancePlanBenefitDetail | undefined
 ): Map<string, BenefitCostQualifierType> {
@@ -184,10 +174,6 @@ export function findExistingImplantItemIndex(
   );
 }
 
-/**
- * When an implant is already a separate line item, remove it from parent
- * modifiers so prefilled claims/CE records do not double-represent implants.
- */
 export function stripImplantModifiersWhenLineItemExists<
   T extends ImplantLinkableItem & { modifier?: Coding[] },
 >(items: T[]): T[] {
@@ -324,10 +310,6 @@ function buildImplantLineItemFromParent<T extends ImplantPrefillItem>(
   } as T;
 }
 
-/**
- * Normalizes prefilled items so implants exist only as linked line items:
- * strips duplicate modifier entries and links orphan implant items to parents.
- */
 export function normalizeImplantItemsFromPrefill<T extends ImplantPrefillItem>(
   items: T[],
 ): T[] {
@@ -443,13 +425,9 @@ type ItemWithProduct = {
   modifier?: Coding[];
   serviced_period?: { start?: string; end?: string };
   _implant_parent_sequence?: number;
+  _is_disabled?: boolean;
 };
 
-/**
- * Composite identity of a line item: product/service + stratification
- * (modifier codes) + service period. Two items with the same key are
- * considered duplicates. Returns null when no product/service is selected yet.
- */
 export function getItemUniquenessKey(item: {
   product_or_service?: Coding;
   modifier?: Coding[];
@@ -471,12 +449,68 @@ export function getItemUniquenessKey(item: {
 export const DUPLICATE_ITEM_ERROR =
   "Duplicate item: product or service, stratification and service period must be unique. Change the stratification or service period to make it unique.";
 
+export const LM100_BENEFIT_CODE = "LM100";
+
+export const LM100_OVERLAP_ERROR =
+  "Two LM100 items cannot have overlapping service periods. Adjust the service period so it does not overlap another LM100 item.";
+
+function parsePeriodBound(value: string | undefined): number | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? null : ms;
+}
+
+function servicePeriodsOverlap(
+  a: { start?: string; end?: string } | undefined,
+  b: { start?: string; end?: string } | undefined,
+): boolean {
+  const aStart = parsePeriodBound(a?.start);
+  const bStart = parsePeriodBound(b?.start);
+
+  if (aStart === null || bStart === null) return false;
+  const aEnd = parsePeriodBound(a?.end) ?? Number.POSITIVE_INFINITY;
+  const bEnd = parsePeriodBound(b?.end) ?? Number.POSITIVE_INFINITY;
+  return aStart <= bEnd && bStart <= aEnd;
+}
+
+export function findOverlappingBenefitItemIndexes(
+  items: ItemWithProduct[],
+  benefitCode: string,
+): Set<number> {
+  const overlapping = new Set<number>();
+
+  const candidateIndexes: number[] = [];
+  items.forEach((item, index) => {
+    if (item.product_or_service?.code !== benefitCode) return;
+    if (item._is_disabled) return;
+    if (item._implant_parent_sequence != null) return;
+    candidateIndexes.push(index);
+  });
+
+  for (let i = 0; i < candidateIndexes.length; i += 1) {
+    for (let j = i + 1; j < candidateIndexes.length; j += 1) {
+      const first = candidateIndexes[i];
+      const second = candidateIndexes[j];
+      if (
+        servicePeriodsOverlap(
+          items[first].serviced_period,
+          items[second].serviced_period,
+        )
+      ) {
+        overlapping.add(first);
+        overlapping.add(second);
+      }
+    }
+  }
+
+  return overlapping;
+}
+
 export function buildCrossItemErrors(
   items: ItemWithProduct[],
   benefitDetailsByCode: Map<string, InsurancePlanBenefitDetail | undefined>,
   options?: {
     requireEnhancementAllowed?: boolean;
-    /** Item sequences prefilled from a linked CE — exempt from enhancement validation. */
     enhancementExemptSequences?: Set<number>;
   },
 ): Map<number, string[]> {
@@ -489,10 +523,6 @@ export function buildCrossItemErrors(
     }
   };
 
-  // Uniqueness is enforced on the composite key (product + stratification +
-  // service period) rather than the product code alone, so the same procedure
-  // may appear multiple times as long as its stratification / service period
-  // differs. Auto-generated implant line items are excluded.
   const keyToIndexes = new Map<string, number[]>();
   items.forEach((item, index) => {
     if (item._implant_parent_sequence != null) return;

@@ -41,9 +41,11 @@ import {
   computeBenefitLimit,
   countImplantLineItemsForParent,
   findExistingImplantItemIndex,
+  findOverlappingBenefitItemIndexes,
   getLinkedImplantsForParent,
   getQualifierTypeByCode,
   isModifierRequired,
+  LM100_OVERLAP_ERROR,
   normalizeImplantItemsFromPrefill,
 } from "@/lib/benefit-item-validation";
 import {
@@ -1474,6 +1476,35 @@ export function ClaimItemSection({
     void form.trigger("item");
   };
 
+  const addLm100Item = () => {
+    const allItems = form.getValues("item") ?? [];
+    const templateLm100 = allItems.find(
+      (it) =>
+        it.product_or_service?.code === LAMA_DAMA_PROCEDURE_BENEFIT_CODE &&
+        !it._is_disabled,
+    );
+    if (!templateLm100) return;
+    const nextSequence =
+      Math.max(0, ...allItems.map((f) => f.sequence ?? 0)) + 1;
+    append({
+      sequence: nextSequence,
+      care_team_sequence: [...(templateLm100.care_team_sequence ?? [])],
+      diagnosis_sequence: [...(templateLm100.diagnosis_sequence ?? [])],
+      procedure_sequence: [],
+      information_sequence: [],
+      category: templateLm100.category,
+      product_or_service: templateLm100.product_or_service,
+      charge_items: [],
+      modifier: [],
+      program_code: (templateLm100.program_code ?? []).map((c) => ({ ...c })),
+      serviced_period: undefined,
+      quantity: { value: 1 },
+      unit_price: 0,
+      factor: undefined,
+    });
+    void form.trigger("item");
+  };
+
   const selectedInsurances = form.watch("insurance");
   const focalPolicy =
     selectedInsurances?.find((i) => i.focal)?.policy ??
@@ -1492,6 +1523,11 @@ export function ClaimItemSection({
   const planId = planListData?.results?.[0]?.id ?? null;
   const watchedItems = form.watch("item");
   const claimUse = form.watch("use");
+
+  const overlappingLm100Indexes = findOverlappingBenefitItemIndexes(
+    watchedItems ?? [],
+    LAMA_DAMA_PROCEDURE_BENEFIT_CODE,
+  );
 
   useEffect(() => {
     const items = form.getValues("item") ?? [];
@@ -1567,6 +1603,10 @@ export function ClaimItemSection({
           const amountCapError = watchedItems?.[index]?._amount_cap_error;
           const conditionErrors = watchedItems?.[index]?._condition_errors;
           const isItemDisabled = !!watchedItems?.[index]?._is_disabled;
+          const overlapError =
+            !isItemDisabled && overlappingLm100Indexes.has(index)
+              ? LM100_OVERLAP_ERROR
+              : undefined;
           const itemSequence = watchedItems?.[index]?.sequence ?? index + 1;
           const itemQueryAdjudication = getItemResponseAdjudication(
             queryResponse,
@@ -1597,9 +1637,11 @@ export function ClaimItemSection({
               mandatoryProcedureError ||
               mandatorySupportingInfoError ||
               amountCapError ||
-              conditionErrors);
+              conditionErrors ||
+              overlapError);
           return (
             <Card
+              key={field.id}
               className={cn(
                 hasAnyError && "overflow-hidden border-red-500",
                 isItemDisabled && "opacity-60",
@@ -1764,41 +1806,11 @@ export function ClaimItemSection({
                       </div>
                     )}
                     <CardContent className="space-y-4">
-                      <FormField
-                        key={field.id}
-                        control={form.control}
-                        name={`item.${index}.category`}
-                        render={({ field }) => {
-                          const hasProduct = Boolean(
-                            form.watch(`item.${index}.product_or_service`)
-                              ?.code,
-                          );
-                          return (
-                            <FormItem className="space-y-1.5">
-                              <FormLabel>Category</FormLabel>
-                              <FormControl>
-                                <ValuesetSelect
-                                  system="system-claim-item-category"
-                                  value={field.value}
-                                  onSelect={(value) => {
-                                    form.setValue(
-                                      `item.${index}.category`,
-                                      value,
-                                      USER_EDIT,
-                                    );
-                                  }}
-                                  disabled={hasProduct}
-                                />
-                              </FormControl>
-                              {hasProduct && (
-                                <p className="text-xs text-muted-foreground">
-                                  Auto-set from selected benefit
-                                </p>
-                              )}
-                              <FormMessage />
-                            </FormItem>
-                          );
-                        }}
+                      <CategoryField
+                        form={form}
+                        index={index}
+                        planId={planId}
+                        keyId={field.id}
                       />
 
                       <FormField
@@ -2166,6 +2178,12 @@ export function ClaimItemSection({
                               {err}
                             </div>
                           ))}
+                        {overlapError && (
+                          <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                            <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                            {overlapError}
+                          </div>
+                        )}
                       </CardFooter>
                     )}
                   </>
@@ -2174,6 +2192,22 @@ export function ClaimItemSection({
             </Card>
           );
         })}
+
+        {(watchedItems ?? []).some(
+          (it) =>
+            it?.product_or_service?.code === LAMA_DAMA_PROCEDURE_BENEFIT_CODE &&
+            !it?._is_disabled,
+        ) && (
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={addLm100Item}
+          >
+            <PlusIcon className="w-5 h-5 mr-2" />
+            Add LM100
+          </Button>
+        )}
 
         <FormField
           control={form.control}
@@ -2186,6 +2220,127 @@ export function ClaimItemSection({
         />
       </div>
     </div>
+  );
+}
+
+function CategoryField({
+  form,
+  index,
+  planId,
+  keyId,
+}: {
+  form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
+  index: number;
+  planId: string | null;
+  keyId: string;
+}) {
+  const productCode = form.watch(`item.${index}.product_or_service`)?.code;
+  const hasProduct = Boolean(productCode);
+  const isLm100 = productCode === LAMA_DAMA_PROCEDURE_BENEFIT_CODE;
+
+  const { data: lm100BenefitList } = useQuery({
+    queryKey: [
+      "insurancePlanBenefit",
+      "list",
+      planId,
+      LAMA_DAMA_PROCEDURE_BENEFIT_CODE,
+    ],
+    queryFn: () =>
+      apis.insurancePlanBenefit.list({
+        insurance_plan: planId!,
+        type_code: LAMA_DAMA_PROCEDURE_BENEFIT_CODE,
+      }),
+    enabled: Boolean(planId && isLm100),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const lm100Categories = useMemo<Coding[]>(() => {
+    const seen = new Set<string>();
+    const result: Coding[] = [];
+    for (const benefit of lm100BenefitList?.results ?? []) {
+      if (!benefit.coverage_type_code || seen.has(benefit.coverage_type_code)) {
+        continue;
+      }
+      seen.add(benefit.coverage_type_code);
+      result.push({
+        system: BENEFIT_CATEGORY_SYSTEM,
+        code: benefit.coverage_type_code,
+        display: benefit.coverage_type_display,
+      });
+    }
+    return result;
+  }, [lm100BenefitList]);
+
+  return (
+    <FormField
+      key={keyId}
+      control={form.control}
+      name={`item.${index}.category`}
+      render={({ field }) => {
+        if (isLm100) {
+          return (
+            <FormItem className="space-y-1.5">
+              <FormLabel>Category</FormLabel>
+              <FormControl>
+                <Autocomplete
+                  options={lm100Categories.map((category) => ({
+                    label: category.display
+                      ? `${category.code} - ${category.display}`
+                      : category.code,
+                    value: category.code,
+                  }))}
+                  value={field.value?.code}
+                  onChange={(value) => {
+                    const selected = lm100Categories.find(
+                      (category) => category.code === value,
+                    );
+                    if (selected) {
+                      form.setValue(
+                        `item.${index}.category`,
+                        selected,
+                        USER_EDIT,
+                      );
+                    }
+                  }}
+                  placeholder={
+                    lm100Categories.length === 0
+                      ? "No categories available"
+                      : "Select a category"
+                  }
+                  noOptionsMessage="No categories available for LM100"
+                />
+              </FormControl>
+              <p className="text-xs text-muted-foreground">
+                Choose one of the coverage categories available for LM100.
+              </p>
+              <FormMessage />
+            </FormItem>
+          );
+        }
+
+        return (
+          <FormItem className="space-y-1.5">
+            <FormLabel>Category</FormLabel>
+            <FormControl>
+              <ValuesetSelect
+                system="system-claim-item-category"
+                value={field.value}
+                onSelect={(value) => {
+                  form.setValue(`item.${index}.category`, value, USER_EDIT);
+                }}
+                disabled={hasProduct}
+              />
+            </FormControl>
+            {hasProduct && (
+              <p className="text-xs text-muted-foreground">
+                Auto-set from selected benefit
+              </p>
+            )}
+            <FormMessage />
+          </FormItem>
+        );
+      }}
+    />
   );
 }
 
@@ -2586,6 +2741,18 @@ function ItemValidationEffects({
           modifiers,
           { linkedImplantCount: linkedImplantCount ?? 0 },
         );
+
+    if (!isImplantItem && productCode === LAMA_DAMA_PROCEDURE_BENEFIT_CODE) {
+      const availableStratifications = [...qualifierTypeByCode.values()].filter(
+        (type) => type === "stratification",
+      ).length;
+      const selectedStratifications = modifiers.filter(
+        (m) => qualifierTypeByCode.get(m.code) === "stratification",
+      ).length;
+      if (availableStratifications > 0 && selectedStratifications === 0) {
+        errors.push("Stratification is required for LM100");
+      }
+    }
     const nextError = errors.length > 0 ? errors.join(" • ") : undefined;
     const currentError = form.getValues(`item.${index}._condition_errors`);
 
@@ -2601,6 +2768,8 @@ function ItemValidationEffects({
     modifiers,
     linkedImplantCount,
     isImplantItem,
+    productCode,
+    qualifierTypeByCode,
     form,
     index,
     isItemDisabled,

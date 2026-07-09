@@ -7,6 +7,9 @@ import {
 
 import {
   DUPLICATE_ITEM_ERROR,
+  LM100_BENEFIT_CODE,
+  LM100_OVERLAP_ERROR,
+  findOverlappingBenefitItemIndexes,
   getItemUniquenessKey,
 } from "@/lib/benefit-item-validation";
 import { z } from "zod";
@@ -105,11 +108,7 @@ export const claimSupportingInfoSchema = z
     value_string: z.string().optional(),
     value_attachment: inlineAttachmentSchema.optional(),
     value_file: z.instanceof(File).optional(),
-    /** Reference to an existing care/EMR record (e.g. diagnostic report,
-     * questionnaire response). Converted into an ABDM FHIR document and
-     * embedded as a DocumentReference on the backend. */
     value_resource: claimSupportingInfoResourceSchema.optional(),
-    /** Internal marker: true = belongs to plan level, false/undefined = item level. Stripped before API submission. */
     _is_plan_level: z.boolean().optional(),
   })
   .refine(
@@ -184,15 +183,8 @@ export const claimItemSchema = z
     _mandatory_supporting_info_error: z.string().optional(),
     _amount_cap_error: z.string().optional(),
     _condition_errors: z.string().optional(),
-    /** Internal: item is disabled during LAMA/DAMA before/during treatment flow. */
     _is_disabled: z.boolean().optional(),
-    /**
-     * Internal marker set on auto-generated implant line items. Holds the
-     * sequence of the parent item whose implant selection generated this item.
-     * Stripped before API submission.
-     */
     _implant_parent_sequence: z.number().int().positive().optional(),
-    /** Internal: the implant code that generated this line item. */
     _implant_code: z.string().optional(),
   })
   .refine(
@@ -438,5 +430,18 @@ export const createClaimFormSchema = z
           path: ["item", index, "product_or_service"],
         });
       }
+    }
+  })
+  .superRefine((data, ctx) => {
+    const overlappingIndexes = findOverlappingBenefitItemIndexes(
+      data.item,
+      LM100_BENEFIT_CODE,
+    );
+    for (const index of overlappingIndexes) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: LM100_OVERLAP_ERROR,
+        path: ["item", index, "_overlap_error"],
+      });
     }
   });
