@@ -45,7 +45,7 @@ import {
   buildDemographicChecks,
   getValidationDemographicEntry,
 } from "./demographics";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AbhaNumber } from "@/types/abha_number";
 import { Button } from "@/components/ui/button";
@@ -559,6 +559,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
     onSuccess: () => {
       toast.success("Dispute raised successfully");
       queryClient.invalidateQueries({ queryKey: ["claims", encounterId] });
+      queryClient.invalidateQueries({ queryKey: ["tasks", claim.id] });
       setDisputeOpen(false);
     },
     onError: (error: Error) => {
@@ -590,6 +591,16 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
 
   const copay = getClaimCopay(claim, walletRemaining);
   const approvalShortfallPercent = getApprovalShortfallPercent(claim);
+
+  const { data: claimTasks } = useQuery({
+    queryKey: ["tasks", claim.id],
+    queryFn: () => apis.claim.tasks(claim.id),
+    enabled: isCurrent && isClaim,
+  });
+  const hasReprocessRequest = (claimTasks?.results ?? []).some(
+    (task) =>
+      task.use_case === "reprocess_request" && task.dispatch_status !== "error",
+  );
 
   const ceQueryParam = latestCoverageEligibilityId
     ? `&coverage_eligibility=${latestCoverageEligibilityId}`
@@ -794,6 +805,12 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
                 icon={<AlertCircleIcon className="h-4 w-4" />}
                 onClick={() => setDisputeOpen(true)}
                 variant="outline"
+                disabled={hasReprocessRequest}
+                tooltip={
+                  hasReprocessRequest
+                    ? "A reprocess request has already been raised for this claim."
+                    : undefined
+                }
               />,
             ];
           }
@@ -873,4 +890,4 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
       />
     </>
   );
-};;
+};

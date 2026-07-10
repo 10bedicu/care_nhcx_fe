@@ -3,12 +3,24 @@ import { Communication, CommunicationRequest } from "@/types/communication";
 
 import AcknowledgePaymentModal from "./acknowledge-payment-modal";
 import { Badge } from "@/components/ui/badge";
+import { ClaimResponse } from "@/types/claim";
 import CommunicationReplyModal from "./communication-reply-modal";
 import { FC } from "react";
+import {
+  AlertTriangleIcon,
+  BanIcon,
+  CheckCircle2Icon,
+  ClockIcon,
+  FileTextIcon,
+  HashIcon,
+  IndianRupeeIcon,
+  RotateCcwIcon,
+  XCircleIcon,
+} from "lucide-react";
 import { PaymentNotice } from "@/types/payment";
 import { Separator } from "@/components/ui/separator";
 import { Task } from "@/types/task";
-import { formatDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
 
 interface TaskCardProps {
   task: Task;
@@ -344,6 +356,331 @@ const PaymentNoticeResponseCard: FC<{ task: Task }> = ({ task }) => {
   );
 };
 
+type ClaimTaskVariant = "reprocess" | "cancel";
+
+const VARIANT_CONFIG: Record<
+  ClaimTaskVariant,
+  {
+    requestTitle: string;
+    responseTitle: string;
+    icon: FC<{ className?: string }>;
+    accentText: string;
+    accentBg: string;
+    accentBorder: string;
+    accentIconBg: string;
+  }
+> = {
+  reprocess: {
+    requestTitle: "Reprocess Request",
+    responseTitle: "Reprocess Response",
+    icon: RotateCcwIcon,
+    accentText: "text-amber-700",
+    accentBg: "bg-amber-50",
+    accentBorder: "border-amber-200",
+    accentIconBg: "bg-amber-100",
+  },
+  cancel: {
+    requestTitle: "Cancellation Request",
+    responseTitle: "Cancellation Response",
+    icon: BanIcon,
+    accentText: "text-rose-700",
+    accentBg: "bg-rose-50",
+    accentBorder: "border-rose-200",
+    accentIconBg: "bg-rose-100",
+  },
+};
+
+const DISPATCH_STATUS_META: Record<
+  Task["dispatch_status"],
+  { label: string; className: string; icon: FC<{ className?: string }> }
+> = {
+  pending: {
+    label: "Queued",
+    className: "bg-gray-100 text-gray-700 border-gray-200",
+    icon: ClockIcon,
+  },
+  awaiting: {
+    label: "Awaiting response",
+    className: "bg-amber-50 text-amber-700 border-amber-200",
+    icon: ClockIcon,
+  },
+  complete: {
+    label: "Delivered",
+    className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    icon: CheckCircle2Icon,
+  },
+  error: {
+    label: "Failed",
+    className: "bg-rose-50 text-rose-700 border-rose-200",
+    icon: AlertTriangleIcon,
+  },
+};
+
+const getReasonText = (task: Task): string | null =>
+  task.reason_code?.coding?.[0]?.display ||
+  task.reason_code?.text ||
+  task.reason_code?.coding?.[0]?.code ||
+  null;
+
+const getTaskInput = (task: Task, code: string) =>
+  task.input?.find((input) => input.type?.coding?.[0]?.code === code);
+
+const getAuthorName = (task: Task): string | null => {
+  const user = task.created_by;
+  if (!user) return null;
+  const name = [user.first_name, user.last_name]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  return name || user.username || null;
+};
+
+const ClaimTaskRequestCard: FC<{ task: Task; variant: ClaimTaskVariant }> = ({
+  task,
+  variant,
+}) => {
+  const config = VARIANT_CONFIG[variant];
+  const Icon = config.icon;
+
+  const reason = getReasonText(task);
+  const amount = getTaskInput(task, "amount")?.valueMoney;
+  const hasDocument = Boolean(getTaskInput(task, "document"));
+  const authorName = getAuthorName(task);
+  const dispatchMeta =
+    DISPATCH_STATUS_META[task.dispatch_status] ?? DISPATCH_STATUS_META.pending;
+  const DispatchIcon = dispatchMeta.icon;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
+          <div
+            className={cn(
+              "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg",
+              config.accentIconBg,
+            )}
+          >
+            <Icon className={cn("h-4 w-4", config.accentText)} />
+          </div>
+          <div className="min-w-0">
+            <h4 className="font-semibold text-sm leading-tight text-gray-900">
+              {config.requestTitle}
+            </h4>
+            <p className="text-xs text-gray-500 mt-0.5">Sent to payer</p>
+          </div>
+        </div>
+        <Badge
+          variant="outline"
+          className={cn(
+            "flex items-center gap-1 text-xs font-medium flex-shrink-0",
+            dispatchMeta.className,
+          )}
+        >
+          <DispatchIcon className="h-3 w-3" />
+          {dispatchMeta.label}
+        </Badge>
+      </div>
+
+      {reason && (
+        <div
+          className={cn(
+            "rounded-lg border p-3",
+            config.accentBorder,
+            config.accentBg,
+          )}
+        >
+          <p
+            className={cn(
+              "text-[11px] font-medium uppercase tracking-wide mb-1",
+              config.accentText,
+            )}
+          >
+            Reason
+          </p>
+          <p className="text-sm text-gray-800 leading-relaxed">{reason}</p>
+        </div>
+      )}
+
+      {task.description && (
+        <p className="text-sm text-gray-600 leading-relaxed">
+          {task.description}
+        </p>
+      )}
+
+      {(amount || hasDocument) && (
+        <div className="flex flex-wrap gap-2">
+          {amount && (
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700">
+              <IndianRupeeIcon className="h-3.5 w-3.5 text-gray-500" />
+              {formatCurrency(amount.value)}
+            </span>
+          )}
+          {hasDocument && (
+            <span className="inline-flex items-center gap-1.5 rounded-md border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700">
+              <FileTextIcon className="h-3.5 w-3.5 text-gray-500" />
+              Document attached
+            </span>
+          )}
+        </div>
+      )}
+
+      {task.dispatch_status === "error" && task.dispatch_error && (
+        <div className="flex items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3">
+          <AlertTriangleIcon className="h-4 w-4 flex-shrink-0 text-rose-600 mt-0.5" />
+          <p className="text-xs text-rose-700 leading-relaxed">
+            {task.dispatch_error}
+          </p>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100">
+        <span className="font-medium">
+          {authorName ? `Raised by ${authorName}` : "Provider request"}
+        </span>
+        <span>{formatDate(task.created_date)}</span>
+      </div>
+    </div>
+  );
+};
+
+const ClaimTaskResponseCard: FC<{ task: Task; variant: ClaimTaskVariant }> = ({
+  task,
+  variant,
+}) => {
+  const config = VARIANT_CONFIG[variant];
+  const Icon = config.icon;
+  const response = task.focus as ClaimResponse | undefined;
+
+  const code = task.code?.coding?.[0]?.code?.toLowerCase();
+  const decision: "approved" | "rejected" | null =
+    code === "approve" || code === "approved"
+      ? "approved"
+      : code === "reject" || code === "rejected" || code === "deny"
+        ? "rejected"
+        : null;
+
+  const disposition = response?.disposition || task.description || null;
+  const preAuthRef = response?.pre_auth_ref;
+  const totals = response?.total ?? [];
+  const errors = response?.error ?? [];
+
+  const decisionMeta =
+    decision === "approved"
+      ? {
+          label: "Approved",
+          className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+          icon: CheckCircle2Icon,
+        }
+      : decision === "rejected"
+        ? {
+            label: "Rejected",
+            className: "bg-rose-50 text-rose-700 border-rose-200",
+            icon: XCircleIcon,
+          }
+        : {
+            label: "Response received",
+            className: "bg-blue-50 text-blue-700 border-blue-200",
+            icon: CheckCircle2Icon,
+          };
+  const DecisionIcon = decisionMeta.icon;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0">
+          <div
+            className={cn(
+              "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg",
+              config.accentIconBg,
+            )}
+          >
+            <Icon className={cn("h-4 w-4", config.accentText)} />
+          </div>
+          <div className="min-w-0">
+            <h4 className="font-semibold text-sm leading-tight text-gray-900">
+              {config.responseTitle}
+            </h4>
+            <p className="text-xs text-gray-500 mt-0.5">Payer response</p>
+          </div>
+        </div>
+        <Badge
+          variant="outline"
+          className={cn(
+            "flex items-center gap-1 text-xs font-medium flex-shrink-0",
+            decisionMeta.className,
+          )}
+        >
+          <DecisionIcon className="h-3 w-3" />
+          {decisionMeta.label}
+        </Badge>
+      </div>
+
+      {disposition && (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500 mb-1">
+            Payer remarks
+          </p>
+          <p className="text-sm text-gray-800 leading-relaxed">{disposition}</p>
+        </div>
+      )}
+
+      {preAuthRef && (
+        <div className="flex items-center gap-2 text-xs text-gray-600">
+          <HashIcon className="h-3.5 w-3.5 text-gray-400" />
+          <span className="font-medium">Pre-auth ref:</span>
+          <span className="font-mono text-gray-800">{preAuthRef}</span>
+        </div>
+      )}
+
+      {totals.length > 0 && (
+        <div className="space-y-1.5">
+          {totals.map((total, index) => (
+            <div
+              key={index}
+              className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2"
+            >
+              <span className="text-xs text-gray-600">
+                {total.category?.coding?.[0]?.display ||
+                  total.category?.coding?.[0]?.code ||
+                  "Total"}
+              </span>
+              <span className="text-sm font-semibold text-gray-900">
+                {formatCurrency(total.amount?.value)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {errors.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-rose-600">
+            Errors ({errors.length})
+          </p>
+          {errors.map((error, index) => (
+            <div
+              key={index}
+              className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2"
+            >
+              <AlertTriangleIcon className="h-3.5 w-3.5 flex-shrink-0 text-rose-600 mt-0.5" />
+              <span className="text-xs text-rose-700 leading-relaxed">
+                {error.code?.coding?.[0]?.display ||
+                  error.code?.coding?.[0]?.code ||
+                  "Unknown error"}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-gray-100">
+        <span className="font-medium">Payer response</span>
+        <span>{formatDate(task.created_date)}</span>
+      </div>
+    </div>
+  );
+};
+
 const TaskCard: FC<TaskCardProps> = ({ task }) => {
   const renderTaskContent = () => {
     switch (task.use_case) {
@@ -358,6 +695,18 @@ const TaskCard: FC<TaskCardProps> = ({ task }) => {
 
       case "payment_notice_response":
         return <PaymentNoticeResponseCard task={task} />;
+
+      case "reprocess_request":
+        return <ClaimTaskRequestCard task={task} variant="reprocess" />;
+
+      case "reprocess_response":
+        return <ClaimTaskResponseCard task={task} variant="reprocess" />;
+
+      case "cancel_request":
+        return <ClaimTaskRequestCard task={task} variant="cancel" />;
+
+      case "cancel_response":
+        return <ClaimTaskResponseCard task={task} variant="cancel" />;
 
       default:
         return <DefaultTaskCard task={task} />;
