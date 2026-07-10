@@ -585,6 +585,7 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   const isPreauth = claim.use === "preauthorization";
   const isClaim = claim.use === "claim";
   const useLabel = isPreauth ? "Pre-Authorization" : "Claim";
+  const isUnspecifiedOnly = isUnspecifiedProcedureOnly(claim.item ?? []);
   const dispatchStatus = claim.dispatch_status;
 
   const copay = getClaimCopay(claim, walletRemaining);
@@ -624,7 +625,6 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
       const enhancementModeParam = latestSuccessfulClaimId
         ? "&mode=enhancement"
         : "";
-      const isUnspecifiedOnly = isUnspecifiedProcedureOnly(claim.item ?? []);
       if (!isUnspecifiedOnly) {
         preauthResponseExtras.push({
           label: "Update Items as Enhancement",
@@ -739,15 +739,19 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
             />,
           ];
           extraMenuItems = [
-            {
-              label: `Update ${useLabel}`,
-              icon: <PlusCircleIcon className="h-4 w-4" />,
-              to: buildClaimNewUrl({
-                use: "preauthorization",
-                coverageEligibilityId: latestCoverageEligibilityId,
-                ...claimRedirectParams,
-              }),
-            },
+            ...(isUnspecifiedOnly
+              ? []
+              : [
+                  {
+                    label: `Update ${useLabel}`,
+                    icon: <PlusCircleIcon className="h-4 w-4" />,
+                    to: buildClaimNewUrl({
+                      use: "preauthorization",
+                      coverageEligibilityId: latestCoverageEligibilityId,
+                      ...claimRedirectParams,
+                    }),
+                  },
+                ]),
             ...preauthResponseExtras,
           ];
         } else if (outcome === "rejected" || outcome === "queried") {
@@ -765,8 +769,6 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
           ];
           extraMenuItems = [...preauthResponseExtras];
         } else {
-          // outcome === "pending" — response not yet finalised under a
-          // "partial" dispatch. Show a wait banner, allow course-correction.
           headerBanner = (
             <PendingResponseBanner message="The payer has acknowledged the request but has not yet returned a final adjudication." />
           );

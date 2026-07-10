@@ -1613,6 +1613,17 @@ export function ClaimItemSection({
             isUnspecifiedProcedureCode(
               watchedItems?.[index]?.product_or_service?.code,
             ) && isUnspecifiedProcedureOnly(watchedItems ?? []);
+          const itemProductCode =
+            watchedItems?.[index]?.product_or_service?.code;
+          const unspecifiedPayerAmount = isResubmit
+            ? (getCeAllowedAmount(
+                coverageEligibilityRequest,
+                itemProductCode,
+              ) ?? getPreAuthApprovedAmount(previousClaim, itemProductCode))
+            : (getPreAuthApprovedAmount(previousClaim, itemProductCode) ??
+              getCeAllowedAmount(coverageEligibilityRequest, itemProductCode));
+          const isUnspecifiedManualPrice =
+            isUnspecifiedAlone && unspecifiedPayerAmount == null;
           const overlapError =
             !isItemDisabled && overlappingLm100Indexes.has(index)
               ? LM100_OVERLAP_ERROR
@@ -2088,7 +2099,7 @@ export function ClaimItemSection({
                                 </span>
                               </FormLabel>
                               <FormControl>
-                                {isUnspecifiedAlone ? (
+                                {isUnspecifiedManualPrice ? (
                                   <Input
                                     type="number"
                                     step="0.01"
@@ -2746,7 +2757,20 @@ function ItemValidationEffects({
       return;
     }
 
-    if (isUnspecifiedAlone) return;
+    if (isUnspecifiedAlone) {
+      const payerDerived = isResubmit
+        ? (ceAllowed ?? preAuthApproved)
+        : (preAuthApproved ?? ceAllowed);
+      if (payerDerived == null) return;
+      form.setValue(`item.${index}.unit_price`, payerDerived, {
+        shouldDirty: false,
+      });
+      form.setValue(`item.${index}._amount_cap_error`, undefined, {
+        shouldDirty: false,
+        shouldValidate: true,
+      });
+      return;
+    }
 
     const derived = isResubmit
       ? (ceAllowed ?? preAuthApproved ?? benefitLimit ?? 0)
@@ -2769,7 +2793,10 @@ function ItemValidationEffects({
   ]);
 
   useEffect(() => {
-    if (isItemDisabled || !isUnspecifiedAlone) {
+    const payerDerived = isResubmit
+      ? (ceAllowed ?? preAuthApproved)
+      : (preAuthApproved ?? ceAllowed);
+    if (isItemDisabled || !isUnspecifiedAlone || payerDerived != null) {
       return;
     }
     const total =
@@ -2794,6 +2821,9 @@ function ItemValidationEffects({
     quantityValue,
     factor,
     walletBalance,
+    preAuthApproved,
+    ceAllowed,
+    isResubmit,
     form,
     index,
   ]);
