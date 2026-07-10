@@ -6,11 +6,11 @@ import {
 } from "@/types/claim";
 
 import {
-  DUPLICATE_ITEM_ERROR,
   LM100_BENEFIT_CODE,
   LM100_OVERLAP_ERROR,
+  STRATIFICATION_OVERLAP_ERROR,
   findOverlappingBenefitItemIndexes,
-  getItemUniquenessKey,
+  findStratificationOverlapIndexes,
 } from "@/lib/benefit-item-validation";
 import { z } from "zod";
 
@@ -187,6 +187,7 @@ export const claimItemSchema = z
     _amount_cap_error: z.string().optional(),
     _condition_errors: z.string().optional(),
     _is_disabled: z.boolean().optional(),
+    _is_duplicate: z.boolean().optional(),
     _implant_parent_sequence: z.number().int().positive().optional(),
     _implant_code: z.string().optional(),
   })
@@ -416,25 +417,46 @@ export const createClaimFormSchema = z
     });
   })
   .superRefine((data, ctx) => {
-    // Enforce that product/service + stratification + service period is unique
-    // across items. Disabled and auto-generated implant line items are exempt.
-    const keyToIndexes = new Map<string, number[]>();
+    const now = Date.now();
     data.item.forEach((item, index) => {
       if (item._is_disabled) return;
-      if (item._implant_parent_sequence != null) return;
-      const key = getItemUniquenessKey(item);
-      if (!key) return;
-      keyToIndexes.set(key, [...(keyToIndexes.get(key) ?? []), index]);
-    });
-    for (const indexes of keyToIndexes.values()) {
-      if (indexes.length < 2) continue;
-      for (const index of indexes) {
+      const start = item.serviced_period?.start;
+      const end = item.serviced_period?.end;
+      const startMs = start ? Date.parse(start) : NaN;
+      const endMs = end ? Date.parse(end) : NaN;
+      if (
+        !Number.isNaN(startMs) &&
+        !Number.isNaN(endMs) &&
+        startMs > endMs
+      ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: DUPLICATE_ITEM_ERROR,
-          path: ["item", index, "product_or_service"],
+          message: "Service end date cannot be before the start date.",
+          path: ["item", index, "serviced_period", "end"],
+        });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Service start date cannot be after the end date.",
+          path: ["item", index, "serviced_period", "start"],
         });
       }
+      if (!Number.isNaN(endMs) && endMs > now) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Service end date cannot be in the future.",
+          path: ["item", index, "serviced_period", "end"],
+        });
+      }
+    });
+  })
+  .superRefine((data, ctx) => {
+    const overlappingIndexes = findStratificationOverlapIndexes(data.item);
+    for (const index of overlappingIndexes) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: STRATIFICATION_OVERLAP_ERROR,
+        path: ["item", index, "_duplicate_error"],
+      });
     }
   })
   .superRefine((data, ctx) => {

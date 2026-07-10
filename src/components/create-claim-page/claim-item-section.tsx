@@ -43,6 +43,7 @@ import {
   countImplantLineItemsForParent,
   findExistingImplantItemIndex,
   findOverlappingBenefitItemIndexes,
+  findStratificationOverlapIndexes,
   getLinkedImplantsForParent,
   getQualifierTypeByCode,
   isModifierRequired,
@@ -50,6 +51,7 @@ import {
   isUnspecifiedProcedureOnly,
   LM100_OVERLAP_ERROR,
   normalizeImplantItemsFromPrefill,
+  STRATIFICATION_OVERLAP_ERROR,
   UNSPECIFIED_PROCEDURE_COPAY_ERROR,
   UNSPECIFIED_PROCEDURE_PROCEDURE_REQUIRED_ERROR,
 } from "@/lib/benefit-item-validation";
@@ -1473,6 +1475,7 @@ export function ClaimItemSection({
       quantity: { ...source.quantity },
       unit_price: source.unit_price ?? 0,
       factor: source.factor,
+      _is_duplicate: true,
     });
     void form.trigger("item");
   };
@@ -1528,6 +1531,10 @@ export function ClaimItemSection({
   const overlappingLm100Indexes = findOverlappingBenefitItemIndexes(
     watchedItems ?? [],
     LAMA_DAMA_PROCEDURE_BENEFIT_CODE,
+  );
+
+  const duplicateItemIndexes = findStratificationOverlapIndexes(
+    watchedItems ?? [],
   );
 
   useEffect(() => {
@@ -1623,6 +1630,10 @@ export function ClaimItemSection({
             !isItemDisabled && overlappingLm100Indexes.has(index)
               ? LM100_OVERLAP_ERROR
               : undefined;
+          const duplicateError =
+            !isItemDisabled && duplicateItemIndexes.has(index)
+              ? STRATIFICATION_OVERLAP_ERROR
+              : undefined;
           const itemSequence = watchedItems?.[index]?.sequence ?? index + 1;
           const itemQueryAdjudication = getItemResponseAdjudication(
             queryResponse,
@@ -1644,6 +1655,11 @@ export function ClaimItemSection({
             !isImplantItem &&
             !isItemDisabled &&
             isItemApproved(itemApprovalAdjudication);
+          const originalServicedEnd = getPreviousClaimItemServicedEnd(
+            previousClaim,
+            itemSequence,
+          );
+          const allowServiceEndEdit = isApprovedItem && !originalServicedEnd;
           const hasAnyError =
             !isItemDisabled &&
             (mandatoryDocsError ||
@@ -1654,7 +1670,8 @@ export function ClaimItemSection({
               mandatorySupportingInfoError ||
               amountCapError ||
               conditionErrors ||
-              overlapError);
+              overlapError ||
+              duplicateError);
           return (
             <Card
               key={field.id}
@@ -1993,7 +2010,13 @@ export function ClaimItemSection({
                           control={form.control}
                           name={`item.${index}.serviced_period.end`}
                           render={({ field }) => (
-                            <FormItem className="space-y-1.5">
+                            <FormItem
+                              className={cn(
+                                "space-y-1.5",
+                                allowServiceEndEdit &&
+                                  "pointer-events-auto select-auto",
+                              )}
+                            >
                               <FormLabel>
                                 Service Period End
                                 {claimUse === "claim" && (
@@ -2225,6 +2248,12 @@ export function ClaimItemSection({
                           <div className="flex items-center gap-2 text-sm font-medium text-red-600">
                             <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
                             {overlapError}
+                          </div>
+                        )}
+                        {duplicateError && (
+                          <div className="flex items-center gap-2 text-sm font-medium text-red-600">
+                            <AlertCircleIcon className="h-4 w-4 flex-shrink-0 text-red-600" />
+                            {duplicateError}
                           </div>
                         )}
                       </CardFooter>
@@ -2593,6 +2622,17 @@ function ModifierField({
   );
 }
 
+function getPreviousClaimItemServicedEnd(
+  previousClaim: Claim | undefined,
+  sequence: number | undefined,
+): string | undefined {
+  if (sequence == null) return undefined;
+  const matched = (previousClaim?.item ?? []).find(
+    (it) => it.sequence === sequence,
+  );
+  return matched?.serviced_period?.end;
+}
+
 function getCeAllowedAmount(
   coverageEligibilityRequest: CoverageEligibilityRequest | undefined,
   productCode: string | undefined,
@@ -2655,6 +2695,7 @@ function ItemValidationEffects({
 }) {
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
   const isItemDisabled = form.watch(`item.${index}._is_disabled`);
+  const isDuplicateItem = form.watch(`item.${index}._is_duplicate`);
   const quantityValue = form.watch(`item.${index}.quantity.value`);
   const unitPrice = form.watch(`item.${index}.unit_price`);
   const factor = form.watch(`item.${index}.factor`);
@@ -2685,7 +2726,6 @@ function ItemValidationEffects({
     );
   }, [rawAllItems, currentSequence, isImplantItem]);
 
-  // Loads benefit (same query key as ModifierField → cached, no extra request)
   const { data: benefitDetail } = useQuery({
     queryKey: ["insurancePlanBenefit", "lookup", planId, productCode],
     queryFn: () =>
@@ -2714,7 +2754,6 @@ function ItemValidationEffects({
     return computeBenefitLimit(benefitDetail, modifierCodesForLimit);
   }, [benefitDetail, modifierCodesForLimit]);
 
-  // Payer-driven amounts, in priority order for deriving the unit price.
   const ceAllowed = useMemo(
     () => getCeAllowedAmount(coverageEligibilityRequest, productCode),
     [coverageEligibilityRequest, productCode],
@@ -2753,9 +2792,11 @@ function ItemValidationEffects({
       return;
     }
 
-    const derived = isResubmit
-      ? (ceAllowed ?? preAuthApproved ?? benefitLimit ?? 0)
-      : (preAuthApproved ?? ceAllowed ?? benefitLimit ?? 0);
+    const derived = isDuplicateItem
+      ? (benefitLimit ?? 0)
+      : isResubmit
+        ? (ceAllowed ?? preAuthApproved ?? benefitLimit ?? 0)
+        : (preAuthApproved ?? ceAllowed ?? benefitLimit ?? 0);
     form.setValue(`item.${index}.unit_price`, derived, { shouldDirty: false });
     form.setValue(`item.${index}._amount_cap_error`, undefined, {
       shouldDirty: false,
@@ -2766,6 +2807,7 @@ function ItemValidationEffects({
     ceAllowed,
     benefitLimit,
     isResubmit,
+    isDuplicateItem,
     form,
     index,
     isItemDisabled,
@@ -2898,6 +2940,7 @@ function ItemAmountReferences({
 }) {
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
   const itemSequence = form.watch(`item.${index}.sequence`);
+  const isDuplicateItem = form.watch(`item.${index}._is_duplicate`);
   const rawModifiers = form.watch(`item.${index}.modifier`);
   const isImplantItem = Boolean(
     form.watch(`item.${index}._implant_parent_sequence`),
@@ -2956,6 +2999,34 @@ function ItemAmountReferences({
   );
 
   const refs: Array<{ label: string; value: number; applied?: boolean }> = [];
+
+  if (isDuplicateItem) {
+    if (benefitLimit == null) return null;
+    return (
+      <div className="rounded-md border bg-muted/30 p-3 space-y-1.5">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          Amount references
+        </p>
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-foreground font-medium">
+              Benefit limit
+              <Badge
+                variant="secondary"
+                className="ml-2 text-[10px] px-1.5 py-0"
+              >
+                Applied
+              </Badge>
+            </span>
+            <span className="font-medium text-foreground">
+              ₹{benefitLimit.toFixed(2)}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const appliedSource = isResubmit
     ? ceAllowed != null
       ? "ce"

@@ -490,6 +490,9 @@ export const LM100_BENEFIT_CODE = "LM100";
 export const LM100_OVERLAP_ERROR =
   "Two LM100 items cannot have overlapping service periods. Adjust the service period so it does not overlap another LM100 item.";
 
+export const STRATIFICATION_OVERLAP_ERROR =
+  "Stratified items for the same product or service cannot have overlapping service periods. Adjust the service period so it does not overlap another stratified item.";
+
 function parsePeriodBound(value: string | undefined): number | null {
   if (!value) return null;
   const ms = Date.parse(value);
@@ -507,6 +510,55 @@ function servicePeriodsOverlap(
   const aEnd = parsePeriodBound(a?.end) ?? Number.POSITIVE_INFINITY;
   const bEnd = parsePeriodBound(b?.end) ?? Number.POSITIVE_INFINITY;
   return aStart <= bEnd && bStart <= aEnd;
+}
+
+function getStratificationKey(item: { modifier?: Coding[] }): string {
+  return (item.modifier ?? [])
+    .map((m) => m.code)
+    .filter(Boolean)
+    .sort()
+    .join(",");
+}
+
+function hasStratification(item: { modifier?: Coding[] }): boolean {
+  return getStratificationKey(item).length > 0;
+}
+
+export function findStratificationOverlapIndexes(
+  items: ItemWithProduct[],
+): Set<number> {
+  const overlapping = new Set<number>();
+
+  const groups = new Map<string, number[]>();
+  items.forEach((item, index) => {
+    if (item._is_disabled) return;
+    if (item._implant_parent_sequence != null) return;
+    if (!hasStratification(item)) return;
+    const code = item.product_or_service?.code;
+    if (!code) return;
+    if (code === LM100_BENEFIT_CODE) return;
+    groups.set(code, [...(groups.get(code) ?? []), index]);
+  });
+
+  for (const indexes of groups.values()) {
+    for (let i = 0; i < indexes.length; i += 1) {
+      for (let j = i + 1; j < indexes.length; j += 1) {
+        const first = indexes[i];
+        const second = indexes[j];
+        if (
+          servicePeriodsOverlap(
+            items[first].serviced_period,
+            items[second].serviced_period,
+          )
+        ) {
+          overlapping.add(first);
+          overlapping.add(second);
+        }
+      }
+    }
+  }
+
+  return overlapping;
 }
 
 export function findOverlappingBenefitItemIndexes(

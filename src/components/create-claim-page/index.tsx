@@ -1163,6 +1163,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             "_implant_parent_sequence",
             "_implant_code",
             "_is_disabled",
+            "_is_duplicate",
             "_mandatory_docs_error",
             "_mandatory_questionnaires_error",
             "_mandatory_care_team_error",
