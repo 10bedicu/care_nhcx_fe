@@ -105,11 +105,6 @@ function ClaimEncounterStoreSync({
   return null;
 }
 
-/**
- * Publishes whether the claim total exceeds the patient's available wallet
- * balance into the global store, so the questionnaire sections can force the
- * patient payment consent questionnaire to be mandatory.
- */
 function ClaimWalletStoreSync({
   totalExceedsWallet,
 }: {
@@ -163,6 +158,7 @@ function mapClaimSupportingInfo(
     value_attachment: s.value_attachment,
     value_resource: s.value_resource,
     _is_plan_level: !itemInfoSeqs.has(s.sequence),
+    _locked: true,
   }));
 }
 
@@ -215,8 +211,7 @@ function mapClaimToFormValues(
         ? {
             ...r,
             relationship: r.relationship ?? DEFAULT_RELATED_RELATIONSHIP,
-            reference:
-              r.reference || claim.latest_response?.pre_auth_ref || "",
+            reference: r.reference || claim.latest_response?.pre_auth_ref || "",
           }
         : r,
     ),
@@ -246,13 +241,16 @@ function mapClaimToFormValues(
     item: mapClaimItems(claim, encounterPeriod),
     accident: claim.accident ?? undefined,
     payment: undefined,
-    questionnaire_responses: (claim.questionnaire_responses ?? []).map((qr) => ({
-      sequence: qr.sequence,
-      questionnaire: qr.questionnaire,
-      category: qr.category,
-      code: qr.code,
-      item: qr.item,
-    })),
+    questionnaire_responses: (claim.questionnaire_responses ?? []).map(
+      (qr) => ({
+        sequence: qr.sequence,
+        questionnaire: qr.questionnaire,
+        category: qr.category,
+        code: qr.code,
+        item: qr.item,
+        _locked: true,
+      }),
+    ),
   };
 
   return applyEncounterPrefill(
@@ -479,6 +477,7 @@ function overlayClaimOnCePrefill(
           category: qr.category,
           code: qr.code,
           item: qr.item,
+          _locked: true,
         }),
       ),
       related: (ceValues.related || []).map((r) =>
@@ -534,8 +533,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     [queryParams?.claim],
   );
 
-  // Guided flows pass `coverage_eligibility` and/or `claim` query params.
-  // `related` only wires FHIR related-claim linkage — it does not drive prefill.
   const isGuidedFlow = !!(coverageEligibilityId || prefilledClaimId);
 
   const form = useForm<z.infer<typeof createClaimFormSchema>>({
@@ -609,9 +606,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     enabled: !!relatedClaimId,
   });
 
-  // Consents captured against the prefill source (the pre-authorization) across
-  // every cycle. Used to prefill the final cyclical claim with one supporting-
-  // info entry per cycle encounter.
   const { data: cycleConsents, isFetched: cycleConsentsFetched } = useQuery({
     queryKey: ["claim-consents", "by-claim", prefilledClaimId],
     queryFn: () =>
@@ -626,7 +620,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     enabled: !!coverageEligibilityId,
   });
 
-  // CE:validation latest — used to enforce total wallet balance cap
   const { data: ceValidation } = useQuery({
     queryKey: [
       "coverage-eligibility-request",
@@ -645,11 +638,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
 
   const didPrefillEncounterRef = useRef(false);
   const didPrefillGuidedRef = useRef(false);
-  // Bumped whenever the form is bulk-prefilled (CE:AR or previous-claim).
-  // Used as a `key` on dynamic-array sections so their `useFieldArray` hooks
-  // are forced to re-read from the fresh form state — works around the known
-  // case where `form.reset`/`setValue` do not always propagate to nested
-  // field arrays in react-hook-form v7.
   const [prefillNonce, setPrefillNonce] = useState(0);
 
   const { data: encounterDiagnoses, isFetched: encounterDiagnosesFetched } =
@@ -700,8 +688,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
               ordering: "-created_date",
             });
 
-        // Exclude already-settled items so the same charge item is not claimed
-        // twice across the multiple final claims a single pre-auth can spawn.
         return (res.results || []).filter(
           (item) =>
             item.status !== ChargeItemStatus.paid &&
@@ -819,10 +805,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     }
   }, [encounter, form]);
 
-  // Only used when the form is not seeded from either a previous claim or a
-  // coverage-eligibility request. New items are now expected to flow through
-  // CE:AR; this branch is preserved as a defensive fallback so the form is not
-  // empty if the user navigates here directly.
   useEffect(() => {
     if (isGuidedFlow) return;
     if (didPrefillEncounterRef.current) return;
@@ -954,8 +936,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       if (!prefilledClaimId) return;
       if (!prefilledClaimFetched) return;
       if (!prefilledClaim) return;
-      // Wait for the cycle consents so the final cyclical claim can be prefilled
-      // with every cycle's encounter as supporting information.
       if (!cycleConsentsFetched) return;
 
       didPrefillGuidedRef.current = true;
@@ -1040,9 +1020,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     name: "item",
   });
 
-  // Total claim amount is the sum of each line item's total (unit price ×
-  // quantity × factor). It intentionally does not use the pre-auth / claim
-  // approved amount directly.
   const totalClaimAmount = useMemo(() => {
     return (watchedItemsForTotal ?? []).reduce((sum, item) => {
       if (item._is_disabled) return sum;
@@ -1054,10 +1031,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
   const totalExceedsWallet =
     validationBalance !== null && totalClaimAmount > validationBalance;
 
-  // The patient payment consent questionnaire (106329) is forced mandatory when
-  // the total exceeds the wallet balance. Once it has been added, the excess is
-  // considered acknowledged and no longer hard-blocks submission — completeness
-  // of the questionnaire is then enforced by the questionnaire sections.
   const paymentConsentProvided = useMemo(
     () =>
       (watchedQuestionnaireResponses ?? []).some((qr) =>
@@ -1148,9 +1121,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         }
       }
 
-      // Recompute globally unique sequences for questionnaire_responses so
-      // they never collide with supporting_info sequences, then update each
-      // item's information_sequence to use the new values.
       if (updatedValues.questionnaire_responses?.length) {
         const maxSupportingInfoSeq = Math.max(
           0,
@@ -1214,8 +1184,6 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
         });
       }
 
-      // Link the claim to the encounter's account so all cycles of a cyclical
-      // procedure remain grouped and payment routing prefers this account.
       if (encounterAccount?.id) {
         updatedValues.account = encounterAccount.id;
       }
@@ -1244,18 +1212,15 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     return outcome === "approved" || outcome === "partially-approved";
   }, [submitMode, formUse, prefilledClaim]);
 
-  // A resubmission is only possible when there is a prior submission of the
-  // same use to resubmit against (a same-use related claim). First pre-auth /
-  // first claim submissions always follow the auto-derived flow (12 / 15).
   const canManuallyResubmit = !!relatedClaim && relatedClaim.use === formUse;
 
-  // When the user arrived via "Update Items as Resubmit", default the submit
-  // action to Resubmit (they can still switch back via the dropdown).
   useEffect(() => {
     if (canManuallyResubmit && hasResubmitIntent(encounterId)) {
       setSubmitMode("resubmit");
     }
   }, [canManuallyResubmit, encounterId]);
+
+  const isResubmit = canManuallyResubmit && submitMode === "resubmit";
 
   const isFormPrefillLoading = useMemo(() => {
     if (hasBulkPrefill) {
@@ -1420,12 +1385,14 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                     form={form}
                     coverageEligibilityRequest={coverageEligibilityRequest}
                     claimUse={formUse}
+                    isResubmit={isResubmit}
                   />
                   <Separator />
                   <PlanLevelQuestionnairesSection
                     form={form}
                     coverageEligibilityRequest={coverageEligibilityRequest}
                     claimUse={formUse}
+                    isResubmit={isResubmit}
                   />
                   <Separator />
                   <ClaimItemSection
@@ -1437,9 +1404,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
                       showPayerQuery ? relatedClaimResponse : undefined
                     }
                     lockApprovedItems={lockApprovedItems}
-                    isResubmit={
-                      canManuallyResubmit && submitMode === "resubmit"
-                    }
+                    isResubmit={isResubmit}
                     walletBalance={validationBalance}
                   />
                   <Separator />
@@ -1583,7 +1548,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       </div>
     </GlobalStoreProvider>
   );
-};;;;;
+};
 
 function WalletBalanceSummary({
   totalAmount,

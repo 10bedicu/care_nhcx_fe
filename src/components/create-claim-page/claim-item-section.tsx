@@ -7,6 +7,7 @@ import {
   CircleMinusIcon,
   CopyIcon,
   InfoIcon,
+  LockIcon,
   MessageCircleQuestionIcon,
   PaperclipIcon,
   PlusIcon,
@@ -102,7 +103,6 @@ import { LAMA_DAMA_PROCEDURE_BENEFIT_CODE } from "./lama-dama-helpers";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 
-/** Marks user-driven updates so prefilled claim forms enable submit. */
 const USER_EDIT = { shouldDirty: true, shouldValidate: true } as const;
 
 interface ClaimItemSectionProps {
@@ -1282,11 +1282,6 @@ export function ClaimItemSection({
     control: form.control,
   });
 
-  /**
-   * Remove an item and clean up any entries (supporting_info, questionnaire_responses,
-   * care_team, diagnosis, procedure) whose sequences are exclusively referenced by
-   * the removed item and not shared with any remaining item.
-   */
   const removeItemWithCleanup = (index: number) => {
     const removedItem = form.getValues(`item.${index}`);
     const allItems = form.getValues("item");
@@ -1938,6 +1933,7 @@ export function ClaimItemSection({
                         planId={planId}
                         coverageEligibilityRequest={coverageEligibilityRequest}
                         claimUse={claimUse}
+                        isResubmit={isResubmit}
                       />
                       <AddQuestionnaireSection
                         form={form}
@@ -1945,6 +1941,7 @@ export function ClaimItemSection({
                         planId={planId}
                         coverageEligibilityRequest={coverageEligibilityRequest}
                         claimUse={claimUse}
+                        isResubmit={isResubmit}
                       />
 
                       <ItemValidationEffects
@@ -2596,11 +2593,6 @@ function ModifierField({
   );
 }
 
-/**
- * Looks up the CE:AR (auth-requirements) response and returns the payer's
- * `allowed_amount` for the given procedure code. Reference-only: exceeding it
- * surfaces a warning but does not block submit.
- */
 function getCeAllowedAmount(
   coverageEligibilityRequest: CoverageEligibilityRequest | undefined,
   productCode: string | undefined,
@@ -2615,17 +2607,6 @@ function getCeAllowedAmount(
   return matched?.allowed_amount?.value ?? null;
 }
 
-/**
- * Looks up the pre-auth response adjudication for the given product code and
- * returns the payer-approved amount. Reference-only.
- *
- * The response items reference the *previous claim's* item sequence, which may
- * not line up with the current form item's sequence (items can be removed or
- * reordered between submissions – e.g. a procedure dropped in a resubmitted
- * CE:AR). Matching on the sequence directly would therefore associate the wrong
- * approved amount, so we map each response item back to its product code via the
- * previous claim's items and match on that instead.
- */
 function getPreAuthApprovedAmount(
   previousClaim: Claim | undefined,
   productCode: string | undefined,
@@ -2900,11 +2881,6 @@ function ItemTotalAmount({
   );
 }
 
-/**
- * Inline panel rendered below the unit price field. Shows the amount sources
- * (pre-auth approved, coverage eligibility allowed, benefit limit) and marks
- * the one applied to the item's unit price.
- */
 function ItemAmountReferences({
   form,
   index,
@@ -2980,9 +2956,6 @@ function ItemAmountReferences({
   );
 
   const refs: Array<{ label: string; value: number; applied?: boolean }> = [];
-  // The applied amount follows the derivation priority used to fill the unit
-  // price: pre-auth approved → coverage eligibility allowed → benefit limit. On
-  // resubmit the coverage eligibility allowed amount takes precedence.
   const appliedSource = isResubmit
     ? ceAllowed != null
       ? "ce"
@@ -3701,10 +3674,6 @@ function AddCareTeamSection({
   const users = usersResponse?.results || [];
 
   const addNewCareTeamMember = () => {
-    // Read the current care team directly from the form store (always
-    // up-to-date) instead of relying on useFieldArray's local snapshot, which
-    // can be stale when multiple AddCareTeamSection instances are mounted for
-    // different items and would cause duplicate sequence numbers.
     const currentCareTeam = form.getValues("care_team") || [];
     const newSequence =
       Math.max(0, ...currentCareTeam.map((m) => m.sequence)) + 1;
@@ -3715,14 +3684,19 @@ function AddCareTeamSection({
       role: undefined,
     };
 
-    form.setValue("care_team", [...currentCareTeam, newCareTeamMember], USER_EDIT);
+    form.setValue(
+      "care_team",
+      [...currentCareTeam, newCareTeamMember],
+      USER_EDIT,
+    );
 
     const currentSequences =
       form.getValues(`item.${index}.care_team_sequence`) || [];
-    form.setValue(`item.${index}.care_team_sequence`, [
-      ...currentSequences,
-      newSequence,
-    ], USER_EDIT);
+    form.setValue(
+      `item.${index}.care_team_sequence`,
+      [...currentSequences, newSequence],
+      USER_EDIT,
+    );
   };
 
   return (
@@ -3922,19 +3896,14 @@ function AddSupportingInfoSection({
   planId,
   coverageEligibilityRequest,
   claimUse,
+  isResubmit,
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   index: number;
   planId: string | null;
-  /**
-   * When provided alongside `claimUse === "preauthorization"`, the IPB benefit
-   * requirements are filtered down to the strict intersection with the CE
-   * response's required documents for this item's procedure code. For
-   * `claimUse === "claim"` (or when no CE request is available) all benefit
-   * requirements are shown unfiltered.
-   */
   coverageEligibilityRequest?: CoverageEligibilityRequest;
   claimUse: ClaimUseChoice | undefined;
+  isResubmit?: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const didAutoExpandRef = useRef(false);
@@ -4163,36 +4132,38 @@ function AddSupportingInfoSection({
           ...currentQRSeqs,
         ) + 1;
 
-      // Update information_sequence BEFORE appending to supporting_info so that
-      // any intermediate render already sees the new sequence as item-linked
-      // (preventing it from flashing as plan-level).
       const currentSequences =
         form.getValues(`item.${index}.information_sequence`) || [];
-      form.setValue(`item.${index}.information_sequence`, [
-        ...currentSequences,
-        newSequence,
-      ], USER_EDIT);
+      form.setValue(
+        `item.${index}.information_sequence`,
+        [...currentSequences, newSequence],
+        USER_EDIT,
+      );
 
-      form.setValue("supporting_info", [
-        ...currentSupportingInfo,
-        {
-          sequence: newSequence,
-          category: {
-            system: req.category.coding?.[0]?.system ?? "",
-            code: req.category_code,
-            display: req.category.text ?? req.category.coding?.[0]?.display,
+      form.setValue(
+        "supporting_info",
+        [
+          ...currentSupportingInfo,
+          {
+            sequence: newSequence,
+            category: {
+              system: req.category.coding?.[0]?.system ?? "",
+              code: req.category_code,
+              display: req.category.text ?? req.category.coding?.[0]?.display,
+            },
+            code: {
+              system: req.code.coding?.[0]?.system ?? "",
+              code: req.code_code,
+              display: req.code.text ?? req.code.coding?.[0]?.display,
+            },
+            timing: undefined,
+            value_string: undefined,
+            value_attachment: undefined,
+            _is_plan_level: false,
           },
-          code: {
-            system: req.code.coding?.[0]?.system ?? "",
-            code: req.code_code,
-            display: req.code.text ?? req.code.coding?.[0]?.display,
-          },
-          timing: undefined,
-          value_string: undefined,
-          value_attachment: undefined,
-          _is_plan_level: false,
-        },
-      ], USER_EDIT);
+        ],
+        USER_EDIT,
+      );
     }
     if (!isExpanded) setIsExpanded(true);
   };
@@ -4209,27 +4180,30 @@ function AddSupportingInfoSection({
         ...currentQRSeqs,
       ) + 1;
 
-    // Update information_sequence BEFORE appending to supporting_info (same
-    // ordering rationale as addSupportingInfoForReq above).
     const currentSequences =
       form.getValues(`item.${index}.information_sequence`) || [];
-    form.setValue(`item.${index}.information_sequence`, [
-      ...currentSequences,
-      newSequence,
-    ], USER_EDIT);
+    form.setValue(
+      `item.${index}.information_sequence`,
+      [...currentSequences, newSequence],
+      USER_EDIT,
+    );
 
-    form.setValue("supporting_info", [
-      ...currentSupportingInfo,
-      {
-        sequence: newSequence,
-        category: undefined as unknown as Coding,
-        code: undefined as unknown as Coding,
-        timing: undefined,
-        value_string: undefined,
-        value_attachment: undefined,
-        _is_plan_level: false,
-      },
-    ], USER_EDIT);
+    form.setValue(
+      "supporting_info",
+      [
+        ...currentSupportingInfo,
+        {
+          sequence: newSequence,
+          category: undefined as unknown as Coding,
+          code: undefined as unknown as Coding,
+          timing: undefined,
+          value_string: undefined,
+          value_attachment: undefined,
+          _is_plan_level: false,
+        },
+      ],
+      USER_EDIT,
+    );
   };
 
   return (
@@ -4415,37 +4389,205 @@ function AddSupportingInfoSection({
             );
             const isRequiredDoc = Boolean(matchingRequirement?.is_required);
             const cardError = getClaimSupportingInfoCardError(info);
+            const isLocked = info._locked === true && !isResubmit;
 
             return (
               <Card
                 key={infoIndex}
-                className={cn(cardError && cardErrorBorderClass)}
+                className={cn(
+                  cardError && cardErrorBorderClass,
+                  isLocked && "opacity-90",
+                )}
               >
-                <CardHeader>
-                  <div className="flex justify-between items-center gap-2">
+                <fieldset
+                  disabled={isLocked}
+                  className={cn(
+                    "m-0 min-w-0 border-0 p-0",
+                    isLocked && "pointer-events-none",
+                  )}
+                >
+                  <CardHeader>
+                    <div className="flex justify-between items-center gap-2">
+                      <FormField
+                        control={form.control}
+                        name={`supporting_info.${mainInfoIndex}.code`}
+                        render={({ field }) => (
+                          <FormItem className="space-y-1.5 w-full">
+                            <FormLabel>
+                              Code
+                              <span className="text-red-500 text-sm ml-0.5">
+                                *
+                              </span>
+                              {matchingRequirement && (
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "ml-2 text-xs font-normal",
+                                    isRequiredDoc
+                                      ? "border-amber-400 text-amber-700"
+                                      : "border-blue-400 text-blue-700",
+                                  )}
+                                >
+                                  {isRequiredDoc ? "Required" : "Recommended"}
+                                </Badge>
+                              )}
+                            </FormLabel>
+                            <FormControl>
+                              {isRequiredDoc ? (
+                                <Input
+                                  value={
+                                    field.value?.display ??
+                                    field.value?.code ??
+                                    ""
+                                  }
+                                  disabled
+                                  className="bg-muted"
+                                />
+                              ) : (
+                                <Autocomplete
+                                  options={SUPPORTING_INFO_CODES.map(
+                                    (code) => ({
+                                      label: code.display,
+                                      value: code.code,
+                                    }),
+                                  )}
+                                  value={field.value?.code}
+                                  onChange={(value) => {
+                                    const code = SUPPORTING_INFO_CODES.find(
+                                      (code) => code.code === value,
+                                    );
+                                    if (!code) {
+                                      return;
+                                    }
+                                    form.setValue(
+                                      `supporting_info.${mainInfoIndex}.code`,
+                                      code,
+                                      USER_EDIT,
+                                    );
+                                  }}
+                                />
+                              )}
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      {isLocked ? (
+                        <Badge
+                          variant="outline"
+                          className="mt-1 shrink-0 gap-1 border-muted-foreground/30 text-muted-foreground"
+                        >
+                          <LockIcon className="h-3 w-3" />
+                          From previous claim
+                        </Badge>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            const currentSupportingInfo =
+                              form.getValues("supporting_info") || [];
+                            const updatedSupportingInfo =
+                              currentSupportingInfo.filter(
+                                (_, i) => i !== mainInfoIndex,
+                              );
+                            form.setValue(
+                              "supporting_info",
+                              updatedSupportingInfo,
+                              USER_EDIT,
+                            );
+
+                            const items = form.getValues("item") || [];
+                            items.forEach((item, itemIndex) => {
+                              const currentSequences =
+                                item.information_sequence || [];
+                              const updatedSequences = currentSequences.filter(
+                                (seq) => seq !== info.sequence,
+                              );
+                              form.setValue(
+                                `item.${itemIndex}.information_sequence`,
+                                updatedSequences,
+                                USER_EDIT,
+                              );
+                            });
+                          }}
+                          className="mt-1"
+                        >
+                          <CircleMinusIcon className="h-6 w-6 text-danger-500" />
+                        </Button>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={form.control}
+                        name={`supporting_info.${mainInfoIndex}.timing.start`}
+                        render={({ field }) => (
+                          <FormItem className="space-y-1.5">
+                            <FormLabel>Start Date</FormLabel>
+                            <FormControl>
+                              <DateTimePicker
+                                value={
+                                  field.value
+                                    ? new Date(field.value)
+                                    : undefined
+                                }
+                                onChange={(value) => {
+                                  form.setValue(
+                                    `supporting_info.${mainInfoIndex}.timing.start`,
+                                    value ? value.toISOString() : undefined,
+                                    USER_EDIT,
+                                  );
+                                }}
+                                placeholder="Select start date and time"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name={`supporting_info.${mainInfoIndex}.timing.end`}
+                        render={({ field }) => (
+                          <FormItem className="space-y-1.5">
+                            <FormLabel>End Date</FormLabel>
+                            <FormControl>
+                              <DateTimePicker
+                                value={
+                                  field.value
+                                    ? new Date(field.value)
+                                    : undefined
+                                }
+                                onChange={(value) => {
+                                  form.setValue(
+                                    `supporting_info.${mainInfoIndex}.timing.end`,
+                                    value ? value.toISOString() : undefined,
+                                    USER_EDIT,
+                                  );
+                                }}
+                                placeholder="Select end date and time"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
                     <FormField
                       control={form.control}
-                      name={`supporting_info.${mainInfoIndex}.code`}
+                      name={`supporting_info.${mainInfoIndex}.category`}
                       render={({ field }) => (
-                        <FormItem className="space-y-1.5 w-full">
+                        <FormItem className="space-y-1.5">
                           <FormLabel>
-                            Code
+                            Category
                             <span className="text-red-500 text-sm ml-0.5">
                               *
                             </span>
-                            {matchingRequirement && (
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "ml-2 text-xs font-normal",
-                                  isRequiredDoc
-                                    ? "border-amber-400 text-amber-700"
-                                    : "border-blue-400 text-blue-700",
-                                )}
-                              >
-                                {isRequiredDoc ? "Required" : "Recommended"}
-                              </Badge>
-                            )}
                           </FormLabel>
                           <FormControl>
                             {isRequiredDoc ? (
@@ -4460,20 +4602,22 @@ function AddSupportingInfoSection({
                               />
                             ) : (
                               <Autocomplete
-                                options={SUPPORTING_INFO_CODES.map((code) => ({
-                                  label: code.display,
-                                  value: code.code,
-                                }))}
+                                options={SUPPORTING_INFO_CATEGORIES.map(
+                                  (code) => ({
+                                    label: code.display,
+                                    value: code.code,
+                                  }),
+                                )}
                                 value={field.value?.code}
                                 onChange={(value) => {
-                                  const code = SUPPORTING_INFO_CODES.find(
+                                  const code = SUPPORTING_INFO_CATEGORIES.find(
                                     (code) => code.code === value,
                                   );
                                   if (!code) {
                                     return;
                                   }
                                   form.setValue(
-                                    `supporting_info.${mainInfoIndex}.code`,
+                                    `supporting_info.${mainInfoIndex}.category`,
                                     code,
                                     USER_EDIT,
                                   );
@@ -4481,201 +4625,63 @@ function AddSupportingInfoSection({
                               />
                             )}
                           </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        const currentSupportingInfo =
-                          form.getValues("supporting_info") || [];
-                        const updatedSupportingInfo =
-                          currentSupportingInfo.filter(
-                            (_, i) => i !== mainInfoIndex,
-                          );
-                        form.setValue(
-                          "supporting_info",
-                          updatedSupportingInfo,
-                          USER_EDIT,
-                        );
-
-                        const items = form.getValues("item") || [];
-                        items.forEach((item, itemIndex) => {
-                          const currentSequences =
-                            item.information_sequence || [];
-                          const updatedSequences = currentSequences.filter(
-                            (seq) => seq !== info.sequence,
-                          );
-                          form.setValue(
-                            `item.${itemIndex}.information_sequence`,
-                            updatedSequences,
-                            USER_EDIT,
-                          );
-                        });
-                      }}
-                      className="mt-1"
-                    >
-                      <CircleMinusIcon className="h-6 w-6 text-danger-500" />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name={`supporting_info.${mainInfoIndex}.timing.start`}
-                      render={({ field }) => (
-                        <FormItem className="space-y-1.5">
-                          <FormLabel>Start Date</FormLabel>
-                          <FormControl>
-                            <DateTimePicker
-                              value={
-                                field.value ? new Date(field.value) : undefined
-                              }
-                              onChange={(value) => {
-                                form.setValue(
-                                  `supporting_info.${mainInfoIndex}.timing.start`,
-                                  value ? value.toISOString() : undefined,
-                                  USER_EDIT,
-                                );
-                              }}
-                              placeholder="Select start date and time"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name={`supporting_info.${mainInfoIndex}.timing.end`}
-                      render={({ field }) => (
-                        <FormItem className="space-y-1.5">
-                          <FormLabel>End Date</FormLabel>
-                          <FormControl>
-                            <DateTimePicker
-                              value={
-                                field.value ? new Date(field.value) : undefined
-                              }
-                              onChange={(value) => {
-                                form.setValue(
-                                  `supporting_info.${mainInfoIndex}.timing.end`,
-                                  value ? value.toISOString() : undefined,
-                                  USER_EDIT,
-                                );
-                              }}
-                              placeholder="Select end date and time"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
-
-                  <FormField
-                    control={form.control}
-                    name={`supporting_info.${mainInfoIndex}.category`}
-                    render={({ field }) => (
-                      <FormItem className="space-y-1.5">
-                        <FormLabel>
-                          Category
-                          <span className="text-red-500 text-sm ml-0.5">*</span>
-                        </FormLabel>
-                        <FormControl>
-                          {isRequiredDoc ? (
-                            <Input
-                              value={
-                                field.value?.display ?? field.value?.code ?? ""
-                              }
-                              disabled
-                              className="bg-muted"
-                            />
-                          ) : (
-                            <Autocomplete
-                              options={SUPPORTING_INFO_CATEGORIES.map(
-                                (code) => ({
-                                  label: code.display,
-                                  value: code.code,
-                                }),
+                          {matchingRequirement && (
+                            <p
+                              className={cn(
+                                "text-xs",
+                                isRequiredDoc
+                                  ? "text-amber-600"
+                                  : "text-blue-600",
                               )}
-                              value={field.value?.code}
-                              onChange={(value) => {
-                                const code = SUPPORTING_INFO_CATEGORIES.find(
-                                  (code) => code.code === value,
-                                );
-                                if (!code) {
-                                  return;
-                                }
-                                form.setValue(
-                                  `supporting_info.${mainInfoIndex}.category`,
-                                  code,
-                                  USER_EDIT,
-                                );
-                              }}
-                            />
+                            >
+                              {isRequiredDoc
+                                ? "Required by insurance plan benefit"
+                                : "Recommended by insurance plan benefit"}
+                            </p>
                           )}
-                        </FormControl>
-                        {matchingRequirement && (
-                          <p
-                            className={cn(
-                              "text-xs",
-                              isRequiredDoc
-                                ? "text-amber-600"
-                                : "text-blue-600",
-                            )}
-                          >
-                            {isRequiredDoc
-                              ? "Required by insurance plan benefit"
-                              : "Recommended by insurance plan benefit"}
-                          </p>
-                        )}
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                  <SupportingInfoValueControls
-                    form={form}
-                    mainInfoIndex={mainInfoIndex}
-                    renderComment={() => (
-                      <FormField
-                        control={form.control}
-                        name={`supporting_info.${mainInfoIndex}.value_string`}
-                        render={({ field }) => (
-                          <FormItem className="space-y-1.5">
-                            <FormLabel>Comment</FormLabel>
-                            <FormControl>
-                              <Textarea
-                                value={field.value || ""}
-                                onChange={(e) => {
-                                  form.setValue(
-                                    `supporting_info.${mainInfoIndex}.value_string`,
-                                    e.target.value || undefined,
-                                    USER_EDIT,
-                                  );
-                                }}
-                                placeholder="Enter a comment"
-                                className="min-h-[80px]"
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    )}
-                    renderAttachment={() => (
-                      <SupportingInfoFileUpload
-                        form={form}
-                        mainInfoIndex={mainInfoIndex}
-                      />
-                    )}
-                  />
-                </CardContent>
+                    <SupportingInfoValueControls
+                      form={form}
+                      mainInfoIndex={mainInfoIndex}
+                      renderComment={() => (
+                        <FormField
+                          control={form.control}
+                          name={`supporting_info.${mainInfoIndex}.value_string`}
+                          render={({ field }) => (
+                            <FormItem className="space-y-1.5">
+                              <FormLabel>Comment</FormLabel>
+                              <FormControl>
+                                <Textarea
+                                  value={field.value || ""}
+                                  onChange={(e) => {
+                                    form.setValue(
+                                      `supporting_info.${mainInfoIndex}.value_string`,
+                                      e.target.value || undefined,
+                                      USER_EDIT,
+                                    );
+                                  }}
+                                  placeholder="Enter a comment"
+                                  className="min-h-[80px]"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
+                      renderAttachment={() => (
+                        <SupportingInfoFileUpload
+                          form={form}
+                          mainInfoIndex={mainInfoIndex}
+                        />
+                      )}
+                    />
+                  </CardContent>
+                </fieldset>
                 {cardError && <FormCardErrorFooter message={cardError} />}
               </Card>
             );

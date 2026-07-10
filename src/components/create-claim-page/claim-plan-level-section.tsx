@@ -5,6 +5,7 @@ import {
   ChevronRightIcon,
   ClipboardListIcon,
   FileTextIcon,
+  LockIcon,
   PaperclipIcon,
   PlusIcon,
   TrashIcon,
@@ -80,7 +81,6 @@ function reqCategoryLabel(req: InsurancePlanSupportingInfoRequirement): string {
   );
 }
 
-/** Derive the focal plan ID from the insurance selection – same pattern as ClaimItemSection. */
 function usePlanId(
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>
 ): string | null {
@@ -102,14 +102,6 @@ function usePlanId(
   return planListData?.results?.[0]?.id ?? null;
 }
 
-/**
- * For PA-via-CE:AR, compute which CE-required documents and questionnaires
- * are NOT covered at the item level (i.e. not present in any item's IPB
- * benefit). Those leftover requirements are eligible to surface at the plan
- * level, intersected with the plan extension. Returns `null` when the form is
- * not running in PA-via-CE:AR mode (i.e. no filtering should be applied and
- * the existing IPB-driven plan-level behaviour applies).
- */
 function useCELeftover({
   form,
   planId,
@@ -232,26 +224,30 @@ function PlanLevelDocCard({
   form,
   requirement,
   onRemove,
+  locked,
 }: {
   mainInfoIndex: number;
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   requirement: InsurancePlanSupportingInfoRequirement | undefined;
   onRemove: () => void;
+  locked?: boolean;
 }) {
   const label = requirement
     ? reqLabel(requirement)
-    : (form.watch(
-        `supporting_info.${mainInfoIndex}.code` as FieldPath<
-          z.infer<typeof createClaimFormSchema>
-        >
-      ) as { display?: string } | undefined)?.display ?? "Document";
+    : ((
+        form.watch(
+          `supporting_info.${mainInfoIndex}.code` as FieldPath<
+            z.infer<typeof createClaimFormSchema>
+          >,
+        ) as { display?: string } | undefined
+      )?.display ?? "Document");
 
   const categoryLabel = requirement ? reqCategoryLabel(requirement) : "";
 
   const currentFile = form.watch(
     `supporting_info.${mainInfoIndex}.value_file` as FieldPath<
       z.infer<typeof createClaimFormSchema>
-    >
+    >,
   ) as File | undefined;
 
   const valueString = form.watch(
@@ -263,7 +259,7 @@ function PlanLevelDocCard({
   const valueAttachment = form.watch(
     `supporting_info.${mainInfoIndex}.value_attachment` as FieldPath<
       z.infer<typeof createClaimFormSchema>
-    >
+    >,
   ) as string | undefined;
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -278,19 +274,19 @@ function PlanLevelDocCard({
       `supporting_info.${mainInfoIndex}.value_file` as FieldPath<
         z.infer<typeof createClaimFormSchema>
       >,
-      file as never
+      file as never,
     );
     form.setValue(
       `supporting_info.${mainInfoIndex}.value_string` as FieldPath<
         z.infer<typeof createClaimFormSchema>
       >,
-      undefined as never
+      undefined as never,
     );
     form.setValue(
       `supporting_info.${mainInfoIndex}.value_attachment` as FieldPath<
         z.infer<typeof createClaimFormSchema>
       >,
-      undefined as never
+      undefined as never,
     );
     e.target.value = "";
   };
@@ -300,111 +296,131 @@ function PlanLevelDocCard({
       `supporting_info.${mainInfoIndex}.value_file` as FieldPath<
         z.infer<typeof createClaimFormSchema>
       >,
-      undefined as never
+      undefined as never,
     );
     form.setValue(
       `supporting_info.${mainInfoIndex}.value_attachment` as FieldPath<
         z.infer<typeof createClaimFormSchema>
       >,
-      undefined as never
+      undefined as never,
     );
   };
 
   const hasFile = !!(currentFile || valueAttachment);
 
   return (
-    <Card className="border-l-4 border-l-primary/30">
-      <CardHeader className="pb-2 pt-3 px-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="font-medium text-sm leading-snug">{label}</p>
-            {categoryLabel && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {categoryLabel}
-              </p>
-            )}
-          </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-            onClick={onRemove}
-          >
-            <TrashIcon className="w-3.5 h-3.5" />
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="px-4 pb-3 space-y-2">
-        <Input
-          placeholder="Enter a comment…"
-          value={valueString ?? ""}
-          disabled={hasFile}
-          onChange={(e) => {
-            form.setValue(
-              `supporting_info.${mainInfoIndex}.value_string` as FieldPath<
-                z.infer<typeof createClaimFormSchema>
-              >,
-              (e.target.value || undefined) as never,
-            );
-            if (e.target.value) {
-              form.setValue(
-                `supporting_info.${mainInfoIndex}.value_file` as FieldPath<
-                  z.infer<typeof createClaimFormSchema>
-                >,
-                undefined as never,
-              );
-              form.setValue(
-                `supporting_info.${mainInfoIndex}.value_attachment` as FieldPath<
-                  z.infer<typeof createClaimFormSchema>
-                >,
-                undefined as never,
-              );
-            }
-          }}
-        />
-
-        {!valueString && (
-          <>
-            {hasFile ? (
-              <div className="flex items-center gap-2 rounded-md bg-green-50 px-2 py-1.5">
-                <PaperclipIcon className="w-3.5 h-3.5 text-green-600" />
-                <span className="text-xs font-medium text-green-700 flex-1">
-                  {currentFile?.name ?? "File attached"}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-5 px-1.5 text-xs text-muted-foreground hover:text-destructive"
-                  onClick={clearFile}
-                >
-                  Remove
-                </Button>
-              </div>
+    <Card
+      className={cn("border-l-4 border-l-primary/30", locked && "opacity-90")}
+    >
+      <fieldset
+        disabled={locked}
+        className={cn(
+          "m-0 min-w-0 border-0 p-0",
+          locked && "pointer-events-none",
+        )}
+      >
+        <CardHeader className="pb-2 pt-3 px-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="font-medium text-sm leading-snug">{label}</p>
+              {categoryLabel && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {categoryLabel}
+                </p>
+              )}
+            </div>
+            {locked ? (
+              <Badge
+                variant="outline"
+                className="shrink-0 gap-1 border-muted-foreground/30 text-muted-foreground"
+              >
+                <LockIcon className="w-3 h-3" />
+                From previous claim
+              </Badge>
             ) : (
               <Button
                 type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 text-xs relative"
-                asChild
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={onRemove}
               >
-                <span>
-                  <PaperclipIcon className="w-3 h-3 mr-1" />
-                  Attach file
-                  <input
-                    type="file"
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    onChange={handleFileChange}
-                    accept={ALLOWED_UPLOAD_ACCEPT}
-                  />
-                </span>
+                <TrashIcon className="w-3.5 h-3.5" />
               </Button>
             )}
-          </>
-        )}
-      </CardContent>
+          </div>
+        </CardHeader>
+        <CardContent className="px-4 pb-3 space-y-2">
+          <Input
+            placeholder="Enter a comment…"
+            value={valueString ?? ""}
+            disabled={hasFile}
+            onChange={(e) => {
+              form.setValue(
+                `supporting_info.${mainInfoIndex}.value_string` as FieldPath<
+                  z.infer<typeof createClaimFormSchema>
+                >,
+                (e.target.value || undefined) as never,
+              );
+              if (e.target.value) {
+                form.setValue(
+                  `supporting_info.${mainInfoIndex}.value_file` as FieldPath<
+                    z.infer<typeof createClaimFormSchema>
+                  >,
+                  undefined as never,
+                );
+                form.setValue(
+                  `supporting_info.${mainInfoIndex}.value_attachment` as FieldPath<
+                    z.infer<typeof createClaimFormSchema>
+                  >,
+                  undefined as never,
+                );
+              }
+            }}
+          />
+
+          {!valueString && (
+            <>
+              {hasFile ? (
+                <div className="flex items-center gap-2 rounded-md bg-green-50 px-2 py-1.5">
+                  <PaperclipIcon className="w-3.5 h-3.5 text-green-600" />
+                  <span className="text-xs font-medium text-green-700 flex-1">
+                    {currentFile?.name ?? "File attached"}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-5 px-1.5 text-xs text-muted-foreground hover:text-destructive"
+                    onClick={clearFile}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs relative"
+                  asChild
+                >
+                  <span>
+                    <PaperclipIcon className="w-3 h-3 mr-1" />
+                    Attach file
+                    <input
+                      type="file"
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      onChange={handleFileChange}
+                      accept={ALLOWED_UPLOAD_ACCEPT}
+                    />
+                  </span>
+                </Button>
+              )}
+            </>
+          )}
+        </CardContent>
+      </fieldset>
     </Card>
   );
 }
@@ -489,18 +505,12 @@ export function PlanLevelSupportingInfoSection({
   form,
   coverageEligibilityRequest,
   claimUse,
+  isResubmit,
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
-  /**
-   * When provided alongside `claimUse === "preauthorization"`, the plan-level
-   * optional requirements are filtered down to those that intersect with the
-   * "leftover" CE response documents — i.e. CE-required docs that were not
-   * covered by any item's IPB benefit. Required plan-level requirements are
-   * always shown regardless. For other flows, all plan-level IPB
-   * requirements are shown.
-   */
   coverageEligibilityRequest?: CoverageEligibilityRequest;
   claimUse: ClaimUseChoice | undefined;
+  isResubmit?: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const didAutoExpandRef = useRef(false);
@@ -532,32 +542,34 @@ export function PlanLevelSupportingInfoSection({
     if (!ceLeftover) return deduped;
     // Plan-level docs = required IPB plan-extension reqs ∪ (optional ∩ CE leftover)
     return deduped.filter(
-      (r) => r.is_required || ceLeftover.docCodes.has(r.code_code)
+      (r) => r.is_required || ceLeftover.docCodes.has(r.code_code),
     );
   }, [extensions, ceLeftover]);
 
   const requiredReqs = useMemo(
     () => allRequirements.filter((r) => r.is_required),
-    [allRequirements]
+    [allRequirements],
   );
   const optionalReqs = useMemo(
     () => allRequirements.filter((r) => !r.is_required),
-    [allRequirements]
+    [allRequirements],
   );
 
-  const { fields: siFields, append: appendSI, remove: removeSI } =
-    useFieldArray({ name: "supporting_info", control: form.control });
+  const {
+    fields: siFields,
+    append: appendSI,
+    remove: removeSI,
+  } = useFieldArray({ name: "supporting_info", control: form.control });
 
   const supportingInfoWatch = form.watch("supporting_info");
   const allSI = supportingInfoWatch ?? [];
 
-  // Plan-level entries are explicitly marked with _is_plan_level: true.
-  // This avoids the race condition where the plan-level section re-renders
-  // after supporting_info changes but before information_sequence is updated.
   const planLevelEntries = useMemo(
     () =>
-      (supportingInfoWatch ?? []).filter((info) => info._is_plan_level === true),
-    [supportingInfoWatch]
+      (supportingInfoWatch ?? []).filter(
+        (info) => info._is_plan_level === true,
+      ),
+    [supportingInfoWatch],
   );
 
   useEffect(() => {
@@ -568,12 +580,12 @@ export function PlanLevelSupportingInfoSection({
   }, [planLevelEntries.length]);
 
   const getDocStatus = (
-    req: InsurancePlanSupportingInfoRequirement
+    req: InsurancePlanSupportingInfoRequirement,
   ): "satisfied" | "incomplete" | "missing" => {
     const match = planLevelEntries.find(
       (info) =>
         info.category?.code === req.category_code &&
-        info.code?.code === req.code_code
+        info.code?.code === req.code_code,
     );
     if (!match) return "missing";
     const hasValue =
@@ -581,9 +593,6 @@ export function PlanLevelSupportingInfoSection({
     return hasValue ? "satisfied" : "incomplete";
   };
 
-  // No useMemo here: form.watch returns the same array reference when nested
-  // fields are mutated in place, so a memo keyed on planLevelEntries would
-  // cache stale statuses even after the user enters a value.
   const requiredStatuses = requiredReqs.map((req) => ({
     req,
     status: getDocStatus(req),
@@ -602,16 +611,16 @@ export function PlanLevelSupportingInfoSection({
       !allRequirements.some(
         (req) =>
           req.category_code === info.category?.code &&
-          req.code_code === info.code?.code
-      )
+          req.code_code === info.code?.code,
+      ),
   );
   const manualPlanDocValidation = getCardSectionValidationCounts(
     manualPlanDocEntries,
-    getClaimSupportingInfoCardError
+    getClaimSupportingInfoCardError,
   );
   const planDocValidation = mergeValidationCounts(
     checklistDocValidation,
-    manualPlanDocValidation
+    manualPlanDocValidation,
   );
   const showValidationIssue = hasSectionValidationIssue(planDocValidation);
 
@@ -625,13 +634,9 @@ export function PlanLevelSupportingInfoSection({
   useEffect(() => {
     const nextError = getSectionVirtualErrorMessage(
       planDocValidation,
-      "plan-level document"
+      "plan-level document",
     );
-    syncVirtualFormErrorFromForm(
-      form,
-      "_mandatory_plan_docs_error",
-      nextError
-    );
+    syncVirtualFormErrorFromForm(form, "_mandatory_plan_docs_error", nextError);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     form,
@@ -644,12 +649,12 @@ export function PlanLevelSupportingInfoSection({
     const alreadyAdded = planLevelEntries.some(
       (info) =>
         info.category?.code === req.category_code &&
-        info.code?.code === req.code_code
+        info.code?.code === req.code_code,
     );
     if (alreadyAdded) return;
 
     const currentQRSeqs = (form.getValues("questionnaire_responses") ?? []).map(
-      (qr) => qr.sequence
+      (qr) => qr.sequence,
     );
     const nextSeq =
       Math.max(0, ...siFields.map((f) => f.sequence), ...currentQRSeqs) + 1;
@@ -675,7 +680,7 @@ export function PlanLevelSupportingInfoSection({
 
   const removeDocEntry = (infoSequence: number) => {
     const idx = siFields.findIndex(
-      (f) => (f as unknown as { sequence: number }).sequence === infoSequence
+      (f) => (f as unknown as { sequence: number }).sequence === infoSequence,
     );
     if (idx !== -1) removeSI(idx);
   };
@@ -784,6 +789,7 @@ export function PlanLevelSupportingInfoSection({
                     form={form}
                     requirement={matchingReq}
                     onRemove={() => removeDocEntry(entry.sequence)}
+                    locked={entry._locked === true && !isResubmit}
                   />
                 );
               })}
@@ -799,24 +805,19 @@ export function PlanLevelQuestionnairesSection({
   form,
   coverageEligibilityRequest,
   claimUse,
+  isResubmit,
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
-  /**
-   * When provided alongside `claimUse === "preauthorization"`, the plan-level
-   * optional questionnaire requirements are filtered down to those that
-   * intersect with the "leftover" CE response questionnaires — i.e.
-   * CE-required questionnaires that were not covered by any item's IPB
-   * benefit. Required plan-level requirements are always shown regardless.
-   */
   coverageEligibilityRequest?: CoverageEligibilityRequest;
   claimUse: ClaimUseChoice | undefined;
+  isResubmit?: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const didAutoExpandRef = useRef(false);
   const { getStore } = useGlobalStore();
   const encounterId = getStore<string>("encounterId") ?? "";
   const consentObtained = getStore<boolean | undefined>(
-    CLAIM_CONSENT_OBTAINED_STORE_KEY
+    CLAIM_CONSENT_OBTAINED_STORE_KEY,
   );
   const dischargeDisposition = getStore<
     EncounterDischargeDisposition | undefined
@@ -849,8 +850,6 @@ export function PlanLevelQuestionnairesSection({
     staleTime: 5 * 60 * 1000,
   });
 
-  // A requirement is effectively required when the IPB marks it required, or
-  // when it is a consent/discharge questionnaire that must be filled for claim.
   const isReqEffectivelyRequired = useCallback(
     (req: InsurancePlanSupportingInfoRequirement) =>
       isQuestionnaireRequirementEffectivelyRequired(
@@ -860,10 +859,6 @@ export function PlanLevelQuestionnairesSection({
     [forcedQuestionnaireFhirIds],
   );
 
-  // Questionnaire requirements (documentation_url is NOT null), with optional
-  // CE-leftover filtering applied to optional reqs only. Per the schema:
-  // CE `required_questionnaires[].id` matches IPB requirement
-  // `questionnaire.fhir_id`.
   const questionnaireReqs = useMemo(() => {
     const all = extensions?.supporting_info_requirements ?? [];
     const filtered = all.filter((req) => !!req.documentation_url);
@@ -885,15 +880,13 @@ export function PlanLevelQuestionnairesSection({
 
   const requiredReqs = useMemo(
     () => questionnaireReqs.filter((r) => isReqEffectivelyRequired(r)),
-    [questionnaireReqs, isReqEffectivelyRequired]
+    [questionnaireReqs, isReqEffectivelyRequired],
   );
   const optionalReqs = useMemo(
     () => questionnaireReqs.filter((r) => !isReqEffectivelyRequired(r)),
-    [questionnaireReqs, isReqEffectivelyRequired]
+    [questionnaireReqs, isReqEffectivelyRequired],
   );
 
-  // Unique questionnaire ids to fetch details for. The `id` is now carried
-  // directly on the requirement's questionnaire ref.
   const questionnaireIdsToFetch = useMemo(() => {
     const seen = new Set<string>();
     const ids: string[] = [];
@@ -919,9 +912,11 @@ export function PlanLevelQuestionnairesSection({
 
   const loadedDetails = useMemo(
     () =>
-      detailQueries.map((q) => q.data).filter(Boolean) as InsurancePlanQuestionnaireDetail[],
+      detailQueries
+        .map((q) => q.data)
+        .filter(Boolean) as InsurancePlanQuestionnaireDetail[],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [detailQueries.map((q) => q.dataUpdatedAt).join(",")]
+    [detailQueries.map((q) => q.dataUpdatedAt).join(",")],
   );
 
   const detailById = useMemo(() => {
@@ -933,7 +928,7 @@ export function PlanLevelQuestionnairesSection({
   }, [loadedDetails]);
 
   const getDetailForReq = (
-    req: InsurancePlanSupportingInfoRequirement
+    req: InsurancePlanSupportingInfoRequirement,
   ): InsurancePlanQuestionnaireDetail | undefined => {
     if (!req.questionnaire?.id) return undefined;
     return detailById.get(req.questionnaire.id);
@@ -981,7 +976,7 @@ export function PlanLevelQuestionnairesSection({
   useEffect(() => {
     const nextError = getSectionVirtualErrorMessage(
       questionnaireValidation,
-      "plan-level questionnaire"
+      "plan-level questionnaire",
     );
     syncVirtualFormErrorFromForm(
       form,
@@ -996,10 +991,12 @@ export function PlanLevelQuestionnairesSection({
     requiredReqs.length,
   ]);
 
-  const showValidationIssue = hasSectionValidationIssue(questionnaireValidation);
+  const showValidationIssue = hasSectionValidationIssue(
+    questionnaireValidation,
+  );
 
   const addQuestionnaireForReq = (
-    req: InsurancePlanSupportingInfoRequirement
+    req: InsurancePlanSupportingInfoRequirement,
   ) => {
     const detail = getDetailForReq(req);
     if (!detail) return;
@@ -1007,7 +1004,7 @@ export function PlanLevelQuestionnairesSection({
     if (currentQR.find((r) => r.questionnaire === detail.full_url)) return;
 
     const currentSISeqs = (form.getValues("supporting_info") ?? []).map(
-      (s) => s.sequence
+      (s) => s.sequence,
     );
     const newSequence =
       Math.max(0, ...currentSISeqs, ...currentQR.map((qr) => qr.sequence)) + 1;
@@ -1035,7 +1032,7 @@ export function PlanLevelQuestionnairesSection({
           item: buildInitialItems(detail.items),
         },
       ],
-      { shouldDirty: true }
+      { shouldDirty: true },
     );
     if (!isExpanded) setIsExpanded(true);
   };
@@ -1044,18 +1041,18 @@ export function PlanLevelQuestionnairesSection({
     form.setValue(
       "questionnaire_responses",
       (form.getValues("questionnaire_responses") ?? []).filter(
-        (r) => r.questionnaire !== questionnaireUrl
+        (r) => r.questionnaire !== questionnaireUrl,
       ),
-      { shouldDirty: true }
+      { shouldDirty: true },
     );
   };
 
   const planQREntries = useMemo(() => {
     const planDetailUrls = new Set(
-      [...detailById.values()].map((d) => d.full_url)
+      [...detailById.values()].map((d) => d.full_url),
     );
     return (watchedQuestionnaireResponses ?? []).filter((qr) =>
-      planDetailUrls.has(qr.questionnaire)
+      planDetailUrls.has(qr.questionnaire),
     );
   }, [watchedQuestionnaireResponses, detailById]);
 
@@ -1071,8 +1068,7 @@ export function PlanLevelQuestionnairesSection({
     return null;
 
   const isLoadingDetails =
-    isExtensionsLoading ||
-    (questionnaireReqs.length > 0 && !allDetailsLoaded);
+    isExtensionsLoading || (questionnaireReqs.length > 0 && !allDetailsLoaded);
 
   return (
     <div className="space-y-3">
@@ -1080,7 +1076,7 @@ export function PlanLevelQuestionnairesSection({
         type="button"
         className={cn(
           "w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-colors hover:bg-muted/50",
-          showValidationIssue && "border-red-500 bg-red-50/50"
+          showValidationIssue && "border-red-500 bg-red-50/50",
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -1091,9 +1087,7 @@ export function PlanLevelQuestionnairesSection({
             <ChevronRightIcon className="w-4 h-4 text-muted-foreground" />
           )}
           <ClipboardListIcon className="w-4 h-4 text-primary" />
-          <span className="font-medium text-sm">
-            Plan-Level Questionnaires
-          </span>
+          <span className="font-medium text-sm">Plan-Level Questionnaires</span>
           {!showValidationIssue && planQREntries.length > 0 && (
             <Badge variant="secondary" className="text-xs">
               {planQREntries.length} added
@@ -1101,9 +1095,7 @@ export function PlanLevelQuestionnairesSection({
           )}
           <SectionValidationBadges counts={questionnaireValidation} />
         </div>
-        {isLoadingDetails && (
-          <InlineLoading label="Loading questionnaires…" />
-        )}
+        {isLoadingDetails && <InlineLoading label="Loading questionnaires…" />}
       </button>
 
       {(errorFieldState.error?.message || errorField.value) && (
@@ -1161,10 +1153,10 @@ export function PlanLevelQuestionnairesSection({
               </p>
               {planQREntries.map((qr) => {
                 const qrIndex = watchedQR.findIndex(
-                  (r) => r.questionnaire === qr.questionnaire
+                  (r) => r.questionnaire === qr.questionnaire,
                 );
                 const detail = loadedDetails.find(
-                  (d) => d.full_url === qr.questionnaire
+                  (d) => d.full_url === qr.questionnaire,
                 );
                 if (qrIndex === -1 || !detail) return null;
                 return (
@@ -1175,6 +1167,7 @@ export function PlanLevelQuestionnairesSection({
                     form={form}
                     encounterId={encounterId}
                     onRemove={() => removeQuestionnaire(qr.questionnaire)}
+                    locked={qr._locked === true && !isResubmit}
                   />
                 );
               })}

@@ -110,6 +110,7 @@ export const claimSupportingInfoSchema = z
     value_file: z.instanceof(File).optional(),
     value_resource: claimSupportingInfoResourceSchema.optional(),
     _is_plan_level: z.boolean().optional(),
+    _locked: z.boolean().optional(),
   })
   .refine(
     (data) => {
@@ -118,14 +119,16 @@ export const claimSupportingInfoSchema = z
         data.value_attachment,
         data.value_file,
         data.value_resource,
-      ].filter((value) => value !== undefined && value !== null && value !== "");
+      ].filter(
+        (value) => value !== undefined && value !== null && value !== "",
+      );
       return provided.length === 1;
     },
     {
       message:
         "Please provide a value — enter text, upload an attachment, or select a record",
       path: ["value_string"],
-    }
+    },
   );
 
 export const policySchema = z.object({
@@ -321,15 +324,15 @@ export const claimQuestionnaireResponseSchema = z
     code: codingSchema,
     item: z.array(questionnaireResponseItemSchema).default([]),
     _required_items_error: z.string().optional(),
+    _locked: z.boolean().optional(),
   })
   .refine(
     (data) => !data._required_items_error,
     (data) => ({
       message:
-        data._required_items_error ??
-        "All required questions must be answered",
+        data._required_items_error ?? "All required questions must be answered",
       path: ["_required_items_error"],
-    })
+    }),
   );
 
 export const claimPaymentSchema = z.object({});

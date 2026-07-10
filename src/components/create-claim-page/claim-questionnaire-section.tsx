@@ -5,6 +5,7 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   ClipboardListIcon,
+  LockIcon,
   PlusIcon,
   TrashIcon,
 } from "lucide-react";
@@ -605,8 +606,6 @@ function QuestionnaireItemRenderer({
 }) {
   const [groupExpanded, setGroupExpanded] = useState(true);
 
-  // Always watch the answer array so the required-error indicator stays in
-  // sync as the user fills in the field.  Called unconditionally (hook rule).
   const watchedAnswer = useWatch({
     control: form.control,
     name: `${itemBasePath}.answer` as FieldPath<
@@ -704,12 +703,14 @@ export function QuestionnaireResponseCard({
   form,
   encounterId,
   onRemove,
+  locked,
 }: {
   detail: InsurancePlanQuestionnaireDetail;
   qrIdx: number;
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   encounterId: string;
   onRemove?: () => void;
+  locked?: boolean;
 }) {
   const PURPOSE_LABELS: Record<string, string> = {
     STG: "Standard Treatment Guidelines",
@@ -725,10 +726,9 @@ export function QuestionnaireResponseCard({
 
   const missingCount = countMissingRequiredItems(
     detail.items,
-    watchedItems ?? []
+    watchedItems ?? [],
   );
 
-  // Sync virtual error field for Zod submit blocking.
   useEffect(() => {
     const nextError =
       missingCount > 0
@@ -737,7 +737,7 @@ export function QuestionnaireResponseCard({
     syncVirtualFormErrorFromForm(
       form,
       `questionnaire_responses.${qrIdx}._required_items_error`,
-      nextError
+      nextError,
     );
   }, [form, qrIdx, missingCount]);
 
@@ -749,42 +749,62 @@ export function QuestionnaireResponseCard({
   const showFieldErrors = form.formState.isSubmitted;
 
   return (
-    <Card className={cn(hasError && cardErrorBorderClass)}>
-      <CardHeader className="pb-3 pt-4">
-        <div className="flex items-center gap-2">
-          <ClipboardListIcon className="w-4 h-4 shrink-0 text-primary" />
-          <span className="font-semibold text-sm">{detail.title}</span>
-          {detail.purpose && (
-            <Badge variant="outline" className="text-xs font-normal">
-              {PURPOSE_LABELS[detail.purpose] ?? detail.purpose}
-            </Badge>
-          )}
-          {onRemove && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 ml-auto text-destructive hover:text-destructive hover:bg-destructive/10"
-              onClick={onRemove}
-            >
-              <TrashIcon className="w-3.5 h-3.5" />
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-5 pt-0">
-        {detail.items.map((fhirItem, idx) => (
-          <QuestionnaireItemRenderer
-            key={fhirItem.linkId}
-            fhirItem={fhirItem}
-            itemBasePath={`questionnaire_responses.${qrIdx}.item.${idx}`}
-            form={form}
-            depth={0}
-            encounterId={encounterId}
-            showFieldErrors={showFieldErrors}
-          />
-        ))}
-      </CardContent>
+    <Card
+      className={cn(hasError && cardErrorBorderClass, locked && "opacity-90")}
+    >
+      <fieldset
+        disabled={locked}
+        className={cn(
+          "m-0 min-w-0 border-0 p-0",
+          locked && "pointer-events-none",
+        )}
+      >
+        <CardHeader className="pb-3 pt-4">
+          <div className="flex items-center gap-2">
+            <ClipboardListIcon className="w-4 h-4 shrink-0 text-primary" />
+            <span className="font-semibold text-sm">{detail.title}</span>
+            {detail.purpose && (
+              <Badge variant="outline" className="text-xs font-normal">
+                {PURPOSE_LABELS[detail.purpose] ?? detail.purpose}
+              </Badge>
+            )}
+            {locked ? (
+              <Badge
+                variant="outline"
+                className="ml-auto gap-1 border-muted-foreground/30 text-muted-foreground"
+              >
+                <LockIcon className="w-3 h-3" />
+                From previous claim
+              </Badge>
+            ) : (
+              onRemove && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 ml-auto text-destructive hover:text-destructive hover:bg-destructive/10"
+                  onClick={onRemove}
+                >
+                  <TrashIcon className="w-3.5 h-3.5" />
+                </Button>
+              )
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5 pt-0">
+          {detail.items.map((fhirItem, idx) => (
+            <QuestionnaireItemRenderer
+              key={fhirItem.linkId}
+              fhirItem={fhirItem}
+              itemBasePath={`questionnaire_responses.${qrIdx}.item.${idx}`}
+              form={form}
+              depth={0}
+              encounterId={encounterId}
+              showFieldErrors={showFieldErrors}
+            />
+          ))}
+        </CardContent>
+      </fieldset>
       {hasError && errorMessage && (
         <FormCardErrorFooter message={errorMessage} />
       )}
@@ -877,26 +897,21 @@ export function AddQuestionnaireSection({
   planId,
   coverageEligibilityRequest,
   claimUse,
+  isResubmit,
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   index: number;
   planId: string | null;
-  /**
-   * When provided alongside `claimUse === "preauthorization"`, the IPB benefit
-   * questionnaire requirements are filtered down to the strict intersection
-   * with the CE response's required questionnaires for this item's procedure
-   * code. For `claimUse === "claim"` (or when no CE request is available) all
-   * benefit-driven questionnaire requirements are shown unfiltered.
-   */
   coverageEligibilityRequest?: CoverageEligibilityRequest;
   claimUse: ClaimUseChoice | undefined;
+  isResubmit?: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const didAutoExpandRef = useRef(false);
   const { getStore } = useGlobalStore();
   const encounterId = getStore<string>("encounterId");
   const consentObtained = getStore<boolean | undefined>(
-    CLAIM_CONSENT_OBTAINED_STORE_KEY
+    CLAIM_CONSENT_OBTAINED_STORE_KEY,
   );
   const dischargeDisposition = getStore<
     EncounterDischargeDisposition | undefined
@@ -917,7 +932,6 @@ export function AddQuestionnaireSection({
 
   const productCode = form.watch(`item.${index}.product_or_service`)?.code;
 
-  // Reuses cached benefit detail shared with ModifierField / AddSupportingInfoSection
   const { data: benefitDetail, isLoading: isBenefitLoading } = useQuery({
     queryKey: ["insurancePlanBenefit", "lookup", planId, productCode],
     queryFn: () =>
@@ -929,25 +943,18 @@ export function AddQuestionnaireSection({
     staleTime: 5 * 60 * 1000,
   });
 
-  // CE response questionnaires expected for this item, if we are running in
-  // PA-via-CE:AR mode. `null` means "no filtering"; an empty Set means "the
-  // CE response had nothing for this item — show nothing".
-  // Per the schema, CE `required_questionnaires[].id` matches IPB
-  // requirement `questionnaire.fhir_id`.
   const ceQuestionnaireFhirIdsForItem = useMemo(() => {
     if (claimUse !== "preauthorization") return null;
     if (!coverageEligibilityRequest || !productCode) return null;
     const allItems =
       coverageEligibilityRequest.latest_response?.insurances?.flatMap(
-        (i) => i.items ?? []
+        (i) => i.items ?? [],
       ) ?? [];
     const matchedItem = allItems.find((item) => item.code === productCode);
     if (!matchedItem) return new Set<string>();
     return new Set(matchedItem.required_questionnaires.map((q) => q.id));
   }, [coverageEligibilityRequest, claimUse, productCode]);
 
-  // Questionnaire requirements are supporting_info_requirements that have a
-  // documentation_url. is_required is read directly from the requirement.
   const questionnaireRequirements = useMemo(() => {
     const all = benefitDetail?.supporting_info_requirements ?? [];
     const qReqs = all.filter((req) => req.documentation_url !== null);
@@ -955,8 +962,6 @@ export function AddQuestionnaireSection({
     const filtered = ceQuestionnaireFhirIdsForItem
       ? qReqs.filter((req) => {
           const fhir = req.questionnaire?.fhir_id;
-          // Keep forced questionnaires even when they are not part of the CE
-          // response set, since they are mandatory for claim/consent rules.
           if (!!fhir && forcedQuestionnaireFhirIds.has(fhir)) return true;
           return !!fhir && ceQuestionnaireFhirIdsForItem.has(fhir);
         })
@@ -969,10 +974,12 @@ export function AddQuestionnaireSection({
       seen.add(key);
       return true;
     });
-  }, [benefitDetail, ceQuestionnaireFhirIdsForItem, forcedQuestionnaireFhirIds]);
+  }, [
+    benefitDetail,
+    ceQuestionnaireFhirIdsForItem,
+    forcedQuestionnaireFhirIds,
+  ]);
 
-  // A requirement is effectively required when the IPB marks it required, or
-  // when it is a consent/discharge questionnaire that must be filled for claim.
   const isReqEffectivelyRequired = useCallback(
     (req: InsurancePlanSupportingInfoRequirement) =>
       isQuestionnaireRequirementEffectivelyRequired(
@@ -983,17 +990,17 @@ export function AddQuestionnaireSection({
   );
 
   const requiredRequirements = useMemo(
-    () => questionnaireRequirements.filter((req) => isReqEffectivelyRequired(req)),
-    [questionnaireRequirements, isReqEffectivelyRequired]
+    () =>
+      questionnaireRequirements.filter((req) => isReqEffectivelyRequired(req)),
+    [questionnaireRequirements, isReqEffectivelyRequired],
   );
 
   const optionalRequirements = useMemo(
-    () => questionnaireRequirements.filter((req) => !isReqEffectivelyRequired(req)),
-    [questionnaireRequirements, isReqEffectivelyRequired]
+    () =>
+      questionnaireRequirements.filter((req) => !isReqEffectivelyRequired(req)),
+    [questionnaireRequirements, isReqEffectivelyRequired],
   );
 
-  // Build the list of questionnaire ids to fetch — one per unique requirement.
-  // The `id` is now carried directly on the requirement's questionnaire ref.
   const questionnaireIdsToFetch = useMemo(() => {
     const seen = new Set<string>();
     const ids: string[] = [];
@@ -1022,7 +1029,7 @@ export function AddQuestionnaireSection({
         .map((q) => q.data)
         .filter(Boolean) as InsurancePlanQuestionnaireDetail[],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [detailQueries.map((q) => q.dataUpdatedAt).join()]
+    [detailQueries.map((q) => q.dataUpdatedAt).join()],
   );
 
   const detailById = useMemo(() => {
@@ -1040,7 +1047,6 @@ export function AddQuestionnaireSection({
 
   const watchedQR = form.watch("questionnaire_responses") ?? [];
 
-  // Count only QRs that belong to this item's loaded questionnaire details (not all QRs globally).
   const itemQRCount = useMemo(() => {
     const detailUrls = new Set(loadedDetails.map((d) => d.full_url));
     return watchedQR.filter((qr) => detailUrls.has(qr.questionnaire)).length;
@@ -1050,10 +1056,10 @@ export function AddQuestionnaireSection({
   const matchedPrefillCount = useMemo(
     () =>
       loadedDetails.filter((detail) =>
-        watchedQR.some((r) => r.questionnaire === detail.full_url)
+        watchedQR.some((r) => r.questionnaire === detail.full_url),
       ).length,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [loadedDetails.map((d) => d.full_url).join(), watchedQR]
+    [loadedDetails.map((d) => d.full_url).join(), watchedQR],
   );
 
   useEffect(() => {
@@ -1079,13 +1085,13 @@ export function AddQuestionnaireSection({
   const requiredStatuses = useMemo(
     () => requiredRequirements.map((req) => ({ req, status: getQStatus(req) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [requiredRequirements, qrValidationKey, detailById]
+    [requiredRequirements, qrValidationKey, detailById],
   );
 
   const optionalStatuses = useMemo(
     () => optionalRequirements.map((req) => ({ req, status: getQStatus(req) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [optionalRequirements, qrValidationKey, detailById]
+    [optionalRequirements, qrValidationKey, detailById],
   );
 
   const questionnaireValidation = getChecklistValidationCounts([
@@ -1100,7 +1106,9 @@ export function AddQuestionnaireSection({
       control: form.control,
     });
 
-  const showValidationIssue = hasSectionValidationIssue(questionnaireValidation);
+  const showValidationIssue = hasSectionValidationIssue(
+    questionnaireValidation,
+  );
   const isItemDisabled = form.watch(`item.${index}._is_disabled`);
 
   useEffect(() => {
@@ -1114,12 +1122,12 @@ export function AddQuestionnaireSection({
     }
     const nextError = getSectionVirtualErrorMessage(
       questionnaireValidation,
-      "questionnaire"
+      "questionnaire",
     );
     syncVirtualFormErrorFromForm(
       form,
       `item.${index}._mandatory_questionnaires_error`,
-      nextError
+      nextError,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -1132,7 +1140,7 @@ export function AddQuestionnaireSection({
   ]);
 
   const addQuestionnaireForReq = (
-    req: InsurancePlanSupportingInfoRequirement
+    req: InsurancePlanSupportingInfoRequirement,
   ) => {
     const detail = getDetailForReq(req);
     if (!detail) return;
@@ -1140,8 +1148,6 @@ export function AddQuestionnaireSection({
     if (currentResponses.find((r) => r.questionnaire === detail.full_url))
       return;
 
-    // Compute a unique sequence that doesn't collide with supporting_info or
-    // any existing questionnaire_response sequences.
     const currentSupportingInfo = form.getValues("supporting_info") ?? [];
     const allSeqs = [
       ...currentSupportingInfo.map((s) => s.sequence),
@@ -1149,15 +1155,12 @@ export function AddQuestionnaireSection({
     ];
     const newSequence = Math.max(0, ...allSeqs) + 1;
 
-    // Link the questionnaire sequence to this item's information_sequence FIRST
-    // so that any intermediate render triggered by the questionnaire_responses
-    // update already sees the sequence as item-linked.
     const currentItemSeqs =
       form.getValues(`item.${index}.information_sequence`) ?? [];
     form.setValue(
       `item.${index}.information_sequence`,
       [...currentItemSeqs, newSequence],
-      { shouldDirty: true }
+      { shouldDirty: true },
     );
 
     form.setValue(
@@ -1183,18 +1186,18 @@ export function AddQuestionnaireSection({
           item: buildInitialItems(detail.items),
         },
       ],
-      { shouldDirty: true }
+      { shouldDirty: true },
     );
 
     if (!isExpanded) setIsExpanded(true);
   };
 
   const removeQuestionnaireForDetail = (
-    detail: InsurancePlanQuestionnaireDetail
+    detail: InsurancePlanQuestionnaireDetail,
   ) => {
     const currentResponses = form.getValues("questionnaire_responses") ?? [];
     const qr = currentResponses.find(
-      (r) => r.questionnaire === detail.full_url
+      (r) => r.questionnaire === detail.full_url,
     );
     if (!qr) return;
     const removedSeq = qr.sequence;
@@ -1202,7 +1205,7 @@ export function AddQuestionnaireSection({
     form.setValue(
       "questionnaire_responses",
       currentResponses.filter((r) => r.questionnaire !== detail.full_url),
-      { shouldDirty: true }
+      { shouldDirty: true },
     );
 
     const currentItemSeqs =
@@ -1210,12 +1213,16 @@ export function AddQuestionnaireSection({
     form.setValue(
       `item.${index}.information_sequence`,
       currentItemSeqs.filter((seq) => seq !== removedSeq),
-      { shouldDirty: true }
+      { shouldDirty: true },
     );
   };
 
   if (!productCode || !planId) return null;
-  if (!isBenefitLoading && benefitDetail && questionnaireRequirements.length === 0)
+  if (
+    !isBenefitLoading &&
+    benefitDetail &&
+    questionnaireRequirements.length === 0
+  )
     return null;
 
   const isLoading =
@@ -1227,7 +1234,7 @@ export function AddQuestionnaireSection({
       <div
         className={cn(
           "flex items-center justify-between cursor-pointer p-3 border rounded-lg hover:bg-muted/50",
-          showValidationIssue && sectionErrorBorderClass
+          showValidationIssue && sectionErrorBorderClass,
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >
@@ -1245,9 +1252,7 @@ export function AddQuestionnaireSection({
           )}
           <SectionValidationBadges counts={questionnaireValidation} />
         </div>
-        {isLoading && (
-          <InlineLoading label="Loading questionnaires…" />
-        )}
+        {isLoading && <InlineLoading label="Loading questionnaires…" />}
       </div>
 
       {(mandatoryQRFieldState.error?.message || mandatoryQRField.value) && (
@@ -1282,9 +1287,7 @@ export function AddQuestionnaireSection({
                       isRequired
                       isLoading={!detail && isLoading}
                       onAdd={
-                        detail
-                          ? () => addQuestionnaireForReq(req)
-                          : undefined
+                        detail ? () => addQuestionnaireForReq(req) : undefined
                       }
                     />
                   );
@@ -1314,9 +1317,7 @@ export function AddQuestionnaireSection({
                       isRequired={false}
                       isLoading={!detail && isLoading}
                       onAdd={
-                        detail
-                          ? () => addQuestionnaireForReq(req)
-                          : undefined
+                        detail ? () => addQuestionnaireForReq(req) : undefined
                       }
                     />
                   );
@@ -1329,7 +1330,7 @@ export function AddQuestionnaireSection({
             <div className="space-y-4">
               {loadedDetails.map((detail) => {
                 const qrIdx = watchedQR.findIndex(
-                  (r) => r.questionnaire === detail.full_url
+                  (r) => r.questionnaire === detail.full_url,
                 );
                 if (qrIdx === -1) return null;
                 return (
@@ -1340,6 +1341,7 @@ export function AddQuestionnaireSection({
                     form={form}
                     encounterId={encounterId}
                     onRemove={() => removeQuestionnaireForDetail(detail)}
+                    locked={watchedQR[qrIdx]?._locked === true && !isResubmit}
                   />
                 );
               })}
