@@ -20,8 +20,8 @@ const normalize = (value?: string | null) =>
 
 const normalizeGender = (value?: string | null) => normalize(value).charAt(0);
 
-const normalizeAbha = (value?: string | null) =>
-  (value ?? "").replace(/\D/g, "");
+// const normalizeAbha = (value?: string | null) =>
+//   (value ?? "").replace(/\D/g, "");
 
 function compare(
   received: string | null | undefined,
@@ -32,10 +32,6 @@ function compare(
   return normalizer(received) === normalizer(expected) ? "match" : "mismatch";
 }
 
-/**
- * Returns the primary insurance entry from a validation response only when the
- * payer has returned a usable (complete/partial) response, otherwise undefined.
- */
 export function getValidationDemographicEntry(
   request: CoverageEligibilityRequest,
 ): InsuranceEntry | undefined {
@@ -50,11 +46,6 @@ export function getValidationDemographicEntry(
   );
 }
 
-/**
- * Builds a per-field comparison between the payer-returned demographics and the
- * patient's CARE / ABHA record. Fields the payer did not return are marked
- * "unknown" rather than "mismatch" so missing data never blocks the flow.
- */
 export function buildDemographicChecks(
   entry: InsuranceEntry,
   patient?: Patient,
@@ -84,12 +75,12 @@ export function buildDemographicChecks(
 
   const expectedAbha = abhaNumber?.abha_number ?? null;
   if (entry.abha_id || expectedAbha) {
-    checks.push({
-      label: "ABHA Number",
-      expected: expectedAbha ?? "—",
-      received: entry.abha_id ?? "—",
-      status: compare(entry.abha_id, expectedAbha, normalizeAbha),
-    });
+    // checks.push({
+    //   label: "ABHA Number",
+    //   expected: expectedAbha ?? "—",
+    //   received: entry.abha_id ?? "—",
+    //   status: compare(entry.abha_id, expectedAbha, normalizeAbha),
+    // });
   }
 
   const expectedDob =
@@ -106,11 +97,6 @@ export function buildDemographicChecks(
   return checks;
 }
 
-/**
- * True when the payer returned demographics that contradict the patient record
- * on at least one field. Missing payer fields ("unknown") never count as a
- * mismatch.
- */
 export function hasDemographicMismatch(
   request: CoverageEligibilityRequest,
   patient?: Patient,

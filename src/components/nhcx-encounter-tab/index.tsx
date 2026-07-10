@@ -81,9 +81,6 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
   });
 
   const encounterCoverages = coverages?.results ?? [];
-  // System-initiated wallet refreshes (is_automatic) must not appear as timeline
-  // entries — they only feed the always-latest wallet balance card. Everything
-  // downstream (timeline, prerequisites, flow gating) uses the manual set.
   const manualCoverages = encounterCoverages.filter((c) => !c.is_automatic);
   const hasEncounterValidation = manualCoverages.some(hasValidationPurpose);
 
@@ -169,22 +166,14 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
     (isLoadingCoverages && coverages === undefined) ||
     (isLoadingClaims && claims === undefined);
 
-  // Diagnosis and care team are mandatory clinical details before any
-  // pre-authorisation or claim can be raised. Surface a warning while either
-  // is missing so the user can complete the encounter record first.
   const hasDiagnosis = (encounterDiagnoses?.length ?? 0) > 0;
   const hasCareTeam = (encounter?.care_team?.length ?? 0) > 0;
   const showClinicalDetailsWarning =
     !isLoadingDiagnoses && (!hasDiagnosis || !hasCareTeam);
 
-  // Before CE-validation prerequisites gate the timeline; after CE-validation
-  // prerequisites appear as a timeline entry below the validation card.
   const flowPrerequisites = useFlowPrerequisites(encounter, patient);
   const { beforeCeValidation, afterCeValidation } = flowPrerequisites;
 
-  // Determine guided headline state. The CTA is shown when no CE:V exists yet,
-  // or when the latest validation request hard-stops the flow (so the user can
-  // start a fresh check after fixing the underlying issue).
   const validationRequests = manualCoverages.filter(hasValidationPurpose);
   const latestValidation = validationRequests
     .slice()
@@ -200,8 +189,6 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
     validationOutcome?.kind === "policy-inactive" ||
     validationOutcome?.kind === "no-balance";
 
-  // Demographic verification is a post-requirement: once the policy validates,
-  // a contradiction between the payer's record and the patient's record blocks
   const demographicMismatch =
     latestValidation && !flowPrerequisites.isChild
       ? hasDemographicMismatch(latestValidation, patient, abhaNumber)
@@ -209,8 +196,6 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
 
   const showInitialCTA = !latestValidation;
 
-  // The wallet balance card always reflects the freshest validation, including
-  // system-initiated (is_automatic) refreshes raised after a claim response.
   const latestValidationForWallet = encounterCoverages
     .filter(hasValidationPurpose)
     .slice()
@@ -219,10 +204,8 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
         new Date(b.created_date).getTime() - new Date(a.created_date).getTime(),
     )[0];
 
-  // Remaining wallet balance drives the patient copay shown on claim cards.
   const walletRemaining = getWalletRemaining(latestValidationForWallet);
 
-  // Track the most recent CE id so we can propagate it through claim actions.
   const latestCoverageEligibilityId = manualCoverages
     .slice()
     .sort(
