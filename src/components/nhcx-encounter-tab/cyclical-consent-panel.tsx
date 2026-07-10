@@ -83,6 +83,34 @@ export const CyclicalConsentPanel: FC<CyclicalConsentPanelProps> = ({
   const checkIn = checkInQuery.data?.id ? checkInQuery.data : undefined;
   const checkOut = checkOutQuery.data?.id ? checkOutQuery.data : undefined;
 
+  const { data: cycleConsents } = useQuery({
+    queryKey: ["claim-consents", "by-claim", preAuth.id],
+    queryFn: () => apis.claimConsent.list({ claim: preAuth.id }),
+    enabled: !!preAuth.id,
+  });
+
+  const cycleNumber = useMemo(() => {
+    const consents = cycleConsents?.results ?? [];
+    const earliestByEncounter = new Map<string, number>();
+    for (const consent of consents) {
+      const encounterId = consent.encounter;
+      if (!encounterId) continue;
+      const ts = consent.created_date
+        ? new Date(consent.created_date).getTime()
+        : 0;
+      const existing = earliestByEncounter.get(encounterId);
+      if (existing === undefined || ts < existing) {
+        earliestByEncounter.set(encounterId, ts);
+      }
+    }
+    const orderedEncounters = [...earliestByEncounter.entries()]
+      .sort((a, b) => a[1] - b[1])
+      .map(([encounterId]) => encounterId);
+
+    const index = orderedEncounters.indexOf(encounter.id);
+    return index === -1 ? orderedEncounters.length + 1 : index + 1;
+  }, [cycleConsents, encounter.id]);
+
   const patientDischarged = isEncounterDischarged(encounter.status);
   const preAuthRef = preAuth.latest_response?.pre_auth_ref;
 
@@ -100,7 +128,7 @@ export const CyclicalConsentPanel: FC<CyclicalConsentPanelProps> = ({
         </div>
         <div className="space-y-0.5">
           <h2 className="text-base font-semibold text-gray-900">
-            Cyclical procedure — this cycle
+            Cyclical procedure: Cycle {cycleNumber}
           </h2>
           <p className="text-sm text-gray-600">
             A pre-authorization

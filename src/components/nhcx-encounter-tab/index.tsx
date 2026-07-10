@@ -218,6 +218,14 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
   const linkedCyclePreAuth = (accountPreAuths ?? []).find(
     (c) => !encounterOwnClaimIds.has(c.id),
   );
+
+  const hasSubmittedCycleClaim =
+    !!linkedCyclePreAuth &&
+    encounterOwnClaims.some(
+      (c) =>
+        c.use === "claim" && c.status !== "draft" && c.status !== "cancelled",
+      // c.related?.some((r) => r.claim?.id === linkedCyclePreAuth.id),
+    );
   const encounterClaims = [
     ...encounterOwnClaims,
     ...(accountPreAuths ?? []).filter((c) => !encounterOwnClaimIds.has(c.id)),
@@ -350,13 +358,15 @@ const NhcxEncounterTab: FC<EncounterTabProps> = ({ encounter, patient }) => {
 
             {beforeCeValidation.isSatisfied && (
               <>
-                {!isLoadingTimeline && linkedCyclePreAuth && (
-                  <CyclicalConsentPanel
-                    encounter={encounter}
-                    patient={patient}
-                    preAuth={linkedCyclePreAuth}
-                  />
-                )}
+                {!isLoadingTimeline &&
+                  linkedCyclePreAuth &&
+                  !hasSubmittedCycleClaim && (
+                    <CyclicalConsentPanel
+                      encounter={encounter}
+                      patient={patient}
+                      preAuth={linkedCyclePreAuth}
+                    />
+                  )}
                 {!isLoadingTimeline && showInitialCTA && (
                   <div className="rounded-lg border border-primary/30 bg-gradient-to-br from-primary/5 to-primary/10 p-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
                     <div className="flex items-start gap-3">
