@@ -177,6 +177,15 @@ export const claimItemSchema = z
     }),
     unit_price: z.number().gte(0),
     factor: z.number().optional(),
+    detail: z
+      .array(
+        z.object({
+          productOrService: z.object({
+            text: z.string(),
+          }),
+        }),
+      )
+      .optional(),
     _mandatory_docs_error: z.string().optional(),
     _mandatory_questionnaires_error: z.string().optional(),
     _mandatory_care_team_error: z.string().optional(),

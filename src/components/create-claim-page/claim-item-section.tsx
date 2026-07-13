@@ -1828,6 +1828,11 @@ export function ClaimItemSection({
                         </Alert>
                       </div>
                     )}
+                    {isQueriedItem && (
+                      <div className="px-6 pb-2">
+                        <QueryRemarkField form={form} index={index} />
+                      </div>
+                    )}
                     <CardContent className="space-y-4">
                       <CategoryField
                         form={form}
@@ -2281,6 +2286,98 @@ export function ClaimItemSection({
           )}
         />
       </div>
+    </div>
+  );
+}
+
+function QueryRemarkField({
+  form,
+  index,
+}: {
+  form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
+  index: number;
+}) {
+  const [draft, setDraft] = useState("");
+  const details = form.watch(`item.${index}.detail`) ?? [];
+
+  const remarkIndexRef = useRef<number | null>(null);
+  if (remarkIndexRef.current === null) {
+    remarkIndexRef.current = (
+      form.getValues(`item.${index}.detail`) ?? []
+    ).length;
+  }
+  const remarkIndex = remarkIndexRef.current;
+
+  const remark = details[remarkIndex]?.productOrService?.text ?? "";
+  const hasRemark = remark.trim().length > 0;
+
+  const addRemark = () => {
+    const text = draft.trim();
+    if (!text) return;
+    const next = [...(form.getValues(`item.${index}.detail`) ?? [])];
+    next[remarkIndex] = { productOrService: { text } };
+    form.setValue(`item.${index}.detail`, next, USER_EDIT);
+    setDraft("");
+  };
+
+  const removeRemark = () => {
+    const next = (form.getValues(`item.${index}.detail`) ?? []).filter(
+      (_, i) => i !== remarkIndex,
+    );
+    form.setValue(`item.${index}.detail`, next, USER_EDIT);
+  };
+
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50/50 p-3">
+      <Label className="text-xs font-medium text-amber-950">
+        Reply to payer query
+      </Label>
+      {hasRemark ? (
+        <div className="mt-2 flex justify-end">
+          <div className="flex max-w-[85%] items-start gap-2 rounded-lg rounded-tr-none border border-amber-200 bg-white px-3 py-2">
+            <p className="whitespace-pre-wrap break-words text-sm text-gray-800">
+              {remark}
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-5 w-5 shrink-0 text-muted-foreground"
+              onClick={removeRemark}
+            >
+              <XIcon className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-2 space-y-2">
+          <Textarea
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                addRemark();
+              }
+            }}
+            placeholder="Add a remark for the payer regarding this line item..."
+            rows={2}
+            className="resize-none bg-white text-sm"
+          />
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={addRemark}
+              disabled={draft.trim().length === 0}
+            >
+              <PlusIcon className="mr-1.5 h-4 w-4" />
+              Add remark
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
