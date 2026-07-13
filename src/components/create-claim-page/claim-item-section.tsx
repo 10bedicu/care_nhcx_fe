@@ -1615,17 +1615,7 @@ export function ClaimItemSection({
             isUnspecifiedProcedureCode(
               watchedItems?.[index]?.product_or_service?.code,
             ) && isUnspecifiedProcedureOnly(watchedItems ?? []);
-          const itemProductCode =
-            watchedItems?.[index]?.product_or_service?.code;
-          const unspecifiedPayerAmount = isResubmit
-            ? (getCeAllowedAmount(
-                coverageEligibilityRequest,
-                itemProductCode,
-              ) ?? getPreAuthApprovedAmount(previousClaim, itemProductCode))
-            : (getPreAuthApprovedAmount(previousClaim, itemProductCode) ??
-              getCeAllowedAmount(coverageEligibilityRequest, itemProductCode));
-          const isUnspecifiedManualPrice =
-            isUnspecifiedAlone && unspecifiedPayerAmount == null;
+          const isUnspecifiedManualPrice = isUnspecifiedAlone;
           const overlapError =
             !isItemDisabled && overlappingLm100Indexes.has(index)
               ? LM100_OVERLAP_ERROR
