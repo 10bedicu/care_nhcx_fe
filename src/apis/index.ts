@@ -421,6 +421,29 @@ export const apis = {
     },
   },
 
+  abdm: {
+    abhaFaceAuthInit: async () => {
+      return await request<{
+        transaction_id: string;
+        detail: string;
+      }>(`/api/abdm/v3/health_id/create/auth_init_via_face/`, {
+        method: "POST",
+      });
+    },
+
+    abhaFaceCapturePid: async (body: { transaction_id: string }) => {
+      return await request<{
+        status: "PENDING" | "VERIFIED" | "FAILED" | "COMPLETE" | "COMPLETED";
+        transaction_id: string | null;
+        detail: string;
+        rd_pid_data: string | null;
+      }>(`/api/abdm/v3/health_id/create/capture_pid_via_face/`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    },
+  },
+
   patient: {
     get: async (patientId: string) => {
       return await request<Patient>(`/api/v1/patient/${patientId}/`);
