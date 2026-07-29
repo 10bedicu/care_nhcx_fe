@@ -389,10 +389,51 @@ export const apis = {
   },
 
   rdService: {
-    capture: async () => {
-      const response = await fetch("https://127.0.0.1:11100/rd/capture", {
+    // RD services register on ports 11100-11120; iris and fingerprint
+    // devices run as separate services, so the iris one may not be on 11100.
+    discoverPort: async (authMode: "FINGERPRINT" | "IRIS") => {
+      const keywords =
+        authMode === "IRIS" ? /iris|irishield|mis100/i : /finger|fmr|mfs100/i;
+      const ports = Array.from({ length: 21 }, (_, i) => 11100 + i);
+
+      const results = await Promise.allSettled(
+        ports.map(async (port) => {
+          const response = await fetch(`https://127.0.0.1:${port}/`, {
+            method: "RDSERVICE",
+            signal: AbortSignal.timeout(3000),
+          });
+          return { port, info: await response.text() };
+        }),
+      );
+
+      for (const result of results) {
+        if (result.status !== "fulfilled") {
+          continue;
+        }
+
+        const { port, info } = result.value;
+        if (/status="READY"/i.test(info) && keywords.test(info)) {
+          return port;
+        }
+      }
+
+      return 11100;
+    },
+
+    capture: async (authMode: "FINGERPRINT" | "IRIS" = "FINGERPRINT") => {
+      // wadh = base64(SHA256("2.5" + ra + "YYNN")) per Aadhaar eKYC 2.5 spec,
+      // where ra is the auth modality ("F" for finger, "I" for iris)
+      const opts =
+        authMode === "IRIS"
+          ? `fCount="0" fType="0" iCount="1" iType="0" wadh="T9nIfCslZnsX4pR6o1CzBDHp7MUiYne6QySOZvmB3Rk="`
+          : `fCount="1" fType="2" wadh="RZ+k4w9ySTzOibQdDHPzCFqrKScZ74b3EibKYy1WyGw="`;
+
+      const port =
+        authMode === "IRIS" ? await apis.rdService.discoverPort("IRIS") : 11100;
+
+      const response = await fetch(`https://127.0.0.1:${port}/rd/capture`, {
         method: "CAPTURE",
-        body: `<?xml version="1.0"?> <PidOptions ver="1.0"> <Opts env="P" fCount="1" fType="2" format="0" pidVer="2.0" wadh="RZ+k4w9ySTzOibQdDHPzCFqrKScZ74b3EibKYy1WyGw=" timeout="10000" posh="UNKNOWN" /> <CustOpts><Param name="mantrakey" value="B0CZLLZ98Z" /></CustOpts> </PidOptions>`,
+        body: `<?xml version="1.0"?> <PidOptions ver="1.0"> <Opts env="P" ${opts} format="0" pidVer="2.0" timeout="10000" posh="UNKNOWN" /> <CustOpts><Param name="mantrakey" value="B0CZLLZ98Z" /></CustOpts> </PidOptions>`,
       });
 
       return response.text();

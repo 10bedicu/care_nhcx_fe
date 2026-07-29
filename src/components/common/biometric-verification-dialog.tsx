@@ -6,7 +6,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { FC, useEffect, useMemo, useRef, useState } from "react";
-import { FingerprintIcon, ScanFaceIcon } from "lucide-react";
+import { FingerprintIcon, ScanEyeIcon, ScanFaceIcon } from "lucide-react";
 import { cn, toast } from "@/lib/utils";
 
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { useMutation } from "@tanstack/react-query";
 
 type BiometricAuthMode = "FINGERPRINT" | "IRIS" | "FACE_AUTH";
 type BiometricProcess = "Preauth" | "Discharge";
-type DialogMode = "biometric" | "face";
+type DialogMode = "fingerprint" | "iris" | "face";
 
 const MAX_FACE_RETRIES = 3;
 const FACE_POLL_INTERVAL_MS = 10000;
@@ -48,14 +48,18 @@ export const BiometricVerificationDialog: FC<
   onVerifySuccess,
   onBypass,
 }) => {
-  const biometricAuthMode: BiometricAuthMode =
-    authMode === "FACE_AUTH" ? "FINGERPRINT" : authMode;
-
   const [mode, setMode] = useState<DialogMode>(
-    authMode === "FACE_AUTH" ? "face" : "biometric",
+    authMode === "FACE_AUTH"
+      ? "face"
+      : authMode === "IRIS"
+        ? "iris"
+        : "fingerprint",
   );
 
-  // Biometric (fingerprint) flow state
+  const biometricAuthMode: Exclude<BiometricAuthMode, "FACE_AUTH"> =
+    mode === "iris" ? "IRIS" : "FINGERPRINT";
+
+  // Biometric (fingerprint/iris) flow state
   const [txnId, setTxnId] = useState<string | null>(null);
   const [capturedAuthData, setCapturedAuthData] = useState<string>("");
 
@@ -111,7 +115,7 @@ export const BiometricVerificationDialog: FC<
 
       if (errorCode !== "0") {
         const errorMessage =
-          respElement?.getAttribute("errInfo") ?? "Fingerprint capture failed";
+          respElement?.getAttribute("errInfo") ?? "Biometric capture failed";
         toast.error(errorMessage);
         return;
       }
@@ -133,7 +137,7 @@ export const BiometricVerificationDialog: FC<
       });
     },
     onError: (error) => {
-      toast.error(error.message || "Fingerprint capture failed");
+      toast.error(error.message || "Biometric capture failed");
     },
   });
 
@@ -245,7 +249,7 @@ export const BiometricVerificationDialog: FC<
       return;
     }
 
-    if (mode === "biometric" && abhaNumber && payerId && !txnId) {
+    if (mode !== "face" && abhaNumber && payerId && !txnId) {
       initMutation.mutate({
         abhaNumber,
         payerId,
@@ -270,7 +274,7 @@ export const BiometricVerificationDialog: FC<
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPolling, faceTxnId]);
 
-  const fingerprintStatus = useMemo(() => {
+  const biometricStatus = useMemo(() => {
     if (captureMutation.isPending || verifyMutation.isPending) {
       return "pending";
     }
@@ -383,26 +387,40 @@ export const BiometricVerificationDialog: FC<
         <DialogHeader>
           <DialogTitle>Consent Verification</DialogTitle>
           <DialogDescription>
-            Verify the patient&apos;s consent using a biometric fingerprint scan
-            or ABHA face authentication.
+            Verify the patient&apos;s consent using a fingerprint scan, iris
+            scan or ABHA face authentication.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-2 rounded-md bg-secondary-100 p-1">
+          <div className="grid grid-cols-3 gap-2 rounded-md bg-secondary-100 p-1">
             <button
               type="button"
-              onClick={() => handleModeChange("biometric")}
+              onClick={() => handleModeChange("fingerprint")}
               disabled={verifyMutation.isPending}
               className={cn(
                 "flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                mode === "biometric"
+                mode === "fingerprint"
                   ? "bg-white text-primary-700 shadow-sm"
                   : "text-secondary-600 hover:text-secondary-800",
               )}
             >
               <FingerprintIcon className="h-4 w-4" />
-              Biometric
+              Fingerprint
+            </button>
+            <button
+              type="button"
+              onClick={() => handleModeChange("iris")}
+              disabled={verifyMutation.isPending}
+              className={cn(
+                "flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+                mode === "iris"
+                  ? "bg-white text-primary-700 shadow-sm"
+                  : "text-secondary-600 hover:text-secondary-800",
+              )}
+            >
+              <ScanEyeIcon className="h-4 w-4" />
+              Iris
             </button>
             <button
               type="button"
@@ -420,25 +438,37 @@ export const BiometricVerificationDialog: FC<
             </button>
           </div>
 
-          {mode === "biometric" && (
+          {mode !== "face" && (
             <div className="rounded-md border border-dashed p-6">
               <div className="flex flex-col items-center justify-center gap-4">
                 <div
                   className={cn(
                     "flex h-24 w-24 items-center justify-center rounded-full bg-primary-50",
-                    fingerprintStatus === "success" && "bg-green-50",
-                    fingerprintStatus === "error" && "bg-red-50",
+                    biometricStatus === "success" && "bg-green-50",
+                    biometricStatus === "error" && "bg-red-50",
                   )}
                 >
-                  <FingerprintIcon
-                    className={cn(
-                      "h-10 w-10",
-                      fingerprintStatus === "success" && "text-green-600",
-                      fingerprintStatus === "error" && "text-red-600",
-                      ["idle", "pending"].includes(fingerprintStatus) &&
-                        "text-primary-500",
-                    )}
-                  />
+                  {mode === "iris" ? (
+                    <ScanEyeIcon
+                      className={cn(
+                        "h-10 w-10",
+                        biometricStatus === "success" && "text-green-600",
+                        biometricStatus === "error" && "text-red-600",
+                        ["idle", "pending"].includes(biometricStatus) &&
+                          "text-primary-500",
+                      )}
+                    />
+                  ) : (
+                    <FingerprintIcon
+                      className={cn(
+                        "h-10 w-10",
+                        biometricStatus === "success" && "text-green-600",
+                        biometricStatus === "error" && "text-red-600",
+                        ["idle", "pending"].includes(biometricStatus) &&
+                          "text-primary-500",
+                      )}
+                    />
+                  )}
                 </div>
 
                 <div className="text-center">
@@ -449,7 +479,9 @@ export const BiometricVerificationDialog: FC<
                   )}
                   {initMutation.isSuccess && !!txnId && (
                     <p className="text-sm text-secondary-600">
-                      Ready to scan fingerprint.
+                      {mode === "iris"
+                        ? "Ready to scan iris."
+                        : "Ready to scan fingerprint."}
                     </p>
                   )}
                   {verifyMutation.isPending && (
@@ -472,14 +504,14 @@ export const BiometricVerificationDialog: FC<
                 <Button
                   type="button"
                   onClick={() => {
-                    captureMutation.mutate();
+                    captureMutation.mutate(biometricAuthMode);
                   }}
                   loading={
                     captureMutation.isPending || verifyMutation.isPending
                   }
                   disabled={!txnId || initMutation.isPending}
                 >
-                  Scan Fingerprint
+                  {mode === "iris" ? "Scan Iris" : "Scan Fingerprint"}
                 </Button>
               </div>
             </div>
