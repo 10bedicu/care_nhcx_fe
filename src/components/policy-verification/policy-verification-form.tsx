@@ -1,5 +1,6 @@
 import {
   Building2Icon,
+  CalendarIcon,
   CheckCircle2Icon,
   ClockIcon,
   HashIcon,
@@ -15,11 +16,12 @@ import {
   XCircleIcon,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FC, useEffect, useMemo, useState } from "react";
 import {
   PolicyIdentifierTab,
   PolicyLookupTabs,
 } from "@/components/common/policy-lookup-tabs";
-import { FC, useEffect, useState } from "react";
+import { formatVerificationTimestamp, isValidationStale } from "./utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { AbhaNumber } from "@/types/abha_number";
@@ -30,10 +32,6 @@ import { InlineLoading } from "@/components/common/loading-spinner";
 import { Patient } from "@/types/patient";
 import { Policy } from "@/types/policy";
 import { VALIDATION_REUSE_WINDOW_HOURS } from "./constants";
-import {
-  formatVerificationTimestamp,
-  isValidationStale,
-} from "./utils";
 import { apis } from "@/apis";
 import { buildDemographicChecks } from "@/components/nhcx-encounter-tab/demographics";
 import { deriveValidationOutcome } from "@/components/nhcx-encounter-tab/flow";
@@ -52,9 +50,6 @@ type SearchParams = {
   identifiervalue: string;
 };
 
-/** Sequence offset for manually entered policies so they never collide with API-result indices. */
-const MANUAL_POLICY_INDEX_OFFSET = 10_000;
-
 type PolicyVerificationFormProps = {
   context: PolicyVerificationContext;
   className?: string;
@@ -67,6 +62,37 @@ type PolicyVerificationFormProps = {
 function listQueryKey(context: PolicyVerificationContext) {
   return [
     "coverage-eligibility-requests",
+    context.scope,
+    context.patientId,
+  ] as const;
+}
+
+function formatPolicyDate(value?: string | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function formatPolicyPeriod(
+  period?: { start?: string | null; end?: string | null } | null,
+): string | null {
+  if (!period) return null;
+  const start = formatPolicyDate(period.start);
+  const end = formatPolicyDate(period.end);
+  if (start && end) return `${start} – ${end}`;
+  if (start) return `From ${start}`;
+  if (end) return `Until ${end}`;
+  return null;
+}
+
+function discoveryQueryKey(context: PolicyVerificationContext) {
+  return [
+    "coverage-eligibility-discovery",
     context.scope,
     context.patientId,
   ] as const;
@@ -89,6 +115,23 @@ function buildCreatePayload(
   };
 }
 
+function buildDiscoveryPayload(
+  patientId: string,
+  facilityId: string,
+  policy: Policy,
+) {
+  return {
+    status: "active" as const,
+    priority: "normal" as const,
+    purpose: ["discovery" as const],
+    facility: facilityId,
+    patient: patientId,
+    supporting_info: [],
+    insurance: [{ sequence: 1, focal: true, policy }],
+    item: [],
+  };
+}
+
 export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
   context,
   className,
@@ -102,7 +145,6 @@ export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
   const [mobileInput, setMobileInput] = useState("");
   const [memberIdInput, setMemberIdInput] = useState("");
   const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
-  const [manualPolicies, setManualPolicies] = useState<Policy[]>([]);
   const [selectedPolicy, setSelectedPolicy] = useState<Policy | null>(null);
   const [verifyingPolicyKey, setVerifyingPolicyKey] = useState<string | null>(
     null,
@@ -191,8 +233,27 @@ export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
     enabled: !!searchParams,
   });
 
+  const { data: discoveryRequests } = useQuery({
+    queryKey: discoveryQueryKey(context),
+    queryFn: () =>
+      apis.coverageEligibilityRequest.list({
+        patient: patientId,
+        purpose: "discovery",
+        ordering: "-created_date",
+      }),
+    enabled: !!patientId,
+    refetchInterval: (query) => {
+      const results = query.state.data?.results ?? [];
+      return results.some(isAwaitingResponse) ? 5000 : false;
+    },
+  });
+
   const invalidateSavedRequests = () => {
     queryClient.invalidateQueries({ queryKey: listQueryKey(context) });
+  };
+
+  const invalidateDiscoveryRequests = () => {
+    queryClient.invalidateQueries({ queryKey: discoveryQueryKey(context) });
   };
 
   const { mutate: createRequest, isPending: isCreating } = useMutation({
@@ -204,6 +265,23 @@ export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
     },
     onError: () => {
       toast.error("Failed to save policy for coverage verification");
+    },
+  });
+
+  const { mutate: runDiscovery, isPending: isDiscovering } = useMutation({
+    mutationFn: async (policy: Policy) => {
+      const created = await apis.coverageEligibilityRequest.create(
+        buildDiscoveryPayload(patientId, facilityId, policy),
+      );
+      await apis.coverageEligibilityRequest.check(created.id);
+      return created;
+    },
+    onSuccess: () => {
+      toast.success("Policy discovery submitted to payer");
+      invalidateDiscoveryRequests();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to run policy discovery");
     },
   });
 
@@ -278,9 +356,8 @@ export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
         onTabChange={handleTabChange}
         onSearch={handleSearch}
         isLoading={isPoliciesLoading || isAbhaLoading}
-        onManualAdd={(policy) =>
-          setManualPolicies((prev) => [...prev, policy])
-        }
+        onDiscover={(policy) => runDiscovery(policy)}
+        isDiscovering={isDiscovering}
       />
 
       {(isPoliciesLoading || isExistingLoading) && (
@@ -304,30 +381,11 @@ export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
             onSelect={() => handlePolicySelect(policy)}
           />
         ))}
-        {manualPolicies.map((policy, index) => (
-          <SelectablePolicyCard
-            key={`manual-${MANUAL_POLICY_INDEX_OFFSET + index}`}
-            policy={policy}
-            isSelected={
-              !skipSaveForVerification && selectedPolicy?.sno === policy.sno
-            }
-            isVerifying={
-              verifyingPolicyKey ===
-              `${policy.memberid}:${policy.payerid}:${policy.productid}`
-            }
-            disabled={isVerifying}
-            instantVerify={skipSaveForVerification}
-            onSelect={() => handlePolicySelect(policy)}
-          />
-        ))}
       </div>
 
-      {!isPoliciesLoading &&
-        !!searchParams &&
-        policies?.length === 0 &&
-        manualPolicies.length === 0 && (
-          <p className="text-sm text-muted-foreground">No policies found</p>
-        )}
+      {!isPoliciesLoading && !!searchParams && policies?.length === 0 && (
+        <p className="text-sm text-muted-foreground">No policies found</p>
+      )}
 
       {!skipSaveForVerification && selectedPolicy && (
         <Button
@@ -366,9 +424,113 @@ export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
       </div>
     ) : null;
 
+  const discoveryList = useMemo(
+    () => discoveryRequests?.results ?? [],
+    [discoveryRequests],
+  );
+  const isDiscoveryAwaiting = discoveryList.some(isAwaitingResponse);
+  const discoveryError = discoveryList.find(
+    (request) =>
+      !isAwaitingResponse(request) &&
+      request.dispatch_status !== "pending" &&
+      (request.latest_response?.outcome === "error" ||
+        (request.dispatch_status === "error" && !request.latest_response)),
+  );
+
+  const discoveredPolicies = useMemo<Policy[]>(() => {
+    const byKey = new Map<string, Policy>();
+    for (const request of discoveryList) {
+      const payerId =
+        request.insurance?.[0]?.policy?.payerid ??
+        request.insurer?.participant_code ??
+        "";
+      for (const entry of request.latest_response?.insurances ?? []) {
+        const memberId = entry.pmjay_id;
+        if (!memberId) continue;
+        const sno = entry.coverage_id ?? `${memberId}:${payerId}`;
+        const key =
+          entry.coverage_id ??
+          `${memberId}:${payerId}:${entry.national_health_id ?? ""}`;
+        if (byKey.has(key)) continue;
+        byKey.set(key, {
+          sno,
+          abhanumber: entry.abha_id ?? "",
+          mobilenumber: "",
+          memberid: memberId,
+          payerid: payerId,
+          productid: entry.national_health_id ?? "",
+          productname: entry.plan_name ?? entry.national_health_id ?? "Policy",
+          processingid: payerId,
+          policy_period: entry.policy_period ?? null,
+        });
+      }
+    }
+    return Array.from(byKey.values());
+  }, [discoveryList]);
+
+  const discoverySection =
+    discoveryList.length > 0 ? (
+      <div className="space-y-3 min-w-0">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Discovered policies
+          </p>
+          {skipSaveForVerification && discoveredPolicies.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Select a policy to verify
+            </p>
+          )}
+        </div>
+
+        {isDiscoveryAwaiting && discoveredPolicies.length === 0 && (
+          <InlineLoading label="Discovering policies with the payer…" />
+        )}
+
+        {!isDiscoveryAwaiting &&
+          discoveredPolicies.length === 0 &&
+          (discoveryError ? (
+            <p className="text-sm text-red-600">
+              {discoveryError.dispatch_error ||
+                "The payer could not process the discovery request."}
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No policies were discovered.
+            </p>
+          ))}
+
+        {discoveredPolicies.length > 0 && (
+          <div className="grid gap-3 sm:grid-cols-2 min-w-0">
+            {discoveredPolicies.map((policy) => (
+              <SelectablePolicyCard
+                key={policy.sno}
+                policy={policy}
+                isSelected={
+                  !skipSaveForVerification && selectedPolicy?.sno === policy.sno
+                }
+                isVerifying={
+                  verifyingPolicyKey ===
+                  `${policy.memberid}:${policy.payerid}:${policy.productid}`
+                }
+                disabled={isVerifying}
+                instantVerify={skipSaveForVerification}
+                onSelect={() => handlePolicySelect(policy)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    ) : null;
+
   const body = (
     <div className="space-y-6 min-w-0">
       {lookupSection}
+      {discoverySection && (
+        <>
+          <div className="border-t" />
+          {discoverySection}
+        </>
+      )}
       {historySection && (
         <>
           <div className="border-t" />
@@ -665,7 +827,9 @@ const SelectablePolicyCard = ({
   >
     <CardHeader className="pb-2">
       <div className="flex items-center justify-between gap-2 min-w-0">
-        <CardTitle className="text-base truncate">{policy.productname}</CardTitle>
+        <CardTitle className="text-base truncate">
+          {policy.productname}
+        </CardTitle>
         {isVerifying ? (
           <Loader2Icon className="size-4 shrink-0 animate-spin text-primary" />
         ) : isSelected ? (
@@ -717,6 +881,15 @@ const SelectablePolicyCard = ({
           </div>
         </div>
       </div>
+      {formatPolicyPeriod(policy.policy_period) && (
+        <div className="mt-3 flex items-center gap-2 rounded-md bg-muted/50 px-2.5 py-1.5 text-xs">
+          <CalendarIcon className="size-3.5 shrink-0 text-primary" />
+          <span className="text-gray-500">Valid</span>
+          <span className="font-medium text-muted-foreground truncate">
+            {formatPolicyPeriod(policy.policy_period)}
+          </span>
+        </div>
+      )}
     </CardContent>
   </Card>
 );

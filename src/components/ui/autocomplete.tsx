@@ -45,6 +45,12 @@ interface AutocompleteProps {
   isLoading?: boolean;
   align?: "start" | "center" | "end";
   popoverClassName?: string;
+  /**
+   * Optional container to portal the popover into. Pass the surrounding
+   * dialog/sheet element when rendering inside a modal so the popover is not
+   * blocked by the modal's focus trap / pointer-events guard.
+   */
+  container?: HTMLElement | null;
   "data-cy"?: string;
 }
 
@@ -59,6 +65,7 @@ export default function Autocomplete({
   isLoading = false,
   align = "center",
   popoverClassName,
+  container,
   "data-cy": dataCy,
 }: AutocompleteProps) {
   const [open, setOpen] = React.useState(false);
@@ -201,6 +208,7 @@ export default function Autocomplete({
       <PopoverContent
         className="p-0 pointer-events-auto w-[var(--radix-popover-trigger-width)]"
         align={align}
+        container={container}
       >
         <Command>{commandContent}</Command>
       </PopoverContent>

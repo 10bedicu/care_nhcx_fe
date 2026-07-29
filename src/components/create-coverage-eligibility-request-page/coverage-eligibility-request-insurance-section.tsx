@@ -27,7 +27,8 @@ import { UseFormReturn } from "react-hook-form";
 import { apis } from "@/apis";
 import { resolvePmjayMemberId } from "@/components/nhcx-encounter-tab/flow-prerequisites";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { z } from "zod";
 
 interface CoverageEligibilityRequestInsuranceSectionProps {
@@ -47,9 +48,6 @@ type SearchParams = {
   identifiervalue: string;
 };
 
-/** Sequence offset for manually entered policies so they never collide with API-result indices. */
-const MANUAL_POLICY_INDEX_OFFSET = 10_000;
-
 export function CoverageEligibilityRequestInsuranceSection({
   form,
   readOnly = false,
@@ -58,9 +56,9 @@ export function CoverageEligibilityRequestInsuranceSection({
   const [mobileInput, setMobileInput] = useState("");
   const [memberIdInput, setMemberIdInput] = useState("");
   const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
-  const [manualPolicies, setManualPolicies] = useState<Policy[]>([]);
 
   const patientId = form.watch("patient");
+  const facilityId = form.watch("facility");
 
   const { data: abhaNumber, isFetching: isAbhaLoading } = useQuery({
     queryKey: ["abhaNumber", patientId],
@@ -124,6 +122,29 @@ export function CoverageEligibilityRequestInsuranceSection({
     queryKey: ["policies", searchParams],
     queryFn: () => apis.gateway.policies(searchParams!),
     enabled: !!searchParams && !readOnly,
+  });
+
+  const { mutate: runDiscovery, isPending: isDiscovering } = useMutation({
+    mutationFn: async (policy: Policy) => {
+      const created = await apis.coverageEligibilityRequest.create({
+        status: "active",
+        priority: "normal",
+        purpose: ["discovery"],
+        facility: facilityId,
+        patient: patientId,
+        supporting_info: [],
+        insurance: [{ sequence: 1, focal: true, policy }],
+        item: [],
+      });
+      await apis.coverageEligibilityRequest.check(created.id);
+      return created;
+    },
+    onSuccess: () => {
+      toast.success("Policy discovery submitted to payer");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Failed to run policy discovery");
+    },
   });
 
   const selectedInsurances = form.watch("insurance") ?? [];
@@ -190,7 +211,8 @@ export function CoverageEligibilityRequestInsuranceSection({
         onTabChange={handleTabChange}
         onSearch={handleSearch}
         isLoading={isPoliciesLoading || isAbhaLoading}
-        onManualAdd={(policy) => setManualPolicies((prev) => [...prev, policy])}
+        onDiscover={(policy) => runDiscovery(policy)}
+        isDiscovering={isDiscovering}
       />
 
       {isPoliciesLoading && (
@@ -214,20 +236,11 @@ export function CoverageEligibilityRequestInsuranceSection({
                         form={form}
                       />
                     ))}
-                    {manualPolicies.map((policy, index) => (
-                      <PolicyCard
-                        key={`manual-${policy.sno}`}
-                        policy={policy}
-                        index={MANUAL_POLICY_INDEX_OFFSET + index + 1}
-                        form={form}
-                      />
-                    ))}
                   </div>
                 </FormControl>
                 {!isPoliciesLoading &&
                   !!searchParams &&
-                  policies?.length === 0 &&
-                  manualPolicies.length === 0 && (
+                  policies?.length === 0 && (
                     <p className="text-sm text-muted-foreground mt-2">
                       No policies found
                     </p>

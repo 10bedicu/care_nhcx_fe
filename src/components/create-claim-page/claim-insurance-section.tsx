@@ -50,7 +50,6 @@ export function ClaimInsuranceSection({ form, readOnly = false }: ClaimInsurance
   const [mobileInput, setMobileInput] = useState("");
   const [memberIdInput, setMemberIdInput] = useState("");
   const [searchParams, setSearchParams] = useState<SearchParams | null>(null);
-  const [manualPolicies, setManualPolicies] = useState<Policy[]>([]);
 
   const patientId = form.watch("patient");
 
@@ -177,10 +176,7 @@ export function ClaimInsuranceSection({ form, readOnly = false }: ClaimInsurance
 
   const displayedPolicies = [
     ...(policies ?? []),
-    ...prefilledPolicies.filter(
-      (p) => !manualPolicies.some((m) => m.sno === p.sno),
-    ),
-    ...manualPolicies,
+    ...prefilledPolicies,
   ];
 
   return (
@@ -207,7 +203,6 @@ export function ClaimInsuranceSection({ form, readOnly = false }: ClaimInsurance
         onTabChange={handleTabChange}
         onSearch={handleSearch}
         isLoading={isPoliciesLoading || isAbhaLoading}
-        onManualAdd={(policy) => setManualPolicies((prev) => [...prev, policy])}
       />
 
       {isPoliciesLoading && (

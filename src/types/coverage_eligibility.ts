@@ -102,6 +102,8 @@ export type InsuranceEntry = {
   gender: string | null;
   abha_id: string | null;
   inforce: boolean;
+  coverage_id: string | null;
+  national_health_id: string | null;
   plan_name: string | null;
   plan_id: string | null;
   policy_period: { start: string; end: string } | null;

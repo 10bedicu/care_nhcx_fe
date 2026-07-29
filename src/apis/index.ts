@@ -31,6 +31,7 @@ import { Encounter } from "@/types/encounter";
 import { HealthFacility } from "@/types/health_facility";
 import { Invoice } from "@/types/invoice";
 import { PaginatedResponse } from "./types";
+import { FetchParticipantsResponse } from "@/types/participant";
 import { Patient } from "@/types/patient";
 import { PaymentNotice } from "@/types/payment";
 import { Policy } from "@/types/policy";
@@ -327,6 +328,20 @@ export const apis = {
         method: "POST",
         body: JSON.stringify(body),
       });
+    },
+
+    participants: async (body: {
+      role: "PAYER" | "PROVIDER" | "TPA";
+      fromdate: string;
+      todate: string;
+    }) => {
+      return await request<FetchParticipantsResponse>(
+        `/api/nhcx/gateway/participants/`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      );
     },
 
     abhaBiometricAuthInit: async (body: {
