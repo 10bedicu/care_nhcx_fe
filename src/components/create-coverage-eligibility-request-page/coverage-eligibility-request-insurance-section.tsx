@@ -19,6 +19,7 @@ import {
   PolicyLookupTabs,
 } from "@/components/common/policy-lookup-tabs";
 import { InlineLoading } from "@/components/common/loading-spinner";
+import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 
 import { Checkbox } from "../ui/checkbox";
@@ -255,6 +256,24 @@ export function CoverageEligibilityRequestInsuranceSection({
                     <p className="text-sm text-muted-foreground mt-2">
                       No policies found
                     </p>
+                  )}
+                {activeTab === "memberId" &&
+                  !isPoliciesLoading &&
+                  !!searchParams &&
+                  (!!policiesError || policies?.length === 0) && (
+                    <div className="mt-2 flex flex-col gap-2 rounded-md border border-dashed bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+                      <p className="text-sm text-muted-foreground">
+                        Can't find the policy with this member ID?
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleTabChange("manual")}
+                      >
+                        Search manually with a payer
+                      </Button>
+                    </div>
                   )}
                 <FormMessage />
               </FormItem>

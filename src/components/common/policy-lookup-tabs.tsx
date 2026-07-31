@@ -1,8 +1,8 @@
 import {
+  ArrowLeftIcon,
   CreditCardIcon,
   PhoneIcon,
   ScanLineIcon,
-  SearchIcon,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -81,12 +81,6 @@ export function PolicyLookupTabs({
           <CreditCardIcon className="h-4 w-4" />
           Member ID
         </TabsTrigger>
-        {onDiscover && (
-          <TabsTrigger value="manual" className="gap-2">
-            <SearchIcon className="h-4 w-4" />
-            Manual
-          </TabsTrigger>
-        )}
       </TabsList>
 
       <TabsContent value="abha">
@@ -170,8 +164,10 @@ export function PolicyLookupTabs({
           <PayerDiscoveryEntry
             abhaValue={abhaValue}
             mobileValue={mobileValue}
+            initialMemberId={memberIdValue}
             onDiscover={onDiscover}
             isDiscovering={isDiscovering}
+            onBack={() => onTabChange("memberId")}
           />
         </TabsContent>
       )}
@@ -182,18 +178,22 @@ export function PolicyLookupTabs({
 interface PayerDiscoveryEntryProps {
   abhaValue: string;
   mobileValue: string;
+  initialMemberId: string;
   onDiscover: (policy: Policy) => void;
   isDiscovering: boolean;
+  onBack: () => void;
 }
 
 function PayerDiscoveryEntry({
   abhaValue,
   mobileValue,
+  initialMemberId,
   onDiscover,
   isDiscovering,
+  onBack,
 }: PayerDiscoveryEntryProps) {
   const [payerCode, setPayerCode] = useState("");
-  const [policyNumber, setPolicyNumber] = useState("");
+  const [policyNumber, setPolicyNumber] = useState(initialMemberId);
 
   // Portal the payer dropdown into the surrounding dialog/sheet (if any) so it
   // is not blocked by the modal's focus trap / pointer-events guard.
@@ -301,10 +301,23 @@ function PayerDiscoveryEntry({
       ref={containerRef}
       className="space-y-4 rounded-md border bg-muted/30 p-4"
     >
-      <p className="text-xs text-muted-foreground">
-        Couldn't find a policy? Pick a payer and enter the member ID from the
-        beneficiary's card to discover coverage directly with the payer.
-      </p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs text-muted-foreground">
+          No policies were found for this member ID. Pick a payer and confirm
+          the member ID from the beneficiary's card to discover coverage
+          directly with the payer.
+        </p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="shrink-0 gap-1 text-muted-foreground"
+          onClick={onBack}
+        >
+          <ArrowLeftIcon className="h-4 w-4" />
+          Back
+        </Button>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="discovery-payer">
