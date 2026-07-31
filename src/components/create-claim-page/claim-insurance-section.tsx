@@ -111,10 +111,15 @@ export function ClaimInsuranceSection({ form, readOnly = false }: ClaimInsurance
     }
   };
 
-  const { data: policies, isFetching: isPoliciesLoading } = useQuery({
+  const {
+    data: policies,
+    isFetching: isPoliciesLoading,
+    error: policiesError,
+  } = useQuery({
     queryKey: ["policies", searchParams],
     queryFn: () => apis.gateway.policies(searchParams!),
     enabled: !!searchParams && !readOnly,
+    retry: false,
   });
 
   const selectedInsurances = form.watch("insurance") ?? [];
@@ -227,6 +232,20 @@ export function ClaimInsuranceSection({ form, readOnly = false }: ClaimInsurance
                     ))}
                   </div>
                 </FormControl>
+                {!isPoliciesLoading && policiesError && (
+                  <p className="text-sm text-red-600 mt-2">
+                    {policiesError.message || "Failed to fetch policies"}
+                  </p>
+                )}
+                {!isPoliciesLoading &&
+                  !policiesError &&
+                  !!searchParams &&
+                  policies?.length === 0 &&
+                  displayedPolicies.length === 0 && (
+                    <p className="text-sm text-muted-foreground mt-2">
+                      No policies found
+                    </p>
+                  )}
                 <FormMessage />
               </FormItem>
             </div>

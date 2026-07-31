@@ -334,6 +334,7 @@ export const apis = {
       role: "PAYER" | "PROVIDER" | "TPA";
       fromdate: string;
       todate: string;
+      entitytype?: "GOV" | "PVT" | "ALL";
     }) => {
       return await request<FetchParticipantsResponse>(
         `/api/nhcx/gateway/participants/`,

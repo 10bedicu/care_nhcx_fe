@@ -137,7 +137,7 @@ export const policySchema = z.object({
   mobilenumber: z.string(),
   memberid: z.string(),
   payerid: z.string(),
-  productid: z.string(),
+  productid: z.string().nullable(),
   productname: z.string(),
   processingid: z.string(),
   policy_period: z

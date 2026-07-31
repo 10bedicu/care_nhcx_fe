@@ -194,7 +194,6 @@ function PayerDiscoveryEntry({
 }: PayerDiscoveryEntryProps) {
   const [payerCode, setPayerCode] = useState("");
   const [policyNumber, setPolicyNumber] = useState("");
-  const [productId, setProductId] = useState("");
 
   // Portal the payer dropdown into the surrounding dialog/sheet (if any) so it
   // is not blocked by the modal's focus trap / pointer-events guard.
@@ -219,39 +218,68 @@ function PayerDiscoveryEntry({
     [],
   );
 
-  const { data: participantsRaw, isFetching: isParticipantsLoading } = useQuery(
-    {
-      queryKey: ["participants", "PAYER", dateRange.fromdate, dateRange.todate],
+  const { data: govParticipantsRaw, isFetching: isGovParticipantsLoading } =
+    useQuery({
+      queryKey: [
+        "participants",
+        "PAYER",
+        "GOV",
+        dateRange.fromdate,
+        dateRange.todate,
+      ],
       queryFn: () =>
         apis.gateway.participants({
           role: "PAYER",
           fromdate: dateRange.fromdate,
           todate: dateRange.todate,
+          entitytype: "GOV",
         }),
-    },
-  );
+    });
+
+  const { data: pvtParticipantsRaw, isFetching: isPvtParticipantsLoading } =
+    useQuery({
+      queryKey: [
+        "participants",
+        "PAYER",
+        "PVT",
+        dateRange.fromdate,
+        dateRange.todate,
+      ],
+      queryFn: () =>
+        apis.gateway.participants({
+          role: "PAYER",
+          fromdate: dateRange.fromdate,
+          todate: dateRange.todate,
+          entitytype: "PVT",
+        }),
+    });
+
+  const isParticipantsLoading =
+    isGovParticipantsLoading || isPvtParticipantsLoading;
 
   const payerOptions = useMemo(() => {
-    const apiParticipants: ParticipantSummary[] = Array.isArray(
-      participantsRaw?.participantdetails,
-    )
-      ? participantsRaw.participantdetails
-      : [];
-    const apiCodes = new Set(apiParticipants.map((p) => p.participantcode));
-    const extras = HARDCODED_PAYERS.filter(
-      (p) => !apiCodes.has(p.participantcode),
+    const apiParticipants: ParticipantSummary[] = [
+      govParticipantsRaw,
+      pvtParticipantsRaw,
+    ].flatMap((raw) =>
+      Array.isArray(raw?.participantdetails) ? raw.participantdetails : [],
     );
-    return [...extras, ...apiParticipants].map((participant) => ({
+    const seen = new Set<string>();
+    const uniqueParticipants = apiParticipants.filter((p) => {
+      if (seen.has(p.participantcode)) return false;
+      seen.add(p.participantcode);
+      return true;
+    });
+    const extras = HARDCODED_PAYERS.filter(
+      (p) => !seen.has(p.participantcode),
+    );
+    return [...extras, ...uniqueParticipants].map((participant) => ({
       value: participant.participantcode,
       label: `${participant.participantname} (${participant.participantcode})`,
     }));
-  }, [participantsRaw]);
+  }, [govParticipantsRaw, pvtParticipantsRaw]);
 
-  const canSubmit =
-    !!payerCode &&
-    !!policyNumber.trim() &&
-    !!productId.trim() &&
-    !isDiscovering;
+  const canSubmit = !!payerCode && !!policyNumber.trim() && !isDiscovering;
 
   const handleDiscover = () => {
     if (!canSubmit) return;
@@ -261,7 +289,7 @@ function PayerDiscoveryEntry({
       mobilenumber: mobileValue,
       memberid: policyNumber.trim(),
       payerid: payerCode,
-      productid: productId.trim(),
+      productid: null,
       productname: "",
       processingid: payerCode,
       policy_period: null,
@@ -274,8 +302,8 @@ function PayerDiscoveryEntry({
       className="space-y-4 rounded-md border bg-muted/30 p-4"
     >
       <p className="text-xs text-muted-foreground">
-        Couldn't find a policy? Pick a payer and enter the policy number from
-        the beneficiary's card to discover coverage directly with the payer.
+        Couldn't find a policy? Pick a payer and enter the member ID from the
+        beneficiary's card to discover coverage directly with the payer.
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
@@ -297,24 +325,13 @@ function PayerDiscoveryEntry({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="discovery-policy-number">
-            Policy Number <span className="text-red-500">*</span>
+            Member ID <span className="text-red-500">*</span>
           </Label>
           <Input
             id="discovery-policy-number"
             value={policyNumber}
             onChange={(e) => setPolicyNumber(e.target.value)}
-            placeholder="Enter policy number from the beneficiary card"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="discovery-product-id">
-            Product ID <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="discovery-product-id"
-            value={productId}
-            onChange={(e) => setProductId(e.target.value)}
-            placeholder="Enter product ID"
+            placeholder="Enter member ID from the beneficiary card"
           />
         </div>
       </div>

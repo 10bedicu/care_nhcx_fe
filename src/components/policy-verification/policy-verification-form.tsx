@@ -90,14 +90,6 @@ function formatPolicyPeriod(
   return null;
 }
 
-function discoveryQueryKey(context: PolicyVerificationContext) {
-  return [
-    "coverage-eligibility-discovery",
-    context.scope,
-    context.patientId,
-  ] as const;
-}
-
 function buildCreatePayload(
   patientId: string,
   facilityId: string,
@@ -149,6 +141,9 @@ export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
   const [verifyingPolicyKey, setVerifyingPolicyKey] = useState<string | null>(
     null,
   );
+  const [activeDiscoveryId, setActiveDiscoveryId] = useState<string | null>(
+    null,
+  );
 
   const { data: abhaNumber, isFetching: isAbhaLoading } = useQuery({
     queryKey: ["abhaNumber", patientId],
@@ -162,7 +157,7 @@ export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
     enabled: !!patientId,
   });
 
-  const { data: existingRequests, isFetching: isExistingLoading } = useQuery({
+  const { data: existingRequests, isLoading: isExistingLoading } = useQuery({
     queryKey: listQueryKey(context),
     queryFn: () =>
       apis.coverageEligibilityRequest.list({
@@ -174,7 +169,7 @@ export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
     enabled: !!patientId,
     refetchInterval: (query) => {
       const results = query.state.data?.results ?? [];
-      return results.some(isAwaitingResponse) ? 5000 : false;
+      return results.some(shouldPollForResponse) ? 5000 : false;
     },
   });
 
@@ -227,33 +222,29 @@ export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
     }
   };
 
-  const { data: policies, isFetching: isPoliciesLoading } = useQuery({
+  const {
+    data: policies,
+    isFetching: isPoliciesLoading,
+    error: policiesError,
+  } = useQuery({
     queryKey: ["policies", searchParams],
     queryFn: () => apis.gateway.policies(searchParams!),
     enabled: !!searchParams,
+    retry: false,
   });
 
-  const { data: discoveryRequests } = useQuery({
-    queryKey: discoveryQueryKey(context),
-    queryFn: () =>
-      apis.coverageEligibilityRequest.list({
-        patient: patientId,
-        purpose: "discovery",
-        ordering: "-created_date",
-      }),
-    enabled: !!patientId,
+  const { data: activeDiscovery } = useQuery({
+    queryKey: ["coverage-eligibility-discovery", activeDiscoveryId],
+    queryFn: () => apis.coverageEligibilityRequest.get(activeDiscoveryId!),
+    enabled: !!activeDiscoveryId,
     refetchInterval: (query) => {
-      const results = query.state.data?.results ?? [];
-      return results.some(isAwaitingResponse) ? 5000 : false;
+      const request = query.state.data;
+      return request && shouldPollForResponse(request) ? 5000 : false;
     },
   });
 
   const invalidateSavedRequests = () => {
     queryClient.invalidateQueries({ queryKey: listQueryKey(context) });
-  };
-
-  const invalidateDiscoveryRequests = () => {
-    queryClient.invalidateQueries({ queryKey: discoveryQueryKey(context) });
   };
 
   const { mutate: createRequest, isPending: isCreating } = useMutation({
@@ -276,9 +267,9 @@ export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
       await apis.coverageEligibilityRequest.check(created.id);
       return created;
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       toast.success("Policy discovery submitted to payer");
-      invalidateDiscoveryRequests();
+      setActiveDiscoveryId(created.id);
     },
     onError: (error: Error) => {
       toast.error(error.message || "Failed to run policy discovery");
@@ -383,9 +374,18 @@ export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
         ))}
       </div>
 
-      {!isPoliciesLoading && !!searchParams && policies?.length === 0 && (
-        <p className="text-sm text-muted-foreground">No policies found</p>
+      {!isPoliciesLoading && policiesError && (
+        <p className="text-sm text-red-600">
+          {policiesError.message || "Failed to fetch policies"}
+        </p>
       )}
+
+      {!isPoliciesLoading &&
+        !policiesError &&
+        !!searchParams &&
+        policies?.length === 0 && (
+          <p className="text-sm text-muted-foreground">No policies found</p>
+        )}
 
       {!skipSaveForVerification && selectedPolicy && (
         <Button
@@ -425,10 +425,12 @@ export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
     ) : null;
 
   const discoveryList = useMemo(
-    () => discoveryRequests?.results ?? [],
-    [discoveryRequests],
+    () => (activeDiscovery ? [activeDiscovery] : []),
+    [activeDiscovery],
   );
-  const isDiscoveryAwaiting = discoveryList.some(isAwaitingResponse);
+  const isDiscoveryAwaiting =
+    (!!activeDiscoveryId && !activeDiscovery) ||
+    discoveryList.some(isAwaitingResponse);
   const discoveryError = discoveryList.find(
     (request) =>
       !isAwaitingResponse(request) &&
@@ -468,59 +470,58 @@ export const PolicyVerificationForm: FC<PolicyVerificationFormProps> = ({
     return Array.from(byKey.values());
   }, [discoveryList]);
 
-  const discoverySection =
-    discoveryList.length > 0 ? (
-      <div className="space-y-3 min-w-0">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Discovered policies
+  const discoverySection = activeDiscoveryId ? (
+    <div className="space-y-3 min-w-0">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Discovered policies
+        </p>
+        {skipSaveForVerification && discoveredPolicies.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            Select a policy to verify
           </p>
-          {skipSaveForVerification && discoveredPolicies.length > 0 && (
-            <p className="text-xs text-muted-foreground">
-              Select a policy to verify
-            </p>
-          )}
-        </div>
-
-        {isDiscoveryAwaiting && discoveredPolicies.length === 0 && (
-          <InlineLoading label="Discovering policies with the payer…" />
-        )}
-
-        {!isDiscoveryAwaiting &&
-          discoveredPolicies.length === 0 &&
-          (discoveryError ? (
-            <p className="text-sm text-red-600">
-              {discoveryError.dispatch_error ||
-                "The payer could not process the discovery request."}
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No policies were discovered.
-            </p>
-          ))}
-
-        {discoveredPolicies.length > 0 && (
-          <div className="grid gap-3 sm:grid-cols-2 min-w-0">
-            {discoveredPolicies.map((policy) => (
-              <SelectablePolicyCard
-                key={policy.sno}
-                policy={policy}
-                isSelected={
-                  !skipSaveForVerification && selectedPolicy?.sno === policy.sno
-                }
-                isVerifying={
-                  verifyingPolicyKey ===
-                  `${policy.memberid}:${policy.payerid}:${policy.productid}`
-                }
-                disabled={isVerifying}
-                instantVerify={skipSaveForVerification}
-                onSelect={() => handlePolicySelect(policy)}
-              />
-            ))}
-          </div>
         )}
       </div>
-    ) : null;
+
+      {isDiscoveryAwaiting && discoveredPolicies.length === 0 && (
+        <InlineLoading label="Discovering policies with the payer…" />
+      )}
+
+      {!isDiscoveryAwaiting &&
+        discoveredPolicies.length === 0 &&
+        (discoveryError ? (
+          <p className="text-sm text-red-600">
+            {discoveryError.dispatch_error ||
+              "The payer could not process the discovery request."}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No policies were discovered.
+          </p>
+        ))}
+
+      {discoveredPolicies.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-2 min-w-0">
+          {discoveredPolicies.map((policy) => (
+            <SelectablePolicyCard
+              key={policy.sno}
+              policy={policy}
+              isSelected={
+                !skipSaveForVerification && selectedPolicy?.sno === policy.sno
+              }
+              isVerifying={
+                verifyingPolicyKey ===
+                `${policy.memberid}:${policy.payerid}:${policy.productid}`
+              }
+              disabled={isVerifying}
+              instantVerify={skipSaveForVerification}
+              onSelect={() => handlePolicySelect(policy)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  ) : null;
 
   const body = (
     <div className="space-y-6 min-w-0">
@@ -563,6 +564,16 @@ function isAwaitingResponse(request: CoverageEligibilityRequest): boolean {
   const response = request.latest_response;
   if (!response) return true;
   return response.outcome === "queued" || response.outcome === "partial";
+}
+
+const AWAITING_RESPONSE_POLL_TIMEOUT_MS = 5 * 60 * 1000;
+
+function shouldPollForResponse(request: CoverageEligibilityRequest): boolean {
+  if (!isAwaitingResponse(request)) return false;
+  const dispatchedAt = new Date(
+    request.dispatched_at ?? request.created_date,
+  ).getTime();
+  return Date.now() - dispatchedAt < AWAITING_RESPONSE_POLL_TIMEOUT_MS;
 }
 
 type SavedVerificationCardProps = {

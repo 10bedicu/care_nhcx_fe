@@ -118,10 +118,15 @@ export function CoverageEligibilityRequestInsuranceSection({
     }
   };
 
-  const { data: policies, isFetching: isPoliciesLoading } = useQuery({
+  const {
+    data: policies,
+    isFetching: isPoliciesLoading,
+    error: policiesError,
+  } = useQuery({
     queryKey: ["policies", searchParams],
     queryFn: () => apis.gateway.policies(searchParams!),
     enabled: !!searchParams && !readOnly,
+    retry: false,
   });
 
   const { mutate: runDiscovery, isPending: isDiscovering } = useMutation({
@@ -238,7 +243,13 @@ export function CoverageEligibilityRequestInsuranceSection({
                     ))}
                   </div>
                 </FormControl>
+                {!isPoliciesLoading && policiesError && (
+                  <p className="text-sm text-red-600 mt-2">
+                    {policiesError.message || "Failed to fetch policies"}
+                  </p>
+                )}
                 {!isPoliciesLoading &&
+                  !policiesError &&
                   !!searchParams &&
                   policies?.length === 0 && (
                     <p className="text-sm text-muted-foreground mt-2">
