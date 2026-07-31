@@ -388,12 +388,24 @@ const SISRRow: FC<{ sisr: InsurancePlanSupportingInfoRequirement }> = ({
 const ConditionSummary: FC<{ condition: InsurancePlanBenefitCondition }> = ({
   condition,
 }) => {
+  const [parentsExpanded, setParentsExpanded] = useState(false);
+  const parentProcedures = condition.parent_procedures ?? [];
+  const PARENT_PREVIEW_COUNT = 8;
+  const canToggleParents = parentProcedures.length > PARENT_PREVIEW_COUNT;
+  const visibleParents =
+    parentsExpanded || !canToggleParents
+      ? parentProcedures
+      : parentProcedures.slice(0, PARENT_PREVIEW_COUNT);
+
   const flags = [
     condition.approval_not_required && "No auth required",
     condition.is_day_care && "Day care",
     condition.implant_applicable && "Implant applicable",
     condition.stratification_allowed && "Stratification allowed",
     condition.enhancement_allowed && "Enhancement allowed",
+    condition.standalone && "Standalone",
+    condition.lama_dama_procedure && "LAMA/DAMA allowed",
+    condition.unspecified && "Unspecified",
     condition.cyclic_procedure &&
       `Cyclic (max ${condition.maximum_cycles_allowed})`,
   ].filter(Boolean);
@@ -410,6 +422,38 @@ const ConditionSummary: FC<{ condition: InsurancePlanBenefitCondition }> = ({
         <div className="text-xs">
           <span className="text-muted-foreground">Quantity allowed: </span>
           <span className="font-medium">{condition.quantity_allowed}</span>
+        </div>
+      )}
+      {condition.discharge_stages_lama_dama_procedure && (
+        <div className="text-xs">
+          <span className="text-muted-foreground">LAMA/DAMA stage: </span>
+          <span className="font-medium">
+            {condition.discharge_stages_lama_dama_procedure}
+          </span>
+        </div>
+      )}
+      {condition.parent_procedures?.length > 0 && (
+        <div className="text-xs">
+          <span className="text-muted-foreground">
+            Parent procedures ({condition.parent_procedures.length}):{" "}
+          </span>
+          <span className="font-medium break-words">
+            {visibleParents.join(", ")}
+            {canToggleParents && !parentsExpanded && "…"}
+          </span>
+          {canToggleParents && (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 ml-1 text-xs align-baseline"
+              onClick={() => setParentsExpanded((prev) => !prev)}
+            >
+              {parentsExpanded
+                ? "Show less"
+                : `Show all ${condition.parent_procedures.length}`}
+            </Button>
+          )}
         </div>
       )}
       {flags.length > 0 && (

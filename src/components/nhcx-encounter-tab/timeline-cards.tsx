@@ -17,7 +17,10 @@ import {
   NDHM_CANCEL_REASON_CODES,
   NDHM_REPROCESS_REASON_CODES,
 } from "@/lib/ndhm-reason-codes";
-import { isUnspecifiedProcedureOnly } from "@/lib/benefit-item-validation";
+import {
+  isUnspecifiedProcedureCode,
+  isUnspecifiedProcedureOnly,
+} from "@/lib/benefit-item-validation";
 import {
   Popover,
   PopoverContent,
@@ -586,7 +589,9 @@ export const ClaimTimelineCard: FC<ClaimTimelineCardProps> = ({
   const isPreauth = claim.use === "preauthorization";
   const isClaim = claim.use === "claim";
   const useLabel = isPreauth ? "Pre-Authorization" : "Claim";
-  const isUnspecifiedOnly = isUnspecifiedProcedureOnly(claim.item ?? []);
+  const isUnspecifiedOnly = isUnspecifiedProcedureOnly(claim.item ?? [], (it) =>
+    isUnspecifiedProcedureCode(it.product_or_service?.code),
+  );
   const dispatchStatus = claim.dispatch_status;
 
   const copay = getClaimCopay(claim, walletRemaining);

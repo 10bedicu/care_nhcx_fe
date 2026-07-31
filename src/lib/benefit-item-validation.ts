@@ -10,12 +10,19 @@ export function isUnspecifiedProcedureCode(
   return !!code && code.toUpperCase().endsWith("U100");
 }
 
+export function isUnspecifiedBenefit(
+  benefitDetail: InsurancePlanBenefitDetail | undefined,
+): boolean {
+  return benefitDetail?.conditions?.some((c) => c.unspecified === true) ?? false;
+}
+
 export function isUnspecifiedProcedureOnly(
   items: Array<{
     product_or_service?: Coding;
     _implant_parent_sequence?: number;
     _is_disabled?: boolean;
   }>,
+  isUnspecified: (item: { product_or_service?: Coding }) => boolean,
 ): boolean {
   const active = items.filter(
     (it) =>
@@ -23,12 +30,7 @@ export function isUnspecifiedProcedureOnly(
       !it._is_disabled &&
       it.product_or_service?.code,
   );
-  return (
-    active.length > 0 &&
-    active.every((it) =>
-      isUnspecifiedProcedureCode(it.product_or_service?.code),
-    )
-  );
+  return active.length > 0 && active.every((it) => isUnspecified(it));
 }
 
 export const UNSPECIFIED_PROCEDURE_MIX_ERROR =
@@ -99,6 +101,31 @@ export function hasEnhancementAllowedCondition(
     benefitDetail?.conditions?.some((c) => c.enhancement_allowed) ?? false
   );
 }
+
+export function isStandaloneBenefit(
+  benefitDetail: InsurancePlanBenefitDetail | undefined,
+): boolean {
+  return benefitDetail?.conditions?.some((c) => c.standalone === true) ?? false;
+}
+
+export function getParentProcedureCodes(
+  benefitDetail: InsurancePlanBenefitDetail | undefined,
+): string[] {
+  if (!benefitDetail?.conditions?.length) return [];
+  const codes = new Set<string>();
+  for (const condition of benefitDetail.conditions) {
+    for (const code of condition.parent_procedures ?? []) {
+      if (code) codes.add(code);
+    }
+  }
+  return [...codes];
+}
+
+export const STANDALONE_PROCEDURE_MIX_ERROR =
+  "This is a standalone procedure and cannot be combined with other benefits. Submit it on its own.";
+
+export const PARENT_PROCEDURE_MISSING_ERROR =
+  "This benefit requires at least one of its parent procedures to be present in the request.";
 
 export function isModifierRequired(
   benefitDetail: InsurancePlanBenefitDetail | undefined
@@ -634,11 +661,13 @@ export function buildCrossItemErrors(
     if (!item.product_or_service?.code) return;
     activeItemIndexes.push(index);
   });
-  const hasUnspecified = activeItemIndexes.some((index) =>
-    isUnspecifiedProcedureCode(items[index].product_or_service?.code),
-  );
-  if (hasUnspecified && activeItemIndexes.length > 1) {
-    for (const index of activeItemIndexes) {
+  const unspecifiedIndexes = activeItemIndexes.filter((index) => {
+    const code = items[index].product_or_service?.code;
+    const detail = code ? benefitDetailsByCode.get(code) : undefined;
+    return isUnspecifiedBenefit(detail);
+  });
+  if (unspecifiedIndexes.length > 0 && activeItemIndexes.length > 1) {
+    for (const index of unspecifiedIndexes) {
       addError(index, UNSPECIFIED_PROCEDURE_MIX_ERROR);
     }
   }
@@ -656,6 +685,38 @@ export function buildCrossItemErrors(
   if (conservativeIndexes.length > 1) {
     for (const index of conservativeIndexes) {
       addError(index, "Only one Conservative procedure item is allowed");
+    }
+  }
+
+  // Standalone: a standalone benefit cannot be combined with any other item.
+  const standaloneIndexes = activeItemIndexes.filter((index) => {
+    const code = items[index].product_or_service?.code;
+    const detail = code ? benefitDetailsByCode.get(code) : undefined;
+    return isStandaloneBenefit(detail);
+  });
+  if (activeItemIndexes.length > 1 && standaloneIndexes.length > 0) {
+    for (const index of standaloneIndexes) {
+      addError(index, STANDALONE_PROCEDURE_MIX_ERROR);
+    }
+  }
+
+  // Parent procedure: an item that declares parent procedures can only be added
+  // when at least one of those parents is present in the same request.
+  const activeCodes = new Set<string>();
+  for (const index of activeItemIndexes) {
+    const code = items[index].product_or_service?.code;
+    if (code) activeCodes.add(code);
+  }
+  for (const index of activeItemIndexes) {
+    const code = items[index].product_or_service?.code;
+    const detail = code ? benefitDetailsByCode.get(code) : undefined;
+    const parentCodes = getParentProcedureCodes(detail);
+    if (parentCodes.length === 0) continue;
+    const hasParentPresent = parentCodes.some(
+      (parent) => parent !== code && activeCodes.has(parent),
+    );
+    if (!hasParentPresent) {
+      addError(index, PARENT_PROCEDURE_MISSING_ERROR);
     }
   }
 

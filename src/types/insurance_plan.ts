@@ -112,6 +112,12 @@ export type InsurancePlanBenefitCondition = {
   cyclic_procedure: boolean;
   maximum_cycles_allowed: number;
   govt_reserved: boolean;
+  standalone: boolean | null;
+  parent_procedure: string | null;
+  parent_procedures: string[];
+  lama_dama_procedure: boolean | null;
+  discharge_stages_lama_dama_procedure: string | null;
+  unspecified: boolean | null;
   condition_type: string | null;
   code: CodeableConcept | null;
   description: string | null;

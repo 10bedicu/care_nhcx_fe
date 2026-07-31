@@ -47,7 +47,7 @@ import {
   getLinkedImplantsForParent,
   getQualifierTypeByCode,
   isModifierRequired,
-  isUnspecifiedProcedureCode,
+  isUnspecifiedBenefit,
   isUnspecifiedProcedureOnly,
   LM100_OVERLAP_ERROR,
   normalizeImplantItemsFromPrefill,
@@ -102,7 +102,7 @@ import {
 } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
 import { LAMA_DAMA_PROCEDURE_BENEFIT_CODE } from "./lama-dama-helpers";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 
 const USER_EDIT = { shouldDirty: true, shouldValidate: true } as const;
@@ -1528,6 +1528,45 @@ export function ClaimItemSection({
   const watchedItems = form.watch("item");
   const claimUse = form.watch("use");
 
+  const itemProductCodes = useMemo(() => {
+    const codes = new Set<string>();
+    for (const it of watchedItems ?? []) {
+      if (it._implant_parent_sequence != null) continue;
+      const code = it.product_or_service?.code;
+      if (code) codes.add(code);
+    }
+    return [...codes];
+  }, [watchedItems]);
+
+  const benefitDetailQueries = useQueries({
+    queries: itemProductCodes.map((code) => ({
+      queryKey: ["insurancePlanBenefit", "lookup", planId, code],
+      queryFn: () =>
+        apis.insurancePlanBenefit.lookup({
+          insurance_plan: planId!,
+          type_code: code,
+        }),
+      enabled: Boolean(planId && code),
+      staleTime: 5 * 60 * 1000,
+    })),
+  });
+
+  const benefitDetailsByCode = useMemo(() => {
+    const map = new Map<
+      string,
+      (typeof benefitDetailQueries)[number]["data"]
+    >();
+    itemProductCodes.forEach((code, i) => {
+      map.set(code, benefitDetailQueries[i]?.data);
+    });
+    return map;
+  }, [itemProductCodes, benefitDetailQueries]);
+
+  const isItemUnspecified = (item: { product_or_service?: Coding }) =>
+    isUnspecifiedBenefit(
+      benefitDetailsByCode.get(item.product_or_service?.code ?? ""),
+    );
+
   const overlappingLm100Indexes = findOverlappingBenefitItemIndexes(
     watchedItems ?? [],
     LAMA_DAMA_PROCEDURE_BENEFIT_CODE,
@@ -1612,9 +1651,8 @@ export function ClaimItemSection({
           const conditionErrors = watchedItems?.[index]?._condition_errors;
           const isItemDisabled = !!watchedItems?.[index]?._is_disabled;
           const isUnspecifiedAlone =
-            isUnspecifiedProcedureCode(
-              watchedItems?.[index]?.product_or_service?.code,
-            ) && isUnspecifiedProcedureOnly(watchedItems ?? []);
+            isItemUnspecified(watchedItems?.[index] ?? {}) &&
+            isUnspecifiedProcedureOnly(watchedItems ?? [], isItemUnspecified);
           const isUnspecifiedManualPrice = isUnspecifiedAlone;
           const overlapError =
             !isItemDisabled && overlappingLm100Indexes.has(index)
