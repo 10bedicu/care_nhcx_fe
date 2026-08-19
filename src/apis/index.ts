@@ -2,20 +2,41 @@ import {
   CreateFileRequest,
   CreateFileResponse,
   FileUploadModel,
+  InlineAttachment,
 } from "@/types/file_upload";
-import { queryString, request } from "./request";
+import {
+  InsurancePlan,
+  InsurancePlanBenefit,
+  InsurancePlanBenefitDetail,
+  InsurancePlanCoverageSection,
+  InsurancePlanExtensions,
+  InsurancePlanQuestionnaire,
+  InsurancePlanQuestionnaireDetail,
+  InsurancePlanSupportingInfoRequirement,
+  InsurancePlanTier,
+} from "@/types/insurance_plan";
+import { queryString, request } from "@/apis/request";
 
 import { AbhaNumber } from "@/types/abha_number";
+import { Account } from "@/types/account";
+import { ChargeItem } from "@/types/charge_item";
 import { Claim } from "@/types/claim";
+import { ClaimConsent, ClaimConsentStage } from "@/types/claim_consent";
 import { Coding } from "@/types/base";
 import { Communication } from "@/types/communication";
+import { Condition } from "@/types/condition";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
+import { DiagnosticReport } from "@/types/diagnostic_report";
+import { Encounter } from "@/types/encounter";
 import { HealthFacility } from "@/types/health_facility";
-import { InsurancePlan } from "@/types/insurance_plan";
+import { Invoice } from "@/types/invoice";
 import { PaginatedResponse } from "./types";
-import { PaymentReconciliation } from "@/types/payment";
+import { FetchParticipantsResponse } from "@/types/participant";
+import { Patient } from "@/types/patient";
+import { PaymentNotice } from "@/types/payment";
 import { Policy } from "@/types/policy";
 import { Provider } from "@/types/provider";
+import { QuestionnaireResponse } from "@/types/questionnaire_response";
 import { Task } from "@/types/task";
 import { User } from "@/types/user";
 import { createClaimFormSchema } from "@/components/create-claim-page/schema";
@@ -24,9 +45,57 @@ import { createCoverageEligibilityRequestFormSchema } from "@/components/create-
 import { z } from "zod";
 
 export const apis = {
+  diagnosis: {
+    list: async (
+      patientId: string,
+      query?: {
+        ordering?:
+          | "created_date"
+          | "-created_date"
+          | "modified_date"
+          | "-modified_date";
+        category?: Condition["category"][];
+        clinical_status?: Condition["clinical_status"][];
+        exclude_verification_status?: Condition["verification_status"][];
+        encounter?: string;
+        limit?: number;
+        offset?: number;
+      },
+    ) => {
+      const queryParams = {
+        ordering: query?.ordering,
+        category: query?.category?.join(","),
+        clinical_status: query?.clinical_status?.join(","),
+        exclude_verification_status:
+          query?.exclude_verification_status?.join(","),
+        encounter: query?.encounter,
+        limit: query?.limit,
+        offset: query?.offset,
+      };
+
+      return await request<PaginatedResponse<Condition>>(
+        `/api/v1/patient/${patientId}/diagnosis/` + queryString(queryParams),
+      );
+    },
+  },
+
+  encounter: {
+    get: async (facilityId: string, encounterId: string) => {
+      return await request<Encounter>(
+        `/api/v1/encounter/${encounterId}/?facility=${facilityId}`,
+      );
+    },
+  },
+
   coverageEligibilityRequest: {
     list: async (query?: {
       encounter?: string;
+      appointment?: string;
+      patient?: string;
+      purpose?: string;
+      created_after?: string;
+      unique_by_policy?: boolean;
+      is_automatic?: boolean;
       ordering?:
         | "created_date"
         | "-created_date"
@@ -34,25 +103,36 @@ export const apis = {
         | "-modified_date";
     }) => {
       return await request<PaginatedResponse<CoverageEligibilityRequest>>(
-        "/api/nhcx/coverage-eligibility-request/" + queryString(query)
+        "/api/nhcx/coverage-eligibility-request/" + queryString(query),
       );
     },
 
     get: async (id: string) => {
       return await request<CoverageEligibilityRequest>(
-        `/api/nhcx/coverage-eligibility-request/${id}/`
+        `/api/nhcx/coverage-eligibility-request/${id}/`,
+      );
+    },
+
+    latest: async (query?: {
+      encounter?: string;
+      patient?: string;
+      purpose?: string;
+      created_after?: string;
+    }) => {
+      return await request<CoverageEligibilityRequest>(
+        `/api/nhcx/coverage-eligibility-request/latest` + queryString(query),
       );
     },
 
     create: async (
-      body: z.infer<typeof createCoverageEligibilityRequestFormSchema>
+      body: z.infer<typeof createCoverageEligibilityRequestFormSchema>,
     ) => {
       return await request<CoverageEligibilityRequest>(
         "/api/nhcx/coverage-eligibility-request/",
         {
           method: "POST",
           body: JSON.stringify(body),
-        }
+        },
       );
     },
 
@@ -61,7 +141,35 @@ export const apis = {
         `/api/nhcx/coverage-eligibility-request/${id}/check/`,
         {
           method: "POST",
-        }
+        },
+      );
+    },
+
+    walletCheck: async (id: string) => {
+      return await request<CoverageEligibilityRequest>(
+        `/api/nhcx/coverage-eligibility-request/${id}/wallet_check/`,
+        {
+          method: "POST",
+        },
+      );
+    },
+
+    linkEncounter: async (id: string, encounterId: string) => {
+      return await request<CoverageEligibilityRequest>(
+        `/api/nhcx/coverage-eligibility-request/${id}/link_encounter/`,
+        {
+          method: "POST",
+          body: JSON.stringify({ encounter: encounterId }),
+        },
+      );
+    },
+
+    remove: async (id: string) => {
+      return await request<void>(
+        `/api/nhcx/coverage-eligibility-request/${id}/`,
+        {
+          method: "DELETE",
+        },
       );
     },
   },
@@ -69,6 +177,8 @@ export const apis = {
   claim: {
     list: async (query?: {
       encounter?: string;
+      account?: string;
+      patient?: string;
       ordering?:
         | "created_date"
         | "-created_date"
@@ -76,13 +186,13 @@ export const apis = {
         | "-modified_date";
     }) => {
       return await request<PaginatedResponse<Claim>>(
-        "/api/nhcx/claim/" + queryString(query)
+        "/api/nhcx/claim/" + queryString(query),
       );
     },
 
     latest: async (query?: { encounter?: string }) => {
       return await request<Claim>(
-        "/api/nhcx/claim/latest" + queryString(query)
+        "/api/nhcx/claim/latest" + queryString(query),
       );
     },
 
@@ -97,15 +207,44 @@ export const apis = {
       });
     },
 
-    submit: async (id: string) => {
+    submit: async (id: string, body?: { resubmit?: boolean }) => {
       return await request<Claim>(`/api/nhcx/claim/${id}/submit/`, {
         method: "POST",
+        body: JSON.stringify(body ?? {}),
+      });
+    },
+
+    cancel: async (
+      id: string,
+      body: {
+        reason_code?: Coding;
+        description?: string;
+      },
+    ) => {
+      return await request<Claim>(`/api/nhcx/claim/${id}/cancel/`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    },
+
+    reprocess: async (
+      id: string,
+      body: {
+        reason_code?: Coding;
+        description?: string;
+        amount?: { value: number; currency: string };
+        attachment?: InlineAttachment;
+      },
+    ) => {
+      return await request<Claim>(`/api/nhcx/claim/${id}/reprocess/`, {
+        method: "POST",
+        body: JSON.stringify(body),
       });
     },
 
     tasks: async (id: string) => {
       return await request<PaginatedResponse<Task>>(
-        `/api/nhcx/claim/${id}/tasks/`
+        `/api/nhcx/claim/${id}/tasks/`,
       );
     },
   },
@@ -123,12 +262,60 @@ export const apis = {
         `/api/v1/files/${id}/mark_upload_completed/`,
         {
           method: "POST",
-        }
+        },
       );
     },
 
     get: async (id: string) => {
       return await request<FileUploadModel>(`/api/v1/files/${id}/`);
+    },
+
+    list: async (query?: {
+      file_type: "patient" | "encounter";
+      associating_id: string;
+      ordering?: "created_date" | "-created_date";
+      limit?: number;
+      offset?: number;
+    }) => {
+      return await request<PaginatedResponse<FileUploadModel>>(
+        `/api/v1/files/` + queryString(query),
+      );
+    },
+  },
+
+  questionnaireResponse: {
+    list: async (
+      patientId: string,
+      query?: {
+        questionnaire_slug?: string;
+        subject_type?: "patient" | "encounter";
+        encounter?: string;
+        status?: string;
+        limit?: number;
+        offset?: number;
+      },
+    ) => {
+      return await request<PaginatedResponse<QuestionnaireResponse>>(
+        `/api/v1/patient/${patientId}/questionnaire_response/` +
+          queryString(query),
+      );
+    },
+  },
+
+  diagnosticReport: {
+    list: async (
+      patientId: string,
+      query?: {
+        encounter?: string;
+        status?: string;
+        ordering?: "created_date" | "-created_date";
+        limit?: number;
+        offset?: number;
+      },
+    ) => {
+      return await request<PaginatedResponse<DiagnosticReport>>(
+        `/api/v1/patient/${patientId}/diagnostic_report/` + queryString(query),
+      );
     },
   },
 
@@ -142,6 +329,148 @@ export const apis = {
         body: JSON.stringify(body),
       });
     },
+
+    participants: async (body: {
+      role: "PAYER" | "PROVIDER" | "TPA";
+      fromdate: string;
+      todate: string;
+      entitytype?: "GOV" | "PVT" | "ALL";
+    }) => {
+      return await request<FetchParticipantsResponse>(
+        `/api/nhcx/gateway/participants/`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      );
+    },
+
+    abhaBiometricAuthInit: async (body: {
+      authMode?: "FINGERPRINT" | "IRIS" | "FACE_AUTH";
+      abhaNumber: string;
+      payerId: string;
+      process?: "Preauth" | "Discharge";
+    }) => {
+      return await request<{
+        txnId: string;
+        authMode: "FINGERPRINT" | "IRIS" | "FACE_AUTH" | null;
+        message: string;
+        status: "success" | "error" | null;
+      }>(`/api/nhcx/gateway/abha-biometric-auth-init/`, {
+        method: "POST",
+        body: JSON.stringify({
+          authMode: body.authMode ?? "FINGERPRINT",
+          process: body.process ?? "Preauth",
+          ...body,
+        }),
+      });
+    },
+
+    abhaBiometricAuthVerify: async (body: {
+      txnId: string;
+      authMode?: "FINGERPRINT" | "IRIS" | "FACE_AUTH";
+      authData: string;
+      payerId: string;
+      process?: "Preauth" | "Discharge";
+      encounter: string;
+      claim?: string;
+    }) => {
+      return await request<{ message: string }>(
+        `/api/nhcx/gateway/abha-biometric-auth-verify/`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            authMode: body.authMode ?? "FINGERPRINT",
+            process: body.process ?? "Preauth",
+            ...body,
+          }),
+        },
+      );
+    },
+  },
+
+  rdService: {
+    // RD services register on ports 11100-11120; iris and fingerprint
+    // devices run as separate services, so the iris one may not be on 11100.
+    discoverPort: async (authMode: "FINGERPRINT" | "IRIS") => {
+      const keywords =
+        authMode === "IRIS" ? /iris|irishield|mis100/i : /finger|fmr|mfs100/i;
+      const ports = Array.from({ length: 21 }, (_, i) => 11100 + i);
+
+      const results = await Promise.allSettled(
+        ports.map(async (port) => {
+          const response = await fetch(`https://127.0.0.1:${port}/`, {
+            method: "RDSERVICE",
+            signal: AbortSignal.timeout(3000),
+          });
+          return { port, info: await response.text() };
+        }),
+      );
+
+      for (const result of results) {
+        if (result.status !== "fulfilled") {
+          continue;
+        }
+
+        const { port, info } = result.value;
+        if (/status="READY"/i.test(info) && keywords.test(info)) {
+          return port;
+        }
+      }
+
+      return 11100;
+    },
+
+    capture: async (authMode: "FINGERPRINT" | "IRIS" = "FINGERPRINT") => {
+      // wadh = base64(SHA256("2.5" + ra + "YYNN")) per Aadhaar eKYC 2.5 spec,
+      // where ra is the auth modality ("F" for finger, "I" for iris)
+      const opts =
+        authMode === "IRIS"
+          ? `fCount="0" fType="0" iCount="1" iType="0" wadh="T9nIfCslZnsX4pR6o1CzBDHp7MUiYne6QySOZvmB3Rk="`
+          : `fCount="1" fType="2" wadh="RZ+k4w9ySTzOibQdDHPzCFqrKScZ74b3EibKYy1WyGw="`;
+
+      const port =
+        authMode === "IRIS" ? await apis.rdService.discoverPort("IRIS") : 11100;
+
+      const response = await fetch(`https://127.0.0.1:${port}/rd/capture`, {
+        method: "CAPTURE",
+        body: `<?xml version="1.0"?> <PidOptions ver="1.0"> <Opts env="P" ${opts} format="0" pidVer="2.0" timeout="10000" posh="UNKNOWN" /> <CustOpts><Param name="mantrakey" value="B0CZLLZ98Z" /></CustOpts> </PidOptions>`,
+      });
+
+      return response.text();
+    },
+  },
+
+  claimConsent: {
+    lookup: async (params: {
+      payer_id: string;
+      encounter_id: string;
+      stage: ClaimConsentStage;
+    }) => {
+      return await request<ClaimConsent>(
+        `/api/nhcx/claim-consent/lookup/` +
+          queryString({
+            payer_id: params.payer_id,
+            encounter_id: params.encounter_id,
+            stage: params.stage,
+          }),
+      );
+    },
+
+    list: async (query?: {
+      claim?: string;
+      encounter?: string;
+      patient?: string;
+      account?: string;
+      payer_id?: string;
+      stage?: ClaimConsentStage;
+      limit?: number;
+      offset?: number;
+    }) => {
+      return await request<PaginatedResponse<ClaimConsent>>(
+        `/api/nhcx/claim-consent/` + queryString(query),
+      );
+    },
   },
 
   abhaNumber: {
@@ -150,10 +479,39 @@ export const apis = {
     },
   },
 
+  abdm: {
+    abhaFaceAuthInit: async () => {
+      return await request<{
+        transaction_id: string;
+        detail: string;
+      }>(`/api/abdm/v3/health_id/create/auth_init_via_face/`, {
+        method: "POST",
+      });
+    },
+
+    abhaFaceCapturePid: async (body: { transaction_id: string }) => {
+      return await request<{
+        status: "PENDING" | "VERIFIED" | "FAILED" | "COMPLETE" | "COMPLETED";
+        transaction_id: string | null;
+        detail: string;
+        rd_pid_data: string | null;
+      }>(`/api/abdm/v3/health_id/create/capture_pid_via_face/`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    },
+  },
+
+  patient: {
+    get: async (patientId: string) => {
+      return await request<Patient>(`/api/v1/patient/${patientId}/`);
+    },
+  },
+
   healthFacility: {
     get: async (facilityId: string) => {
       return await request<HealthFacility>(
-        `/api/abdm/health_facility/${facilityId}/`
+        `/api/abdm/health_facility/${facilityId}/`,
       );
     },
   },
@@ -164,14 +522,14 @@ export const apis = {
       body?: {
         search?: string;
         count?: number;
-      }
+      },
     ) => {
       return await request<{ results: Coding[] }>(
         `/api/v1/valueset/${system}/expand/`,
         {
           method: "POST",
           body: JSON.stringify(body),
-        }
+        },
       );
     },
   },
@@ -183,14 +541,19 @@ export const apis = {
         limit?: string;
         offset?: string;
         search_text?: string;
-      }
+      },
     ) => {
       return await request<PaginatedResponse<User>>(
         `/api/v1/facility/${facilityId}/users/` + queryString(query),
         {
           method: "GET",
-        }
+        },
       );
+    },
+    getCurrentUser: async () => {
+      return await request<User>(`/api/v1/users/getcurrentuser/`, {
+        method: "GET",
+      });
     },
   },
 
@@ -207,32 +570,150 @@ export const apis = {
         `/api/nhcx/communication/${id}/send/`,
         {
           method: "POST",
-        }
+        },
       );
     },
   },
 
   payment: {
     acknowledge: async (id: string) => {
-      return await request<PaymentReconciliation>(
+      return await request<PaymentNotice>(
         `/api/nhcx/payment/${id}/acknowledge/`,
-        { method: "POST" }
+        { method: "POST" },
       );
     },
   },
 
   insurancePlan: {
-    get: async (productId: string) => {
-      return await request<InsurancePlan>(
-        `/api/nhcx/insurance-plan/${productId}/`
+    list: async (query?: {
+      name?: string;
+      status?: string;
+      identifier_value?: string;
+      ordering?: string;
+    }) => {
+      return await request<PaginatedResponse<InsurancePlan>>(
+        `/api/nhcx/insurance-plan/` + queryString(query),
+      );
+    },
+
+    get: async (id: string) => {
+      return await request<InsurancePlan>(`/api/nhcx/insurance-plan/${id}/`);
+    },
+
+    plans: async (id: string) => {
+      return await request<InsurancePlanTier[]>(
+        `/api/nhcx/insurance-plan/${id}/plans/`,
+      );
+    },
+
+    coverages: async (id: string) => {
+      return await request<InsurancePlanCoverageSection[]>(
+        `/api/nhcx/insurance-plan/${id}/coverages/`,
+      );
+    },
+
+    extensions: async (id: string) => {
+      return await request<InsurancePlanExtensions>(
+        `/api/nhcx/insurance-plan/${id}/extensions/`,
       );
     },
 
     request: async (body: { facility: string; policy: Policy }) => {
-      return await request<InsurancePlan>(`/api/nhcx/insurance-plan/request/`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
+      return await request<{ task_id: string }>(
+        `/api/nhcx/insurance-plan/request/`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      );
+    },
+
+    questionnaires: async (id: string) => {
+      return await request<InsurancePlanQuestionnaireDetail[]>(
+        `/api/nhcx/insurance-plan/${id}/questionnaires/`,
+      );
+    },
+  },
+
+  insurancePlanBenefit: {
+    list: async (query?: {
+      insurance_plan?: string;
+      plan_tier?: string;
+      coverage?: string;
+      q?: string;
+      type_code?: string;
+      coverage_type_code?: string;
+      plan_type_code?: string;
+      specialty_category_code?: string;
+      procedure_type?: string;
+      authorization_required?: boolean;
+      is_day_care?: boolean;
+      implant_applicable?: boolean;
+      stratification_allowed?: boolean;
+      has_copayment?: boolean;
+      has_deductible?: boolean;
+      has_waiting_period?: boolean;
+      has_stratification_qualifier?: boolean;
+      has_implant_qualifier?: boolean;
+      has_consumable_qualifier?: boolean;
+      has_questionnaire?: boolean;
+      requires_supporting_info?: boolean;
+      min_cost_gte?: number;
+      max_cost_lte?: number;
+      ordering?: string;
+      limit?: number;
+      offset?: number;
+    }) => {
+      return await request<PaginatedResponse<InsurancePlanBenefit>>(
+        `/api/nhcx/insurance-plan-benefit/` + queryString(query),
+      );
+    },
+
+    get: async (id: string) => {
+      return await request<InsurancePlanBenefitDetail>(
+        `/api/nhcx/insurance-plan-benefit/${id}/`,
+      );
+    },
+
+    lookup: async (body: {
+      insurance_plan: string;
+      type_code: string;
+      plan_tier?: string;
+      coverage_type_code?: string;
+    }) => {
+      return await request<InsurancePlanBenefitDetail>(
+        `/api/nhcx/insurance-plan-benefit/lookup/`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      );
+    },
+
+    requirements: async (id: string) => {
+      return await request<InsurancePlanSupportingInfoRequirement[]>(
+        `/api/nhcx/insurance-plan-benefit/${id}/requirements/`,
+      );
+    },
+
+    questionnaires: async (id: string) => {
+      return await request<InsurancePlanQuestionnaire[]>(
+        `/api/nhcx/insurance-plan-benefit/${id}/questionnaires/`,
+      );
+    },
+
+    extensions: async (id: string) => {
+      return await request<InsurancePlanExtensions>(
+        `/api/nhcx/insurance-plan-benefit/${id}/extensions/`,
+      );
+    },
+  },
+
+  insurancePlanQuestionnaire: {
+    get: async (id: string) => {
+      return await request<InsurancePlanQuestionnaireDetail>(
+        `/api/nhcx/insurance-plan-questionnaire/${id}/`,
+      );
     },
   },
 
@@ -253,6 +734,63 @@ export const apis = {
         method: "PUT",
         body: JSON.stringify(body),
       });
+    },
+  },
+
+  account: {
+    list: async (
+      facilityId: string,
+      query?: {
+        encounter?: string;
+        patient?: string;
+        ordering?: "created_date" | "-created_date";
+        limit?: number;
+        offset?: number;
+      },
+    ) => {
+      return await request<PaginatedResponse<Account>>(
+        `/api/v1/facility/${facilityId}/account/` + queryString(query),
+      );
+    },
+  },
+
+  charge_item: {
+    list: async (
+      facilityId: string,
+      query?: {
+        title?: string;
+        encounter?: string;
+        account?: string;
+        patient?: string;
+        performer_actor?: string;
+        created_by?: string;
+        ordering?: "created_date" | "-created_date";
+        limit?: number;
+        offset?: number;
+      },
+    ) => {
+      return await request<PaginatedResponse<ChargeItem>>(
+        `/api/v1/facility/${facilityId}/charge_item/` + queryString(query),
+      );
+    },
+  },
+
+  invoice: {
+    list: async (
+      facilityId: string,
+      query?: {
+        patient?: string;
+        account?: string;
+        status?: string;
+        number?: string;
+        ordering?: "created_date" | "-created_date";
+        limit?: number;
+        offset?: number;
+      },
+    ) => {
+      return await request<PaginatedResponse<Invoice>>(
+        `/api/v1/facility/${facilityId}/invoice/` + queryString(query),
+      );
     },
   },
 };

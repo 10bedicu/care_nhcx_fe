@@ -12,7 +12,6 @@ import { Checkbox } from "../ui/checkbox";
 import { DateTimePicker } from "../ui/date-time-picker";
 import { Textarea } from "../ui/textarea";
 import { UseFormReturn } from "react-hook-form";
-import ValuesetSelect from "../common/valueset-select";
 import { createClaimFormSchema } from "./schema";
 import { z } from "zod";
 import Autocomplete from "../ui/autocomplete";
@@ -146,13 +145,6 @@ export function ClaimAccidentSection({ form }: ClaimAccidentSectionProps) {
                           form.setValue(`accident.type`, code);
                         }}
                       />
-                      {/* <ValuesetSelect
-                        system="system-claim-accident-type"
-                        value={field.value}
-                        onSelect={(value) => {
-                          form.setValue("accident.type", value);
-                        }}
-                      /> */}
                     </FormControl>
                     <FormMessage />
                   </FormItem>

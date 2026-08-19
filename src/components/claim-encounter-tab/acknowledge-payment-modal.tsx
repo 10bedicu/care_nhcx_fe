@@ -13,7 +13,7 @@ import { Button } from "../ui/button";
 import { CheckCircleIcon } from "lucide-react";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { PaymentReconciliation } from "@/types/payment";
+import { PaymentNotice } from "@/types/payment";
 import { Task } from "@/types/task";
 import { apis } from "@/apis";
 import { toast } from "@/lib/utils";
@@ -27,7 +27,7 @@ const acknowledgePaymentFormSchema = z.object({
 
 interface AcknowledgePaymentModalProps {
   task: Task;
-  paymentNotice: PaymentReconciliation;
+  paymentNotice: PaymentNotice;
 }
 
 const AcknowledgePaymentModal: FC<AcknowledgePaymentModalProps> = ({
@@ -91,7 +91,7 @@ const AcknowledgePaymentModal: FC<AcknowledgePaymentModalProps> = ({
           Acknowledge Payment
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold">
             Acknowledge Payment
@@ -114,7 +114,7 @@ const AcknowledgePaymentModal: FC<AcknowledgePaymentModalProps> = ({
                       <span className="text-lg font-bold text-blue-900">
                         {formatCurrency(
                           expectedAmount,
-                          paymentNotice.payment_amount?.currency
+                          paymentNotice.payment_amount?.currency,
                         )}
                       </span>
                     </div>
@@ -125,7 +125,7 @@ const AcknowledgePaymentModal: FC<AcknowledgePaymentModalProps> = ({
                       <span className="text-sm text-blue-900">
                         {paymentNotice.payment_date
                           ? new Date(
-                              paymentNotice.payment_date
+                              paymentNotice.payment_date,
                             ).toLocaleDateString()
                           : "N/A"}
                       </span>

@@ -8,4 +8,5 @@ export type User = {
   user_type: "staff" | "admin";
   gender: "male" | "female" | "other";
   username: string;
+  permissions?: string[];
 };

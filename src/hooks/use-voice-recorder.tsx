@@ -7,7 +7,7 @@ const useVoiceRecorder = (handleMicPermission: (allowed: boolean) => void) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
   const [blob, setBlob] = useState<Blob | null>(null);
-  const [waveform, setWaveform] = useState<number[]>([]); // Decibel waveform
+  const [waveform, setWaveform] = useState<number[]>([]);
 
   let audioContext: AudioContext | null = null;
   let analyser: AnalyserNode | null = null;
@@ -72,8 +72,14 @@ const useVoiceRecorder = (handleMicPermission: (allowed: boolean) => void) => {
 
   const setupAudioAnalyser = () => {
     let animationFrameId: number;
-    audioContext = new (window.AudioContext ||
-      (window as any).webkitAudioContext)();
+    const AudioContextClass =
+      window.AudioContext ??
+      (
+        window as typeof window & {
+          webkitAudioContext: typeof AudioContext;
+        }
+      ).webkitAudioContext;
+    audioContext = new AudioContextClass();
     analyser = audioContext.createAnalyser();
     analyser.fftSize = 32;
     const bufferLength = analyser.frequencyBinCount;

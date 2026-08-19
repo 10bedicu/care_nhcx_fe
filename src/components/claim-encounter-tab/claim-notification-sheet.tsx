@@ -25,7 +25,7 @@ const ClaimNotificationSheet: FC<ClaimNotificationSheetProps> = ({ claim }) => {
   const { data: tasks, isLoading } = useQuery({
     queryKey: ["tasks", claim.id],
     queryFn: () => apis.claim.tasks(claim.id),
-    enabled: isOpen, // Only fetch when sheet is open
+    enabled: isOpen,
   });
 
   return (

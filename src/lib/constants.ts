@@ -67,3 +67,17 @@ export const DEFAULT_ALLOWED_EXTENSIONS = [
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.oasis.opendocument.spreadsheet,application/pdf",
 ] as const;
+
+export interface ClaimFileTemplate {
+  label: string;
+  description?: string;
+  url: string;
+}
+
+export const CLAIM_FILE_TEMPLATES: ClaimFileTemplate[] = [
+  {
+    label: "Discharge Feedback Form",
+    description: "Patient feedback to be collected at discharge.",
+    url: "https://nha.gov.in/img/resources/Discharge-Feedback-Form.pdf",
+  },
+];

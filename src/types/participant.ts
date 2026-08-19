@@ -17,3 +17,14 @@ export type Participant = {
   district?: string;
   authentication_applicable: "Y" | "N";
 };
+
+export type ParticipantSummary = {
+  participantcode: string;
+  participantname: string;
+  address: string | null;
+  state: string;
+};
+
+export type FetchParticipantsResponse = {
+  participantdetails?: ParticipantSummary[];
+} & Record<string, unknown>;

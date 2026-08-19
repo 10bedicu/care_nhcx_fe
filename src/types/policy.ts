@@ -4,7 +4,8 @@ export type Policy = {
   mobilenumber: string;
   memberid: string;
   payerid: string;
-  productid: string;
+  productid: string | null;
   productname: string;
   processingid: string;
+  policy_period?: { start: string; end: string } | null;
 };

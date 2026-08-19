@@ -9,33 +9,31 @@ import {
 } from "@/components/ui/form";
 import { UseFormReturn, useFieldArray } from "react-hook-form";
 
-import Autocomplete from "../ui/autocomplete";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
-import ValuesetSelect from "../common/valueset-select";
-import { apis } from "@/apis";
+import { Skeleton } from "../ui/skeleton";
 import { createClaimFormSchema } from "./schema";
 import { useQuery } from "@tanstack/react-query";
+import { apis } from "@/apis";
 import { z } from "zod";
 
 interface ClaimRelatedSectionProps {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
+  /** The claim ID that was injected from the `related` query param. This entry
+   * is locked and cannot be removed. */
+  lockedClaimId?: string;
 }
 
-export function ClaimRelatedSection({ form }: ClaimRelatedSectionProps) {
-  const { fields, append, remove } = useFieldArray({
+export function ClaimRelatedSection({
+  form,
+  lockedClaimId,
+}: ClaimRelatedSectionProps) {
+  const { fields, remove } = useFieldArray({
     name: "related",
     control: form.control,
   });
 
-  const { data: claims } = useQuery({
-    queryKey: ["claims", form.getValues("encounter")],
-    queryFn: () =>
-      apis.claim.list({
-        encounter: form.getValues("encounter"),
-      }),
-    enabled: !!form.getValues("encounter"),
-  });
+  if (fields.length === 0) return null;
 
   return (
     <div className="space-y-6">
@@ -44,135 +42,134 @@ export function ClaimRelatedSection({ form }: ClaimRelatedSectionProps) {
           <LinkIcon className="w-5 h-5 text-primary" />
         </div>
         <div>
-          <h3 className="text-lg font-semibold">Link related claims</h3>
+          <h3 className="text-lg font-semibold">Related claim</h3>
           <p className="text-sm text-muted-foreground">
-            Used to establish the relationship between the claims.
+            This claim is linked to a prior claim. The details are set
+            automatically.
           </p>
         </div>
       </div>
 
       <div className="space-y-4">
-        {fields.map((field, index) => (
-          <Card>
-            <CardHeader>
-              <FormField
-                key={`${field.id}-claim`}
-                control={form.control}
-                name={`related.${index}.claim`}
-                render={({ field }) => (
-                  <div className="flex justify-between items-center gap-2">
-                    <FormItem className="space-y-1.5 w-full">
-                      <FormLabel>
-                        Category
-                        <span className="text-red-500 text-sm ml-0.5">*</span>
-                      </FormLabel>
-                      <FormControl>
-                        <Autocomplete
-                          options={
-                            claims?.results.map((claim) => ({
-                              label: `#${claim.id.slice(0, 6)} ${
-                                claim.use
-                              } at ${new Date(
-                                claim.created_date
-                              ).toLocaleString()}`,
-                              value: claim.id,
-                            })) ?? []
-                          }
-                          value={field.value}
-                          onChange={(value) => {
-                            form.setValue(`related.${index}.claim`, value);
-                          }}
-                          placeholder="Select a claim"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => {
-                        remove(index);
-                      }}
-                      className="mt-6"
-                    >
-                      <CircleMinusIcon className="h-6 w-6 text-danger-500" />
-                    </Button>
-                  </div>
-                )}
-              />
-            </CardHeader>
-            <CardContent className="grid sm:grid-cols-2 gap-4">
-              <FormField
-                key={`${field.id}-relationship`}
-                control={form.control}
-                name={`related.${index}.relationship`}
-                render={({ field }) => (
-                  <FormItem className="space-y-1.5">
-                    <FormLabel>Relationship</FormLabel>
-                    <FormControl>
-                      <ValuesetSelect
-                        system="system-claim-related-relationship"
-                        value={field.value}
-                        onSelect={(value) => {
-                          form.setValue(`related.${index}.relationship`, value);
-                        }}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                key={`${field.id}-reference`}
-                control={form.control}
-                name={`related.${index}.reference`}
-                render={({ field }) => (
-                  <FormItem className="space-y-1.5">
-                    <FormLabel>Reference</FormLabel>
-                    <FormControl>
-                      <Input {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </CardContent>
-          </Card>
-        ))}
+        {fields.map((field, index) => {
+          const claimId = form.getValues(`related.${index}.claim`);
+          const isLocked = claimId === lockedClaimId;
+          return (
+            <RelatedClaimCard
+              key={field.id}
+              form={form}
+              index={index}
+              claimId={claimId}
+              isLocked={isLocked}
+              onRemove={() => remove(index)}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
+interface RelatedClaimCardProps {
+  form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
+  index: number;
+  claimId: string;
+  isLocked: boolean;
+  onRemove: () => void;
+}
+
+function RelatedClaimCard({
+  form,
+  index,
+  claimId,
+  isLocked,
+  onRemove,
+}: RelatedClaimCardProps) {
+  const { data: claim, isLoading } = useQuery({
+    queryKey: ["claim", claimId],
+    queryFn: () => apis.claim.get(claimId),
+    enabled: !!claimId,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const claimLabel = claim
+    ? `#${claim.id.slice(0, 6)} · ${claim.use} · ${new Date(claim.created_date).toLocaleDateString()}`
+    : `#${claimId.slice(0, 6)}…`;
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex justify-between items-center gap-2">
+          <FormField
+            control={form.control}
+            name={`related.${index}.claim`}
+            render={() => (
+              <FormItem className="space-y-1.5 w-full">
+                <FormLabel>Claim</FormLabel>
+                <FormControl>
+                  {isLoading ? (
+                    <Skeleton className="h-10 w-full" />
+                  ) : (
+                    <Input
+                      value={claimLabel}
+                      disabled
+                      className="bg-muted cursor-not-allowed"
+                    />
+                  )}
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          {!isLocked && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={onRemove}
+              className="mt-6"
+            >
+              <CircleMinusIcon className="h-6 w-6 text-danger-500" />
+            </Button>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="grid sm:grid-cols-2 gap-4">
         <FormField
           control={form.control}
-          name="related"
-          render={() => (
-            <FormItem>
-              <FormLabel />
+          name={`related.${index}.relationship`}
+          render={({ field }) => (
+            <FormItem className="space-y-1.5">
+              <FormLabel>Relationship</FormLabel>
               <FormControl>
-                <Autocomplete
-                  options={
-                    claims?.results.map((claim) => ({
-                      label: `#${claim.id.slice(0, 6)} ${
-                        claim.use
-                      } at ${new Date(claim.created_date).toLocaleString()}`,
-                      value: claim.id,
-                    })) ?? []
-                  }
-                  value={undefined}
-                  onChange={(value) => {
-                    append({
-                      claim: value,
-                      relationship: undefined,
-                      reference: "",
-                    });
-                  }}
-                  placeholder="Select a claim"
+                <Input
+                  value={field.value?.display ?? field.value?.code ?? ""}
+                  disabled
+                  className="bg-muted cursor-not-allowed"
                 />
               </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
-      </div>
-    </div>
+        <FormField
+          control={form.control}
+          name={`related.${index}.reference`}
+          render={({ field }) => (
+            <FormItem className="space-y-1.5">
+              <FormLabel>Reference</FormLabel>
+              <FormControl>
+                <Input
+                  value={field.value ?? ""}
+                  disabled
+                  className="bg-muted cursor-not-allowed"
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+      </CardContent>
+    </Card>
   );
 }

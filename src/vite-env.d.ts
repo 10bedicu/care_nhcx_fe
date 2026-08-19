@@ -1,12 +1,31 @@
 /// <reference types="vite/client" />
 /// <reference types="vite-plugin-pwa/client" />
 
-interface ImportMetaEnv {
-  readonly VITE_API_URL: string;
+interface CareNhcxFePluginConfig {
+  faceAuthUrl?: string;
+}
+
+interface CarePluginRuntimeMeta {
+  care_nhcx_fe?: {
+    config?: CareNhcxFePluginConfig;
+  };
+}
+
+interface CarePluginRuntime {
+  meta?: CarePluginRuntimeMeta;
 }
 
 declare global {
-  let __CORE_ENV__: {
+  const __CORE_ENV__: {
     readonly apiUrl: string;
   };
+
+  interface Window {
+    __CORE_ENV__?: {
+      readonly apiUrl: string;
+    };
+    __CARE_PLUGIN_RUNTIME__?: CarePluginRuntime;
+  }
 }
+
+export {};

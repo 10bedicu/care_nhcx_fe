@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CoverageEligibilityRequestPurposeChoice } from "@/types/coverage_eligibility";
 import { Input } from "@/components/ui/input";
-import { SettingsIcon } from "lucide-react";
+import { LockIcon, SettingsIcon } from "lucide-react";
 import { UseFormReturn } from "react-hook-form";
 import { X } from "lucide-react";
 import { createCoverageEligibilityRequestFormSchema } from "./schema";
@@ -32,10 +32,16 @@ interface CoverageEligibilityRequestOtherSectionProps {
   form: UseFormReturn<
     z.infer<typeof createCoverageEligibilityRequestFormSchema>
   >;
+  /**
+   * When set, the purpose field is locked to this value and cannot be changed.
+   * Used by the guided flow that drives the form via query params.
+   */
+  lockedPurpose?: CoverageEligibilityRequestPurposeChoice | null;
 }
 
 export function CoverageEligibilityRequestOtherSection({
   form,
+  lockedPurpose,
 }: CoverageEligibilityRequestOtherSectionProps) {
   const selectedPurposes = form.watch("purpose") || [];
 
@@ -154,31 +160,39 @@ export function CoverageEligibilityRequestOtherSection({
               name="purpose"
               render={() => (
                 <FormItem className="space-y-1.5">
-                  <FormLabel>
+                  <FormLabel className="flex items-center gap-1.5">
                     Purpose
-                    <span className="text-red-500 text-sm ml-0.5">*</span>
+                    <span className="text-red-500 text-sm">*</span>
+                    {lockedPurpose && (
+                      <span className="inline-flex items-center gap-1 text-xs font-normal text-muted-foreground ml-1">
+                        <LockIcon className="h-3 w-3" />
+                        Locked by guided flow
+                      </span>
+                    )}
                   </FormLabel>
                   <FormControl>
                     <div className="space-y-3">
-                      <Select value="" onValueChange={handlePurposeChange}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select purpose" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {COVERAGE_ELIGIBILITY_REQUEST_PURPOSE_CHOICES.map(
-                            (choice) => (
-                              <SelectItem
-                                key={choice}
-                                value={choice}
-                                disabled={selectedPurposes.includes(choice)}
-                              >
-                                {choice.charAt(0).toUpperCase() +
-                                  choice.slice(1)}
-                              </SelectItem>
-                            )
-                          )}
-                        </SelectContent>
-                      </Select>
+                      {!lockedPurpose && (
+                        <Select value="" onValueChange={handlePurposeChange}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select purpose" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {COVERAGE_ELIGIBILITY_REQUEST_PURPOSE_CHOICES.map(
+                              (choice) => (
+                                <SelectItem
+                                  key={choice}
+                                  value={choice}
+                                  disabled={selectedPurposes.includes(choice)}
+                                >
+                                  {choice.charAt(0).toUpperCase() +
+                                    choice.slice(1)}
+                                </SelectItem>
+                              )
+                            )}
+                          </SelectContent>
+                        </Select>
+                      )}
 
                       {selectedPurposes.length > 0 && (
                         <div className="flex flex-wrap gap-2">
@@ -188,17 +202,24 @@ export function CoverageEligibilityRequestOtherSection({
                               variant="secondary"
                               className="flex items-center gap-1"
                             >
-                              {purpose.charAt(0).toUpperCase() +
-                                purpose.slice(1)}
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                className="h-auto p-0 ml-1 hover:bg-transparent"
-                                onClick={() => removePurpose(purpose)}
-                              >
-                                <X className="w-3 h-3" />
-                              </Button>
+                              {purpose
+                                .split("-")
+                                .map(
+                                  (part) =>
+                                    part.charAt(0).toUpperCase() + part.slice(1)
+                                )
+                                .join(" ")}
+                              {!lockedPurpose && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-auto p-0 ml-1 hover:bg-transparent"
+                                  onClick={() => removePurpose(purpose)}
+                                >
+                                  <X className="w-3 h-3" />
+                                </Button>
+                              )}
                             </Badge>
                           ))}
                         </div>

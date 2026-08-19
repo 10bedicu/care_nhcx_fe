@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
+import { CheckIcon, ChevronsUpDownIcon, Loader2Icon } from "lucide-react";
 import {
   Command,
   CommandDialog,
@@ -15,6 +15,12 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -24,6 +30,8 @@ interface AutoCompleteOption {
   label: string;
   display?: React.ReactNode;
   value: string;
+  disabled?: boolean;
+  disabledReason?: React.ReactNode;
 }
 
 interface AutocompleteProps {
@@ -34,8 +42,15 @@ interface AutocompleteProps {
   placeholder?: string;
   noOptionsMessage?: string;
   disabled?: boolean;
+  isLoading?: boolean;
   align?: "start" | "center" | "end";
   popoverClassName?: string;
+  /**
+   * Optional container to portal the popover into. Pass the surrounding
+   * dialog/sheet element when rendering inside a modal so the popover is not
+   * blocked by the modal's focus trap / pointer-events guard.
+   */
+  container?: HTMLElement | null;
   "data-cy"?: string;
 }
 
@@ -47,8 +62,10 @@ export default function Autocomplete({
   placeholder = "Select...",
   noOptionsMessage = "No options found",
   disabled,
+  isLoading = false,
   align = "center",
   popoverClassName,
+  container,
   "data-cy": dataCy,
 }: AutocompleteProps) {
   const [open, setOpen] = React.useState(false);
@@ -64,30 +81,59 @@ export default function Autocomplete({
         className="outline-hidden border-none ring-0 shadow-none"
       />
       <CommandList>
-        <CommandEmpty>{noOptionsMessage}</CommandEmpty>
+        {isLoading ? (
+          <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
+            <Loader2Icon className="h-4 w-4 animate-spin" />
+            Searching…
+          </div>
+        ) : null}
+        <CommandEmpty>
+          {isLoading ? "Searching…" : noOptionsMessage}
+        </CommandEmpty>
         <CommandGroup>
-          {options.map((option) => (
-            <CommandItem
-              key={option.value}
-              value={option.label}
-              onSelect={(v) => {
-                const currentValue =
-                  options.find(
-                    (option) => option.label.toLowerCase() === v.toLowerCase()
-                  )?.value || "";
-                onChange(currentValue === value ? "" : currentValue);
-                setOpen(false);
-              }}
-            >
-              <CheckIcon
-                className={cn(
-                  "mr-2 h-4 w-4",
-                  value === option.value ? "opacity-100" : "opacity-0"
-                )}
-              />
-              {option.display ?? option.label}
-            </CommandItem>
-          ))}
+          <TooltipProvider delayDuration={150}>
+            {options.map((option) => {
+              const item = (
+                <CommandItem
+                  key={option.value}
+                  value={option.value}
+                  keywords={[option.label]}
+                  aria-disabled={option.disabled}
+                  className={cn(
+                    option.disabled && "cursor-not-allowed opacity-50",
+                  )}
+                  onSelect={() => {
+                    if (option.disabled) {
+                      return;
+                    }
+                    onChange(option.value === value ? "" : option.value);
+                    setOpen(false);
+                  }}
+                >
+                  <CheckIcon
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === option.value ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  {option.display ?? option.label}
+                </CommandItem>
+              );
+
+              if (option.disabled && option.disabledReason) {
+                return (
+                  <Tooltip key={option.value}>
+                    <TooltipTrigger asChild>{item}</TooltipTrigger>
+                    <TooltipContent side="right" className="max-w-xs">
+                      {option.disabledReason}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              }
+
+              return item;
+            })}
+          </TooltipProvider>
         </CommandGroup>
       </CommandList>
     </>
@@ -121,7 +167,11 @@ export default function Autocomplete({
               ? options.find((option) => option.value === value)?.label
               : placeholder}
           </span>
-          <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+          {isLoading ? (
+            <Loader2Icon className="ml-2 size-4 shrink-0 animate-spin opacity-70" />
+          ) : (
+            <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+          )}
         </Button>
         <CommandDialog open={open} onOpenChange={setOpen}>
           {commandContent}
@@ -148,12 +198,17 @@ export default function Autocomplete({
           <span className={cn("truncate", !selectedOption && "text-gray-500")}>
             {selectedOption ? selectedOption.label : placeholder}
           </span>
-          <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+          {isLoading ? (
+            <Loader2Icon className="ml-2 size-4 shrink-0 animate-spin opacity-70" />
+          ) : (
+            <ChevronsUpDownIcon className="ml-2 size-4 shrink-0 opacity-50" />
+          )}
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        className="sm:w-full p-0 pointer-events-auto w-[var(--radix-popover-trigger-width)]"
+        className="p-0 pointer-events-auto w-[var(--radix-popover-trigger-width)]"
         align={align}
+        container={container}
       >
         <Command>{commandContent}</Command>
       </PopoverContent>

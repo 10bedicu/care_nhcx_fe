@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 
-type onMessage = (data: any) => void;
+type onMessage = (data: unknown) => void;
 
 export const useMessageListener = (onMessage: onMessage) => {
   useEffect(() => {
