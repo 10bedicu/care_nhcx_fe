@@ -42,8 +42,8 @@ import {
 } from "@/components/ui/popover";
 import { ClaimAccidentSection } from "./claim-accident-section";
 import { ClaimInsuranceSection } from "./claim-insurance-section";
-import { ClaimItemSection } from "./claim-item-section";
-import { ClaimOtherSection } from "./claim-other-section";
+import { ClaimFileTemplatesPanel } from "./claim-file-templates-panel";
+import { ClaimItemSection } from "./claim-item-section";import { ClaimOtherSection } from "./claim-other-section";
 import { ClaimRelatedSection } from "./claim-related-section";
 import { Encounter, EncounterClass } from "@/types/encounter";
 import { FileUploadModel } from "@/types/file_upload";
@@ -276,10 +276,10 @@ const CYCLIC_TREATMENT_CODE = {
 function addCycleEncounterSupportingInfo(
   values: ClaimFormValues,
   cycleEncounters: Encounter[],
+  consentCreatedByEncounter: Map<string, string>,
 ): ClaimFormValues {
   const existing = values.supporting_info ?? [];
 
-  // Drop any previously auto-added cyclic entries so re-prefill stays idempotent.
   const staleCyclicSequences = new Set(
     existing.filter((s) => s._cyclic).map((s) => s.sequence),
   );
@@ -308,14 +308,13 @@ function addCycleEncounterSupportingInfo(
 
   const additions = cycleEncounters.map((encounter, idx) => {
     const period = encounterServicedPeriod(encounter);
+    const consentCreated = consentCreatedByEncounter.get(encounter.id);
+    const start = consentCreated ?? period?.start;
     return {
       sequence: idx + 1,
       category: CYCLIC_TREATMENT_CATEGORY,
       code: CYCLIC_TREATMENT_CODE,
-      timing:
-        period?.start || period?.end
-          ? { start: period?.start, end: period?.end }
-          : undefined,
+      timing: start || period?.end ? { start, end: period?.end } : undefined,
       value_resource: {
         resource_type: "encounter",
         resource_id: encounter.id,
@@ -686,6 +685,20 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       .map(([id]) => id);
   }, [cycleConsents]);
 
+  const cycleConsentCreatedByEncounter = useMemo(() => {
+    const consents = cycleConsents?.results ?? [];
+    const map = new Map<string, string>();
+    for (const consent of consents) {
+      if (!consent.encounter || consent.cycle == null || consent.cycle <= 0) {
+        continue;
+      }
+      if (!map.has(consent.encounter) && consent.created_date) {
+        map.set(consent.encounter, consent.created_date);
+      }
+    }
+    return map;
+  }, [cycleConsents]);
+
   const cycleEncounterQueries = useQueries({
     queries: cycleEncounterIds.map((id) => ({
       queryKey: ["encounter", facilityId, id],
@@ -1046,6 +1059,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             encounterDiagnosisList,
           ),
           cycleEncounters,
+          cycleConsentCreatedByEncounter,
         ),
         { keepDefaultValues: false },
       );
@@ -1098,6 +1112,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     relatedClaimId,
     cycleConsents,
     cycleConsentsFetched,
+    cycleConsentCreatedByEncounter,
     cycleEncounters,
     cycleEncountersFetched,
   ]);
@@ -1639,9 +1654,12 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             )}
           </div>
 
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-6 lg:self-start">
+            <ClaimFileTemplatesPanel />
             <InsurancePlanDetailsPanel
               selectedInsurances={form.watch("insurance") || []}
+              collapsible
+              defaultCollapsed
             />
           </div>
         </div>

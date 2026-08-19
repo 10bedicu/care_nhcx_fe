@@ -50,6 +50,7 @@ import {
   ALLOWED_UPLOAD_LABEL,
   cn,
   isAllowedUploadFile,
+  isDuplicateSupportingInfoAttachment,
   toast,
 } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
@@ -267,6 +268,16 @@ function PlanLevelDocCard({
     if (!file) return;
     if (!isAllowedUploadFile(file)) {
       toast.error(`Unsupported file type. Allowed: ${ALLOWED_UPLOAD_LABEL}.`);
+      e.target.value = "";
+      return;
+    }
+    const supportingInfo =
+      (form.getValues("supporting_info") as {
+        value_file?: File;
+        value_attachment?: { title?: string };
+      }[]) ?? [];
+    if (isDuplicateSupportingInfoAttachment(supportingInfo, file, mainInfoIndex)) {
+      toast.error("This attachment has already been added to another document.");
       e.target.value = "";
       return;
     }

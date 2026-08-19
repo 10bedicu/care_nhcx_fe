@@ -459,7 +459,7 @@ const ConditionSummary: FC<{ condition: InsurancePlanBenefitCondition }> = ({
       {flags.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {flags.map((f) => (
-            <Badge key={f.toString()} variant="outline" className="text-xs">
+            <Badge key={f?.toString()} variant="outline" className="text-xs">
               {f}
             </Badge>
           ))}
@@ -1008,11 +1008,17 @@ interface InsurancePlanDetailsPanelProps {
     focal: boolean;
     policy: Policy;
   }[];
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
 }
 
 export const InsurancePlanDetailsPanel: FC<InsurancePlanDetailsPanelProps> = ({
   selectedInsurances,
+  collapsible = false,
+  defaultCollapsed = false,
 }) => {
+  const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
+
   if (selectedInsurances.length === 0) {
     return (
       <Card>
@@ -1033,13 +1039,19 @@ export const InsurancePlanDetailsPanel: FC<InsurancePlanDetailsPanelProps> = ({
   }
 
   return (
-    <Card className="sticky top-6 shadow-lg border-0 bg-gradient-to-br from-background to-muted/20 flex flex-col max-h-[calc(100vh-3rem)]">
+    <Card
+      className={
+        collapsed
+          ? "shadow-lg border-0 bg-gradient-to-br from-background to-muted/20"
+          : "shadow-lg border-0 bg-gradient-to-br from-background to-muted/20 flex flex-col max-h-[calc(100vh-3rem)]"
+      }
+    >
       <CardHeader className="pb-3 shrink-0">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-primary/10 rounded-lg">
             <Shield className="h-5 w-5 text-primary" />
           </div>
-          <div>
+          <div className="flex-1">
             <CardTitle className="text-base font-semibold">
               Insurance Plan Details
             </CardTitle>
@@ -1048,51 +1060,68 @@ export const InsurancePlanDetailsPanel: FC<InsurancePlanDetailsPanelProps> = ({
               {selectedInsurances.length !== 1 ? "s" : ""} selected
             </p>
           </div>
+          {collapsible && (
+            <button
+              type="button"
+              onClick={() => setCollapsed((prev) => !prev)}
+              className="p-1 rounded-md hover:bg-muted transition-colors"
+              aria-label={collapsed ? "Expand panel" : "Minimize panel"}
+              aria-expanded={!collapsed}
+            >
+              <ChevronDown
+                className={`h-4 w-4 text-muted-foreground transition-transform ${
+                  collapsed ? "-rotate-90" : ""
+                }`}
+              />
+            </button>
+          )}
         </div>
       </CardHeader>
-      <CardContent className="pt-0 flex-1 overflow-y-auto">
-        {selectedInsurances.length === 1 ? (
-          <InsurancePlanTabContent insurance={selectedInsurances[0]} />
-        ) : (
-          <Tabs
-            defaultValue={`${selectedInsurances[0].policy.productid}-${selectedInsurances[0].policy.memberid}`}
-          >
-            <TabsList
-              className="grid w-full h-auto p-1 bg-muted/50 gap-1 mb-4"
-              style={{
-                gridTemplateColumns: `repeat(${selectedInsurances.length}, 1fr)`,
-              }}
+      {!collapsed && (
+        <CardContent className="pt-0 flex-1 overflow-y-auto">
+          {selectedInsurances.length === 1 ? (
+            <InsurancePlanTabContent insurance={selectedInsurances[0]} />
+          ) : (
+            <Tabs
+              defaultValue={`${selectedInsurances[0].policy.productid}-${selectedInsurances[0].policy.memberid}`}
             >
+              <TabsList
+                className="grid w-full h-auto p-1 bg-muted/50 gap-1 mb-4"
+                style={{
+                  gridTemplateColumns: `repeat(${selectedInsurances.length}, 1fr)`,
+                }}
+              >
+                {selectedInsurances.map((ins) => (
+                  <TabsTrigger
+                    key={`${ins.policy.productid}-${ins.policy.memberid}`}
+                    value={`${ins.policy.productid}-${ins.policy.memberid}`}
+                    className="text-xs h-auto py-2 px-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                  >
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="flex items-center gap-1">
+                        {ins.focal && (
+                          <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                        )}
+                        <span className="leading-tight font-medium truncate max-w-[80px]">
+                          {ins.policy.productname}
+                        </span>
+                      </div>
+                    </div>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
               {selectedInsurances.map((ins) => (
-                <TabsTrigger
+                <TabsContent
                   key={`${ins.policy.productid}-${ins.policy.memberid}`}
                   value={`${ins.policy.productid}-${ins.policy.memberid}`}
-                  className="text-xs h-auto py-2 px-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
                 >
-                  <div className="flex flex-col items-center gap-1">
-                    <div className="flex items-center gap-1">
-                      {ins.focal && (
-                        <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
-                      )}
-                      <span className="leading-tight font-medium truncate max-w-[80px]">
-                        {ins.policy.productname}
-                      </span>
-                    </div>
-                  </div>
-                </TabsTrigger>
+                  <InsurancePlanTabContent insurance={ins} />
+                </TabsContent>
               ))}
-            </TabsList>
-            {selectedInsurances.map((ins) => (
-              <TabsContent
-                key={`${ins.policy.productid}-${ins.policy.memberid}`}
-                value={`${ins.policy.productid}-${ins.policy.memberid}`}
-              >
-                <InsurancePlanTabContent insurance={ins} />
-              </TabsContent>
-            ))}
-          </Tabs>
-        )}
-      </CardContent>
+            </Tabs>
+          )}
+        </CardContent>
+      )}
     </Card>
   );
 };

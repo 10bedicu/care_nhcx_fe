@@ -98,6 +98,7 @@ import {
   ALLOWED_UPLOAD_LABEL,
   cn,
   isAllowedUploadFile,
+  isDuplicateSupportingInfoAttachment,
   toast,
 } from "@/lib/utils";
 import { createClaimFormSchema } from "./schema";
@@ -1268,6 +1269,7 @@ const BENEFIT_CATEGORY_SYSTEM =
   "https://nrces.in/ndhm/fhir/r4/ValueSet/ndhm-benefitcategory";
 const PROCEDURE_CODE_SYSTEM =
   "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-procedures-code";
+const FREE_TEXT_PROCEDURE_SYSTEM = "https://payer.pmjay.nha.gov.in";
 const AB_PMJAY_CODE = PROGRAM_CODES.find((c) => c.code === "AB-PMJAY")!;
 
 export function ClaimItemSection({
@@ -1966,6 +1968,7 @@ export function ClaimItemSection({
                         form={form}
                         index={index}
                         requireProcedure={isUnspecifiedAlone}
+                        allowFreeTextProcedure={isUnspecifiedAlone}
                       />
                       <FormField
                         control={form.control}
@@ -3472,14 +3475,83 @@ function AddDiagnosisSection({
   );
 }
 
+function ProcedureCodeInput({
+  value,
+  onChange,
+  allowFreeText,
+}: {
+  value?: Coding;
+  onChange: (value: Coding | undefined) => void;
+  allowFreeText: boolean;
+}) {
+  const [freeTextMode, setFreeTextMode] = useState(
+    value?.system === FREE_TEXT_PROCEDURE_SYSTEM,
+  );
+
+  if (!allowFreeText) {
+    return (
+      <ValuesetSelect
+        system="system-claim-procedure-code"
+        value={value}
+        onSelect={onChange}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      {freeTextMode ? (
+        <Input
+          value={
+            value?.system === FREE_TEXT_PROCEDURE_SYSTEM ? value.code : ""
+          }
+          onChange={(e) => {
+            const text = e.target.value;
+            onChange(
+              text
+                ? {
+                    system: FREE_TEXT_PROCEDURE_SYSTEM,
+                    code: text,
+                    display: text,
+                  }
+                : undefined,
+            );
+          }}
+          placeholder="Type procedure name"
+        />
+      ) : (
+        <ValuesetSelect
+          system="system-claim-procedure-code"
+          value={value}
+          onSelect={onChange}
+        />
+      )}
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        className="h-auto p-0 text-xs"
+        onClick={() => {
+          onChange(undefined);
+          setFreeTextMode((prev) => !prev);
+        }}
+      >
+        {freeTextMode ? "Search codes instead" : "Enter as free text instead"}
+      </Button>
+    </div>
+  );
+}
+
 function AddProcedureSection({
   form,
   index,
   requireProcedure = false,
+  allowFreeTextProcedure = false,
 }: {
   form: UseFormReturn<z.infer<typeof createClaimFormSchema>>;
   index: number;
   requireProcedure?: boolean;
+  allowFreeTextProcedure?: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const procedureFields = form.watch("procedure") || [];
@@ -3599,7 +3671,7 @@ function AddProcedureSection({
                 className={cn(cardError && cardErrorBorderClass)}
               >
                 <CardHeader>
-                  <div className="flex justify-between items-center gap-2">
+                  <div className="flex justify-between items-start gap-2">
                     <FormField
                       control={form.control}
                       name={`procedure.${mainProcedureIndex}.procedure_code`}
@@ -3612,10 +3684,10 @@ function AddProcedureSection({
                             </span>
                           </FormLabel>
                           <FormControl>
-                            <ValuesetSelect
-                              system="system-claim-procedure-code"
+                            <ProcedureCodeInput
                               value={field.value}
-                              onSelect={(value) => {
+                              allowFreeText={allowFreeTextProcedure}
+                              onChange={(value) => {
                                 form.setValue(
                                   `procedure.${mainProcedureIndex}.procedure_code`,
                                   value,
@@ -4879,6 +4951,14 @@ function SupportingInfoFileUpload({
     if (!file) return;
     if (!isAllowedUploadFile(file)) {
       toast.error(`Unsupported file type. Allowed: ${ALLOWED_UPLOAD_LABEL}.`);
+      event.target.value = "";
+      return;
+    }
+    const supportingInfo = form.getValues("supporting_info") ?? [];
+    if (
+      isDuplicateSupportingInfoAttachment(supportingInfo, file, mainInfoIndex)
+    ) {
+      toast.error("This attachment has already been added to another document.");
       event.target.value = "";
       return;
     }

@@ -24,6 +24,9 @@ interface CyclicalConsentPanelProps {
   preAuth: Claim;
 }
 
+const toISTDateString = (date: string | Date) =>
+  new Date(date).toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+
 export const CyclicalConsentPanel: FC<CyclicalConsentPanelProps> = ({
   encounter,
   patient,
@@ -110,6 +113,25 @@ export const CyclicalConsentPanel: FC<CyclicalConsentPanelProps> = ({
     return maxCycle + 1;
   }, [cycleConsents, encounter.id]);
 
+  const isNewCycleBlockedToday = useMemo(() => {
+    const consents = cycleConsents?.results ?? [];
+    const hasOwnConsent = consents.some(
+      (consent) => consent.encounter === encounter.id && consent.cycle != null,
+    );
+    if (hasOwnConsent || encounter.id === preAuth.encounter) {
+      return false;
+    }
+    const today = toISTDateString(new Date());
+    return consents.some(
+      (consent) =>
+        consent.cycle != null &&
+        consent.cycle > 0 &&
+        consent.encounter !== encounter.id &&
+        consent.created_date &&
+        toISTDateString(consent.created_date) === today,
+    );
+  }, [cycleConsents, encounter.id, preAuth.encounter]);
+
   const patientDischarged = isEncounterDischarged(encounter.status);
   const preAuthRef = preAuth.latest_response?.pre_auth_ref;
 
@@ -144,14 +166,24 @@ export const CyclicalConsentPanel: FC<CyclicalConsentPanelProps> = ({
           capturedAt={checkIn?.created_date}
           loading={checkInQuery.isFetching && !checkInQuery.data}
           onCapture={() => setDialogStage("preauthorization")}
+          disabled={isNewCycleBlockedToday}
         />
         <ConsentTile
           label="Check-out consent"
           capturedAt={checkOut?.created_date}
           loading={checkOutQuery.isFetching && !checkOutQuery.data}
           onCapture={() => setDialogStage("claim")}
+          disabled={isNewCycleBlockedToday}
         />
       </div>
+
+      {isNewCycleBlockedToday && (
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+          A cycle&apos;s consent was already captured today. Only one cycle can
+          be captured per day — please capture this cycle&apos;s consent
+          tomorrow.
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
         <Link
@@ -204,6 +236,7 @@ interface ConsentTileProps {
   capturedAt?: string;
   loading?: boolean;
   onCapture: () => void;
+  disabled?: boolean;
 }
 
 const ConsentTile: FC<ConsentTileProps> = ({
@@ -211,6 +244,7 @@ const ConsentTile: FC<ConsentTileProps> = ({
   capturedAt,
   loading,
   onCapture,
+  disabled,
 }) => {
   const captured = !!capturedAt;
   return (
@@ -236,6 +270,7 @@ const ConsentTile: FC<ConsentTileProps> = ({
         variant={captured ? "outline" : "default"}
         className="gap-1.5 shrink-0"
         onClick={onCapture}
+        disabled={disabled}
       >
         <FingerprintIcon className="h-4 w-4" />
         {captured ? "Recapture" : "Capture"}

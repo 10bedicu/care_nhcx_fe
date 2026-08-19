@@ -119,3 +119,28 @@ export function readInlineAttachment(file: File): Promise<InlineAttachment> {
     reader.readAsDataURL(file);
   });
 }
+
+type SupportingInfoAttachmentEntry = {
+  value_file?: File | null;
+  value_attachment?: { title?: string } | null;
+};
+
+export function isDuplicateSupportingInfoAttachment(
+  entries: SupportingInfoAttachmentEntry[],
+  file: File,
+  currentIndex: number,
+): boolean {
+  return entries.some((entry, index) => {
+    if (index === currentIndex) return false;
+    const existingFile = entry.value_file;
+    if (
+      existingFile &&
+      existingFile.name === file.name &&
+      existingFile.size === file.size &&
+      existingFile.lastModified === file.lastModified
+    ) {
+      return true;
+    }
+    return entry.value_attachment?.title === file.name;
+  });
+}
