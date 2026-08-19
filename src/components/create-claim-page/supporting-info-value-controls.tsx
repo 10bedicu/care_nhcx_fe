@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useMemo, useState } from "react";
 
 import Autocomplete from "@/components/ui/autocomplete";
 import { Button } from "@/components/ui/button";
@@ -74,9 +74,20 @@ function ResourceInstanceSelect({
   onChange: (resourceId: string) => void;
 }) {
   const { options, isLoading } = typeDef.useOptions(patientId, encounterId);
+
+  const mergedOptions = useMemo(() => {
+    if (!value || options.some((option) => option.value === value)) {
+      return options;
+    }
+    return [
+      ...options,
+      { value, label: `${typeDef.label} #${value.slice(0, 5)}` },
+    ];
+  }, [options, value, typeDef.label]);
+
   return (
     <Autocomplete
-      options={options}
+      options={mergedOptions}
       value={value}
       onChange={onChange}
       isLoading={isLoading}

@@ -1,10 +1,5 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  CLAIM_USE_CHOICES,
-  Claim,
-  ClaimUseChoice,
-} from "@/types/claim";
-import { ClaimConsent } from "@/types/claim_consent";
+import { CLAIM_USE_CHOICES, Claim, ClaimUseChoice } from "@/types/claim";
 import { CoverageEligibilityRequest } from "@/types/coverage_eligibility";
 import { Condition, ConditionCategory } from "@/types/condition";
 import {
@@ -29,7 +24,12 @@ import {
   PlanLevelSupportingInfoSection,
 } from "./claim-plan-level-section";
 import { useForm, useFormState, useWatch } from "react-hook-form";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useNavigate, useQueryParams } from "raviger";
 
 import { AlertCircleIcon, ChevronDownIcon, WalletIcon } from "lucide-react";
@@ -261,46 +261,102 @@ function mapClaimToFormValues(
   );
 }
 
+const CYCLIC_TREATMENT_CATEGORY = {
+  system: "https://nrces.in/ndhm/fhir/r4/CodeSystem/ndhm-supportinginfo-code",
+  code: "CD",
+  display: "Clinical document",
+};
+
+const CYCLIC_TREATMENT_CODE = {
+  system: "https://payer.pmjay.nha.gov.in",
+  code: "TD",
+  display: "Treatment detail",
+};
+
 function addCycleEncounterSupportingInfo(
   values: ClaimFormValues,
-  cycleConsents: ClaimConsent[],
+  cycleEncounters: Encounter[],
 ): ClaimFormValues {
   const existing = values.supporting_info ?? [];
-  const referencedEncounters = new Set(
-    existing
-      .filter((s) => s.value_resource?.resource_type === "encounter")
-      .map((s) => s.value_resource?.resource_id),
-  );
 
-  const cycleEncounters: string[] = [];
-  const seen = new Set<string>();
-  for (const consent of cycleConsents) {
-    const encounterId = consent.encounter;
-    if (!encounterId || seen.has(encounterId)) continue;
-    seen.add(encounterId);
-    if (referencedEncounters.has(encounterId)) continue;
-    cycleEncounters.push(encounterId);
-  }
+  // Drop any previously auto-added cyclic entries so re-prefill stays idempotent.
+  const staleCyclicSequences = new Set(
+    existing.filter((s) => s._cyclic).map((s) => s.sequence),
+  );
+  const withoutCyclic = existing.filter((s) => !s._cyclic);
 
   if (cycleEncounters.length === 0) {
-    return values;
+    if (staleCyclicSequences.size === 0) {
+      return values;
+    }
+    return {
+      ...values,
+      supporting_info: withoutCyclic,
+      item: (values.item ?? []).map((item) => ({
+        ...item,
+        information_sequence: (item.information_sequence ?? []).filter(
+          (seq) => !staleCyclicSequences.has(seq),
+        ),
+      })),
+    };
   }
 
-  let nextSequence = existing.reduce((max, s) => Math.max(max, s.sequence), 0);
-  const additions = cycleEncounters.map((encounterId) => ({
-    sequence: ++nextSequence,
-    category: DEFAULT_SUPPORTING_INFO_CATEGORY,
-    code: DEFAULT_SUPPORTING_INFO_CODE,
-    value_resource: {
-      resource_type: "encounter",
-      resource_id: encounterId,
-    },
-    _is_plan_level: true,
+  const cycleCount = cycleEncounters.length;
+
+  const shift = cycleCount;
+  const remapSeq = (seq: number) => seq + shift;
+
+  const additions = cycleEncounters.map((encounter, idx) => {
+    const period = encounterServicedPeriod(encounter);
+    return {
+      sequence: idx + 1,
+      category: CYCLIC_TREATMENT_CATEGORY,
+      code: CYCLIC_TREATMENT_CODE,
+      timing:
+        period?.start || period?.end
+          ? { start: period?.start, end: period?.end }
+          : undefined,
+      value_resource: {
+        resource_type: "encounter",
+        resource_id: encounter.id,
+      },
+      _is_plan_level: false,
+      _locked: true,
+      _cyclic: true,
+    };
+  });
+
+  const cyclicSequences = additions.map((a) => a.sequence);
+
+  const shiftedSupportingInfo = withoutCyclic.map((s) => ({
+    ...s,
+    sequence: remapSeq(s.sequence),
   }));
+
+  const shiftedQuestionnaireResponses = (
+    values.questionnaire_responses ?? []
+  ).map((qr) => ({
+    ...qr,
+    sequence: remapSeq(qr.sequence),
+  }));
+
+  const items = (values.item ?? []).map((item) => {
+    const remappedInfo = (item.information_sequence ?? [])
+      .filter((seq) => !staleCyclicSequences.has(seq))
+      .map(remapSeq);
+    return {
+      ...item,
+      information_sequence: [...cyclicSequences, ...remappedInfo],
+      quantity: { ...item.quantity, value: cycleCount },
+      _lock_quantity: true,
+    };
+  });
 
   return {
     ...values,
-    supporting_info: [...existing, ...additions],
+    supporting_info: [...additions, ...shiftedSupportingInfo],
+    questionnaire_responses: shiftedQuestionnaireResponses,
+    item: items,
   };
 }
 
@@ -612,6 +668,44 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       apis.claimConsent.list({ claim: prefilledClaimId as string }),
     enabled: !!prefilledClaimId && lockedUse === "claim",
   });
+
+
+  const cycleEncounterIds = useMemo(() => {
+    const consents = cycleConsents?.results ?? [];
+    const cycleByEncounter = new Map<string, number>();
+    for (const consent of consents) {
+      if (!consent.encounter || consent.cycle == null || consent.cycle <= 0) {
+        continue;
+      }
+      if (!cycleByEncounter.has(consent.encounter)) {
+        cycleByEncounter.set(consent.encounter, consent.cycle);
+      }
+    }
+    return [...cycleByEncounter.entries()]
+      .sort((a, b) => a[1] - b[1])
+      .map(([id]) => id);
+  }, [cycleConsents]);
+
+  const cycleEncounterQueries = useQueries({
+    queries: cycleEncounterIds.map((id) => ({
+      queryKey: ["encounter", facilityId, id],
+      queryFn: () => apis.encounter.get(facilityId, id),
+      enabled: !!facilityId && !!id,
+      staleTime: 60 * 1000,
+    })),
+  });
+
+  const cycleEncountersFetched = cycleEncounterQueries.every(
+    (q) => q.isFetched || q.isError,
+  );
+  const cycleEncounters = useMemo(
+    () =>
+      cycleEncounterQueries
+        .map((q) => q.data)
+        .filter((e): e is Encounter => !!e),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cycleEncounterQueries.map((q) => q.data?.id).join(",")],
+  );
 
   const { data: coverageEligibilityRequest } = useQuery({
     queryKey: ["coverage-eligibility-request", coverageEligibilityId],
@@ -937,6 +1031,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
       if (!prefilledClaimFetched) return;
       if (!prefilledClaim) return;
       if (!cycleConsentsFetched) return;
+      if (!cycleEncountersFetched) return;
 
       didPrefillGuidedRef.current = true;
       form.reset(
@@ -950,7 +1045,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
             encounter,
             encounterDiagnosisList,
           ),
-          cycleConsents?.results ?? [],
+          cycleEncounters,
         ),
         { keepDefaultValues: false },
       );
@@ -1003,6 +1098,8 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     relatedClaimId,
     cycleConsents,
     cycleConsentsFetched,
+    cycleEncounters,
+    cycleEncountersFetched,
   ]);
 
   const validationBalance = useMemo(() => {
@@ -1243,7 +1340,8 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
           (!!prefilledClaimId &&
             (!prefilledClaimFetched ||
               !prefilledClaim ||
-              !cycleConsentsFetched))
+              !cycleConsentsFetched ||
+              !cycleEncountersFetched))
         );
       }
 
@@ -1283,6 +1381,7 @@ const CreateClaimPage: FC<CreateClaimPageProps> = ({
     prefilledClaimFetched,
     prefilledClaimId,
     cycleConsentsFetched,
+    cycleEncountersFetched,
   ]);
 
   const isSubmitting = createClaimIsPending || submitClaimIsPending;

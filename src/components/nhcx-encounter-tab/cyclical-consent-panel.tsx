@@ -91,24 +91,23 @@ export const CyclicalConsentPanel: FC<CyclicalConsentPanelProps> = ({
 
   const cycleNumber = useMemo(() => {
     const consents = cycleConsents?.results ?? [];
-    const earliestByEncounter = new Map<string, number>();
+    const cycleByEncounter = new Map<string, number>();
+    let maxCycle = 0;
     for (const consent of consents) {
       const encounterId = consent.encounter;
-      if (!encounterId) continue;
-      const ts = consent.created_date
-        ? new Date(consent.created_date).getTime()
-        : 0;
-      const existing = earliestByEncounter.get(encounterId);
-      if (existing === undefined || ts < existing) {
-        earliestByEncounter.set(encounterId, ts);
+      if (!encounterId || consent.cycle == null) continue;
+      if (!cycleByEncounter.has(encounterId)) {
+        cycleByEncounter.set(encounterId, consent.cycle);
       }
+      maxCycle = Math.max(maxCycle, consent.cycle);
     }
-    const orderedEncounters = [...earliestByEncounter.entries()]
-      .sort((a, b) => a[1] - b[1])
-      .map(([encounterId]) => encounterId);
 
-    const index = orderedEncounters.indexOf(encounter.id);
-    return index === -1 ? orderedEncounters.length + 1 : index + 1;
+    const current = cycleByEncounter.get(encounter.id);
+    if (current != null) {
+      return current;
+    }
+
+    return maxCycle + 1;
   }, [cycleConsents, encounter.id]);
 
   const patientDischarged = isEncounterDischarged(encounter.status);

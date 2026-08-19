@@ -461,6 +461,7 @@ export const apis = {
       claim?: string;
       encounter?: string;
       patient?: string;
+      account?: string;
       payer_id?: string;
       stage?: ClaimConsentStage;
       limit?: number;

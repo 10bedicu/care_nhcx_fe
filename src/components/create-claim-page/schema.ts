@@ -111,6 +111,7 @@ export const claimSupportingInfoSchema = z
     value_resource: claimSupportingInfoResourceSchema.optional(),
     _is_plan_level: z.boolean().optional(),
     _locked: z.boolean().optional(),
+    _cyclic: z.boolean().optional(),
   })
   .refine(
     (data) => {
@@ -191,6 +192,7 @@ export const claimItemSchema = z
     _is_duplicate: z.boolean().optional(),
     _implant_parent_sequence: z.number().int().positive().optional(),
     _implant_code: z.string().optional(),
+    _lock_quantity: z.boolean().optional(),
   })
   .refine((data) => data._is_disabled || data.quantity.value > 0, {
     message: "Number must be greater than 0",

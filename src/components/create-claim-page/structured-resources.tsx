@@ -13,14 +13,12 @@ export type StructuredResourceOption = {
 export type StructuredResourceTypeDef = {
   type: string;
   label: string;
-  /** Hook returning the selectable existing records for this type. */
   useOptions: (
     patientId: string,
     encounterId?: string,
   ) => { options: StructuredResourceOption[]; isLoading: boolean };
 };
 
-/** First segment of a UUID, used as a short human-readable reference. */
 function shortId(id: string): string {
   return id.slice(0, 5);
 }
@@ -33,7 +31,6 @@ function formatDate(value: unknown): string {
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleDateString();
 }
 
-/** Returns a trimmed string only when the input is a non-empty string. */
 function cleanTitle(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -47,13 +44,20 @@ function buildResourceOption({
   primary,
   date,
   badge,
+  cycleLabel,
 }: {
   id: string;
   primary: string;
   date: string;
   badge?: string;
+  cycleLabel?: string;
 }): StructuredResourceOption {
-  const label = [primary, date ? `on ${date}` : "", badge ? `(${badge})` : ""]
+  const label = [
+    primary,
+    cycleLabel ?? "",
+    date ? `on ${date}` : "",
+    badge ? `(${badge})` : "",
+  ]
     .filter(Boolean)
     .join(" ");
 
@@ -63,6 +67,11 @@ function buildResourceOption({
         <span className="min-w-0 break-words text-sm font-medium text-foreground">
           {primary}
         </span>
+        {cycleLabel && (
+          <span className="shrink-0 text-xs font-normal text-muted-foreground">
+            {cycleLabel}
+          </span>
+        )}
         {badge && (
           <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary">
             {badge}
@@ -154,6 +163,38 @@ function useEncounterOptions(patientId: string, encounterId?: string) {
     staleTime: 60 * 1000,
   });
 
+  const consents = data?.results ?? [];
+
+  const currentAccount = consents.find(
+    (consent) => consent.encounter === encounterId,
+  )?.account;
+  const relevant = currentAccount
+    ? consents.filter((consent) => consent.account === currentAccount)
+    : consents;
+
+  const cycleByEncounter = new Map<
+    string,
+    { cycle: number | null; date: string }
+  >();
+  for (const consent of relevant) {
+    const encounter = consent.encounter;
+    if (!encounter || cycleByEncounter.has(encounter)) {
+      continue;
+    }
+    cycleByEncounter.set(encounter, {
+      cycle: consent.cycle ?? null,
+      date: formatDate(consent.created_date),
+    });
+  }
+
+  const cycleLabelFor = (encounter: string): string | undefined => {
+    const cycle = cycleByEncounter.get(encounter)?.cycle;
+    if (cycle == null) {
+      return undefined;
+    }
+    return cycle === 0 ? "Cycle 0 · Initiating" : `Cycle ${cycle}`;
+  };
+
   const seen = new Set<string>();
   const options: StructuredResourceOption[] = [];
 
@@ -168,21 +209,22 @@ function useEncounterOptions(patientId: string, encounterId?: string) {
         primary: `Encounter #${shortId(encounter)}`,
         date,
         badge: encounter === encounterId ? "Current" : undefined,
+        cycleLabel: cycleLabelFor(encounter),
       }),
     );
   };
 
-  // Always show the current encounter, even without a claim consent.
   if (encounterId) {
-    pushEncounter(encounterId, "");
+    pushEncounter(encounterId, cycleByEncounter.get(encounterId)?.date ?? "");
   }
 
-  for (const consent of data?.results ?? []) {
-    const encounter = consent.encounter;
-    if (!encounter) {
-      continue;
-    }
-    pushEncounter(encounter, formatDate(consent.created_date));
+  const cycleEncounters = [...cycleByEncounter.entries()].sort((a, b) => {
+    const aCycle = a[1].cycle ?? Number.MAX_SAFE_INTEGER;
+    const bCycle = b[1].cycle ?? Number.MAX_SAFE_INTEGER;
+    return aCycle - bCycle;
+  });
+  for (const [encounter, { date }] of cycleEncounters) {
+    pushEncounter(encounter, date);
   }
 
   return { options, isLoading };

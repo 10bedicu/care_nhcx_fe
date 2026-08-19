@@ -9,6 +9,8 @@ export type ClaimConsent = {
   claim?: string;
   encounter?: string;
   patient?: string;
+  account?: string;
+  cycle?: number | null;
   expires_in: number;
   refresh_expires_in: number;
   accounts: Record<string, unknown>[];

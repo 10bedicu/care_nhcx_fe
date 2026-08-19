@@ -2085,33 +2085,45 @@ export function ClaimItemSection({
                         <FormField
                           control={form.control}
                           name={`item.${index}.quantity.value`}
-                          render={({ field }) => (
-                            <FormItem className="space-y-1.5">
-                              <FormLabel>
-                                Quantity Value
-                                <span className="text-red-500 text-sm ml-0.5">
-                                  *
-                                </span>
-                              </FormLabel>
-                              <FormControl>
-                                <Input
-                                  type="number"
-                                  value={field.value || ""}
-                                  onChange={(e) => {
-                                    form.setValue(
-                                      `item.${index}.quantity.value`,
-                                      e.target.value
-                                        ? parseFloat(e.target.value)
-                                        : 0,
-                                      USER_EDIT,
-                                    );
-                                  }}
-                                  placeholder="Enter quantity"
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
+                          render={({ field }) => {
+                            const lockQuantity =
+                              form.watch(`item.${index}._lock_quantity`) ===
+                              true;
+                            return (
+                              <FormItem className="space-y-1.5">
+                                <FormLabel>
+                                  Quantity Value
+                                  <span className="text-red-500 text-sm ml-0.5">
+                                    *
+                                  </span>
+                                </FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    value={field.value || ""}
+                                    disabled={lockQuantity}
+                                    onChange={(e) => {
+                                      if (lockQuantity) return;
+                                      form.setValue(
+                                        `item.${index}.quantity.value`,
+                                        e.target.value
+                                          ? parseFloat(e.target.value)
+                                          : 0,
+                                        USER_EDIT,
+                                      );
+                                    }}
+                                    placeholder="Enter quantity"
+                                  />
+                                </FormControl>
+                                {lockQuantity && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Auto-set from the number of completed cycles.
+                                  </p>
+                                )}
+                                <FormMessage />
+                              </FormItem>
+                            );
+                          }}
                         />
 
                         <FormField
@@ -2844,10 +2856,15 @@ function ItemValidationEffects({
       return;
     }
 
+    const quantity = Math.max(Number(quantityValue) || 1, 1);
+    const ceAllowedPerUnit = ceAllowed != null ? ceAllowed / quantity : null;
+    const preAuthApprovedPerUnit =
+      preAuthApproved != null ? preAuthApproved / quantity : null;
+
     if (isUnspecifiedAlone) {
       const payerDerived = isResubmit
-        ? (ceAllowed ?? preAuthApproved)
-        : (preAuthApproved ?? ceAllowed);
+        ? (ceAllowedPerUnit ?? preAuthApprovedPerUnit)
+        : (preAuthApprovedPerUnit ?? ceAllowedPerUnit);
       if (payerDerived == null) return;
       form.setValue(`item.${index}.unit_price`, payerDerived, {
         shouldDirty: false,
@@ -2862,8 +2879,8 @@ function ItemValidationEffects({
     const derived = isDuplicateItem
       ? (benefitLimit ?? 0)
       : isResubmit
-        ? (ceAllowed ?? preAuthApproved ?? benefitLimit ?? 0)
-        : (preAuthApproved ?? ceAllowed ?? benefitLimit ?? 0);
+        ? (ceAllowedPerUnit ?? preAuthApprovedPerUnit ?? benefitLimit ?? 0)
+        : (preAuthApprovedPerUnit ?? ceAllowedPerUnit ?? benefitLimit ?? 0);
     form.setValue(`item.${index}.unit_price`, derived, { shouldDirty: false });
     form.setValue(`item.${index}._amount_cap_error`, undefined, {
       shouldDirty: false,
@@ -2880,6 +2897,7 @@ function ItemValidationEffects({
     isItemDisabled,
     isUnspecifiedAlone,
     productCode,
+    quantityValue,
   ]);
 
   useEffect(() => {
@@ -4616,7 +4634,7 @@ function AddSupportingInfoSection({
                           className="mt-1 shrink-0 gap-1 border-muted-foreground/30 text-muted-foreground"
                         >
                           <LockIcon className="h-3 w-3" />
-                          From previous claim
+                          {info._cyclic ? "Auto-added (cycle)" : "From previous claim"}
                         </Badge>
                       ) : (
                         <Button
